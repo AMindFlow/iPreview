@@ -20,4 +20,13 @@
     <EmbeddedResource Include="..\..\..\shared\migrations\001-initial.sql"
                       LogicalName="iPreview.Migrations.001-initial.sql" />
   </ItemGroup>
+  <!-- Windows App SDK omits app XAML resources from unpackaged publish (#6720). -->
+  <Target Name="IncludeWinUIResourcesInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(ProjectPriFullPath)">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>

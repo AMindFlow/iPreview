@@ -52,8 +52,14 @@ jobs:
           $zip = Join-Path $env:RUNNER_TEMP 'iPreview-windows-x64.zip'
           dotnet publish apps/windows/iPreview/iPreview.csproj -c Release -r win-x64 --self-contained true -o $publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (!(Test-Path (Join-Path $publish 'iPreview.exe'))) { throw 'Published app executable missing' }
           Compress-Archive -Path "$publish\*" -DestinationPath $zip
+          $expanded = Join-Path $env:RUNNER_TEMP 'iPreview-expanded'
+          Expand-Archive -LiteralPath $zip -DestinationPath $expanded
+          foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf') {
+            if (!(Test-Path -LiteralPath (Join-Path $expanded $file) -PathType Leaf)) {
+              throw "Windows ZIP is missing $file"
+            }
+          }
           Get-FileHash -Algorithm SHA256 $zip
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
