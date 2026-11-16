@@ -513,11 +513,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static async Task<BitmapImage> DecodeImage(Media media, int width, bool animated)
+    private static async Task<BitmapImage> DecodeImage(Media media, int width, bool animated,
+                                                       ExceptionRoutedEventHandler? imageFailed = null)
     {
         var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(media));
         using var stream = await file.OpenReadAsync();
         var bitmap = new BitmapImage { DecodePixelWidth = width, AutoPlay = animated };
+        if (imageFailed is not null)
+            bitmap.ImageFailed += imageFailed;
         await bitmap.SetSourceAsync(stream);
         return bitmap;
     }
@@ -650,8 +653,16 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            var image = await DecodeImage(tile.Media, 0, true);
-            if (generation == previewGeneration)
+            var image = await DecodeImage(tile.Media, 0, true, (source, error) =>
+            {
+                if (generation != previewGeneration ||
+                    (MainImage.Source is { } currentSource && !ReferenceEquals(currentSource, source)))
+                    return;
+
+                MainImage.Source = null;
+                ShowPreviewError("无法解码此图片。", error.ErrorMessage);
+            });
+            if (generation == previewGeneration && PreviewError.Visibility == Visibility.Collapsed)
                 MainImage.Source = image;
         }
         catch (Exception error) when (MediaFailure(error))

@@ -14,7 +14,7 @@ iPreview 是用于本地图片和视频的原生媒体库。可以从已有创�
 
 ```sh
 swift run iPreviewCoreChecks
-bash scripts/package-macos.sh ./dist/iPreview-macos-arm64.zip
+bash scripts/package-macos.sh "$PWD/dist/iPreview-macos-arm64.zip"
 ```
 
 ```powershell
