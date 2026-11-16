@@ -64,9 +64,9 @@ internal sealed class Sqlite : IDisposable
             return rows;
         });
 
-    public void InTransaction(Action action)
+    public void InTransaction(Action action, bool write = true)
     {
-        ExecuteScript("BEGIN IMMEDIATE;");
+        ExecuteScript(write ? "BEGIN IMMEDIATE;" : "BEGIN;");
         try
         {
             action();

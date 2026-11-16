@@ -31,8 +31,13 @@ try
         catalog.Import(single.Path, Layout.Creator, single.Options[Layout.Creator]);
         catalog.Import(ambiguous.Path, Layout.MultiCreator, ambiguous.Options[Layout.MultiCreator]);
 
-        var sources = catalog.Sources().ToDictionary(source => source.Id);
-        var items = catalog.Items(sources);
+        var items = catalog.Read().Media;
+        try
+        {
+            catalog.CheckSourcePath(work);
+            throw new InvalidOperationException("Core check failed: catalog overlap rejected");
+        }
+        catch (IOException) { }
         Check(items.Count == 4, "persisted import");
         var ordered = MediaSearch.Find(items, "城楼", false, false, true);
         Check(ordered.Select(item => item.FileName).SequenceEqual(["城楼2.PNG", "城楼10.PNG"]),
@@ -57,26 +62,26 @@ try
 
     using (var catalog = new Catalog(data))
     {
-        var sources = catalog.Sources().ToDictionary(source => source.Id);
-        Check(catalog.Albums().Single().Name == "海外", "persisted album rename");
-        Check(catalog.Items(sources, albumId).Select(item => item.Id).SequenceEqual([secondId, firstId]),
+        var snapshot = catalog.Read();
+        Check(snapshot.Albums.Single().Name == "海外", "persisted album rename");
+        Check(snapshot.AlbumMembers[albumId].Select(item => item.Id).SequenceEqual([secondId, firstId]),
             "persisted album order and deduplication");
 
-        var other = sources.Values.Single(source => source.Path == mixed);
+        var other = snapshot.Sources.Values.Single(source => source.Path == mixed);
         var offlinePath = Path.Combine(work, "offline");
         Directory.Move(mixed, offlinePath);
         catalog.Rescan(other.Id, null);
-        var offline = catalog.Items(catalog.Sources().ToDictionary(source => source.Id), albumId)[0];
+        var offline = catalog.Read().AlbumMembers[albumId][0];
         Check(offline.Id == secondId && !offline.Available, "offline member retained");
         Directory.Move(offlinePath, mixed);
         catalog.Rescan(other.Id, MediaFiles.Scan(other.Path, other.Layout));
-        var online = catalog.Items(catalog.Sources().ToDictionary(source => source.Id), albumId)[0];
+        var online = catalog.Read().AlbumMembers[albumId][0];
         Check(online.Id == secondId && online.Available, "rescan restores stable member");
         Check(MediaFiles.OpenPath(online) == Path.Combine(mixed, "Other", "Album", "other.jpg"),
             "preview resolves source-relative media");
 
         catalog.RemoveFromAlbum(albumId, secondId);
-        Check(catalog.Items(sources, albumId).Single().Id == firstId, "remove album reference");
+        Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
     Console.WriteLine("Windows catalog and search checks passed.");

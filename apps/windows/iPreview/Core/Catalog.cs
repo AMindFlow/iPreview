@@ -2,15 +2,21 @@ using System.Reflection;
 
 namespace IPreview;
 
+internal sealed record CatalogSnapshot(
+    Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
+    Dictionary<long, List<Media>> AlbumMembers);
+
 internal sealed class Catalog : IDisposable
 {
     private const string Migration = "iPreview.Migrations.001-initial.sql";
     private readonly Sqlite database;
+    private readonly string dataDirectory;
 
     public Catalog(string dataDirectory)
     {
-        Directory.CreateDirectory(dataDirectory);
-        database = new Sqlite(Path.Combine(dataDirectory, "library.sqlite3"));
+        this.dataDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDirectory));
+        Directory.CreateDirectory(this.dataDirectory);
+        database = new Sqlite(Path.Combine(this.dataDirectory, "library.sqlite3"));
         try
         {
             database.InTransaction(() =>
@@ -34,36 +40,56 @@ internal sealed class Catalog : IDisposable
         }
     }
 
-    public List<Source> Sources() =>
-        database.Query("SELECT id, path, layout, available FROM sources;", row =>
+    public void CheckSourcePath(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (Contains(path, dataDirectory) || Contains(dataDirectory, path))
+            throw new IOException("请选取媒体文件夹。应用数据目录及其父子目录不可导入。");
+    }
+
+    private static bool Contains(string parent, string child)
+    {
+        var relative = Path.GetRelativePath(parent, child);
+        return !Path.IsPathRooted(relative)
+            && !relative.Equals("..", StringComparison.Ordinal)
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    public CatalogSnapshot Read()
+    {
+        CatalogSnapshot? snapshot = null;
+        database.InTransaction(() =>
         {
-            var path = row.Text(1);
-            return new Source(row.Number(0), path, MediaFiles.DecodeLayout(row.Text(2)),
-                row.Number(3) != 0 && MediaFiles.IsLocalRootAvailable(path));
-        });
+            var sources = database.Query("SELECT id, path, layout, available FROM sources;", row =>
+            {
+                var path = row.Text(1);
+                return new Source(row.Number(0), path, MediaFiles.DecodeLayout(row.Text(2)),
+                    row.Number(3) != 0 && MediaFiles.IsLocalRootAvailable(path));
+            }).ToDictionary(source => source.Id);
+            var media = database.Query("SELECT id, source_id, relative_path, kind, available FROM media;", row =>
+                new Media(row.Number(0), sources[row.Number(1)], row.Text(2), row.Text(3) == "video", row.Number(4) != 0));
+            var albums = database.Query("SELECT id, name FROM albums ORDER BY name COLLATE NOCASE, id;",
+                row => new Album(row.Number(0), row.Text(1)));
+            var mediaById = media.ToDictionary(item => item.Id);
+            var members = database.Query(
+                "SELECT album_id, media_id FROM album_media ORDER BY position, media_id;",
+                row => (Album: row.Number(0), Media: mediaById[row.Number(1)]))
+                .GroupBy(member => member.Album)
+                .ToDictionary(album => album.Key, album => album.Select(member => member.Media).ToList());
+            snapshot = new(sources, media, albums, members);
+        }, write: false);
+        return snapshot!;
+    }
 
-    public List<Album> Albums() =>
-        database.Query("SELECT id, name FROM albums ORDER BY name COLLATE NOCASE, id;",
-            row => new Album(row.Number(0), row.Text(1)));
-
-    public List<Media> Items(IReadOnlyDictionary<long, Source> sources, long? album = null) =>
-        album is long albumId
-            ? database.Query("""
-                SELECT m.id, m.source_id, m.relative_path, m.kind, m.available
-                FROM album_media AS a JOIN media AS m ON a.media_id = m.id
-                WHERE a.album_id = ? ORDER BY a.position, a.media_id;
-                """, row => ReadMedia(row, sources), albumId)
-            : database.Query("SELECT id, source_id, relative_path, kind, available FROM media;", row => ReadMedia(row, sources));
-
-    private static Media ReadMedia(Sqlite.Fields row, IReadOnlyDictionary<long, Source> sources) =>
-        new(row.Number(0), sources[row.Number(1)], row.Text(2), row.Text(3) == "video", row.Number(4) != 0);
-
-    public void Import(string path, Layout layout, List<ScannedMedia> files) =>
+    public long Import(string path, Layout layout, List<ScannedMedia> files)
+    {
+        CheckSourcePath(path);
+        long id = 0;
         database.InTransaction(() =>
         {
             var existing = database.Query("SELECT id, path FROM sources;", row => (row.Number(0), row.Text(1)))
                 .Find(source => StringComparer.OrdinalIgnoreCase.Equals(source.Item2, path));
-            var id = existing.Item1;
+            id = existing.Item1;
             if (id == 0)
             {
                 database.Execute("INSERT INTO sources (path, layout) VALUES (?, ?);", path, MediaFiles.Store(layout));
@@ -76,6 +102,8 @@ internal sealed class Catalog : IDisposable
             }
             ReplaceScan(id, files);
         });
+        return id;
+    }
 
     public void Rescan(long source, List<ScannedMedia>? files)
     {
@@ -99,10 +127,17 @@ internal sealed class Catalog : IDisposable
         }
     }
 
-    public long CreateAlbum(string name)
+    public long CreateAlbum(string name, long? media = null)
     {
-        database.Execute("INSERT INTO albums (name) VALUES (?);", name.Trim());
-        return database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
+        long id = 0;
+        database.InTransaction(() =>
+        {
+            database.Execute("INSERT INTO albums (name) VALUES (?);", name.Trim());
+            id = database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
+            if (media is long member)
+                AddToAlbum(id, member);
+        });
+        return id;
     }
 
     public void RenameAlbum(long album, string name) =>

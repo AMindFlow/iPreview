@@ -8,6 +8,7 @@ using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.Storage.FileProperties;
 using Windows.System;
 
 namespace IPreview;
@@ -23,7 +24,8 @@ public sealed partial class MainWindow : Window
     {
         public string FileName => Media.FileName;
         public string DisplayPath => Media.DisplayPath;
-        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "视频" : "图片";
+        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : "";
+        public Visibility BadgeVisibility => Label.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static readonly Navigation Library = new("媒体库");
@@ -32,11 +34,13 @@ public sealed partial class MainWindow : Window
     private Dictionary<long, Source> sources = [];
     private List<Media> media = [];
     private List<Album> albums = [];
+    private Dictionary<long, List<Media>> albumMembers = [];
     private List<Tile> tiles = [];
     private bool searching;
     private bool busy;
     private int previewIndex = -1;
-    private int initialIndex = -1;
+    private long? initialSelection;
+    private List<Tile> previewTiles = [];
     private int previewGeneration;
     private MediaPlayer? player;
     private readonly DispatcherTimer playbackClock = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -45,11 +49,13 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
         playbackClock.Tick += (_, _) => UpdateTime();
         Closed += (_, _) =>
         {
+            previewGeneration++;
             StopVideo();
             catalog?.Dispose();
         };
@@ -72,6 +78,7 @@ public sealed partial class MainWindow : Window
         {
             ShowNotice("无法打开媒体库", error.Message);
             ImportButton.IsEnabled = false;
+            CreateAlbumButton.IsEnabled = false;
             Rescan.IsEnabled = false;
         }
     }
@@ -79,9 +86,11 @@ public sealed partial class MainWindow : Window
     private void Reload(long? selected = null)
     {
         var expanded = ExpandedSources(NavTree.RootNodes);
-        sources = Database.Sources().ToDictionary(source => source.Id);
-        media = Database.Items(sources);
-        albums = Database.Albums();
+        var snapshot = Database.Read();
+        sources = snapshot.Sources;
+        media = snapshot.Media;
+        albums = snapshot.Albums;
+        albumMembers = snapshot.AlbumMembers;
 
         NavTree.RootNodes.Clear();
         NavTree.RootNodes.Add(new TreeViewNode { Content = Library });
@@ -175,7 +184,7 @@ public sealed partial class MainWindow : Window
         if (catalog is null)
             return;
         IEnumerable<Media> items = current.Album is long album
-            ? Database.Items(sources, album)
+            ? albumMembers.GetValueOrDefault(album) ?? []
             : MediaSearch.ByPath(media.Where(item => item.Present
                 && (current.Source is null || item.Source.Id == current.Source)
                 && (current.Folder is null || item.RelativePath.StartsWith(current.Folder, StringComparison.Ordinal))));
@@ -202,7 +211,6 @@ public sealed partial class MainWindow : Window
             ? $" · {sources.Count} 个来源" : "");
         if (!searching && current.Source is long source && !sources[source].Available)
             CountLabel.Text += " · 来源离线";
-        SearchOptions.Visibility = searching ? Visibility.Visible : Visibility.Collapsed;
         AlbumTools.Visibility = current.Album is not null && !searching ? Visibility.Visible : Visibility.Collapsed;
         EmptyLabel.Text = searching ? "没有匹配项。" : current.Album is not null
             ? "从媒体库选取图片或视频，加入此专辑。" : sources.Count == 0
@@ -212,18 +220,19 @@ public sealed partial class MainWindow : Window
         UpdateSelection();
     }
 
-    private void SearchOnEnter(object sender, KeyRoutedEventArgs args)
+    private void SearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        if (args.Key != VirtualKey.Enter)
-            return;
-        args.Handled = true;
-        SubmitSearch(sender, args);
+        searching = !string.IsNullOrWhiteSpace(args.QueryText);
+        ShowItems();
     }
 
-    private void SubmitSearch(object sender, RoutedEventArgs args)
+    private void SearchEdited(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        searching = !string.IsNullOrWhiteSpace(Query.Text);
-        ShowItems();
+        if (searching && string.IsNullOrWhiteSpace(sender.Text))
+        {
+            searching = false;
+            ShowItems();
+        }
     }
 
     private void ChangeSearchMode(object sender, SelectionChangedEventArgs args)
@@ -236,13 +245,6 @@ public sealed partial class MainWindow : Window
     {
         if (searching)
             ShowItems();
-    }
-
-    private void ClearSearch(object sender, RoutedEventArgs args)
-    {
-        searching = false;
-        Query.Text = "";
-        ShowItems();
     }
 
     private async void ChooseSource(object sender, RoutedEventArgs args)
@@ -258,6 +260,7 @@ public sealed partial class MainWindow : Window
             var folder = await picker.PickSingleFolderAsync();
             if (folder is null)
                 return;
+            Database.CheckSourcePath(folder.Path);
             var summary = await Task.Run(() => MediaFiles.Probe(folder.Path));
             if (summary.Options.Count == 0)
             {
@@ -291,11 +294,10 @@ public sealed partial class MainWindow : Window
 
             if (result == ContentDialogResult.Primary)
             {
-                Database.Import(summary.Path, layout, summary.Options[layout]);
+                var imported = Database.Import(summary.Path, layout, summary.Options[layout]);
                 searching = false;
                 Query.Text = "";
-                current = new Navigation(MediaFiles.FolderName(summary.Path), Source: Database.Sources()
-                    .Single(source => StringComparer.OrdinalIgnoreCase.Equals(source.Path, summary.Path)).Id);
+                current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
                 Notice.IsOpen = false;
                 Reload();
             }
@@ -352,6 +354,7 @@ public sealed partial class MainWindow : Window
     {
         busy = value;
         ImportButton.IsEnabled = !value && catalog is not null;
+        CreateAlbumButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
 
@@ -415,7 +418,7 @@ public sealed partial class MainWindow : Window
                 var name = await AskAlbumName("新建虚拟专辑并添加媒体", "");
                 if (name is null)
                     return;
-                Database.AddToAlbum(Database.CreateAlbum(name), tile.Media.Id);
+                Database.CreateAlbum(name, tile.Media.Id);
             }
             else
             {
@@ -445,7 +448,7 @@ public sealed partial class MainWindow : Window
         try
         {
             Database.RemoveFromAlbum(album, tile.Media.Id);
-            ShowItems();
+            Reload();
         }
         catch (InvalidOperationException error) { ShowNotice("无法移除引用", error.Message); }
     }
@@ -460,7 +463,7 @@ public sealed partial class MainWindow : Window
         try
         {
             Database.MoveInAlbum(album, tile.Media.Id, offset);
-            ShowItems(tile.Media.Id);
+            Reload(tile.Media.Id);
         }
         catch (InvalidOperationException error) { ShowNotice("无法调整顺序", error.Message); }
     }
@@ -493,11 +496,13 @@ public sealed partial class MainWindow : Window
     private async void LoadThumbnail(Image image)
     {
         image.Source = null;
-        if (image.DataContext is not Tile { Media: { Available: true, IsVideo: false } } tile)
+        if (image.DataContext is not Tile { Media: { Available: true } } tile)
             return;
         try
         {
-            var thumbnail = await DecodeImage(tile.Media, 240, false);
+            var thumbnail = tile.Media.IsVideo
+                ? await DecodeVideoThumbnail(tile.Media)
+                : await DecodeImage(tile.Media, 320, false);
             if (ReferenceEquals(tile, image.DataContext))
                 image.Source = thumbnail;
         }
@@ -512,6 +517,17 @@ public sealed partial class MainWindow : Window
         var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(media));
         using var stream = await file.OpenReadAsync();
         var bitmap = new BitmapImage { DecodePixelWidth = width, AutoPlay = animated };
+        await bitmap.SetSourceAsync(stream);
+        return bitmap;
+    }
+
+    private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media)
+    {
+        var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(media));
+        using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, 320, ThumbnailOptions.ResizeThumbnail);
+        if (stream is null || stream.Type != ThumbnailType.Image)
+            return null;
+        var bitmap = new BitmapImage();
         await bitmap.SetSourceAsync(stream);
         return bitmap;
     }
@@ -534,12 +550,14 @@ public sealed partial class MainWindow : Window
     {
         if (Gallery.SelectedIndex < 0)
             return;
-        initialIndex = Gallery.SelectedIndex;
+        initialSelection = Selection?.Media.Id;
+        previewTiles = tiles;
         previewColumns = Columns;
         PreviewOverlay.Visibility = Visibility.Visible;
         LibraryView.Visibility = Visibility.Collapsed;
-        ShowPreview(initialIndex);
-        PreviewCanvas.Focus(FocusState.Programmatic);
+        ShowPreview(Gallery.SelectedIndex);
+        if (!PreviewCanvas.Focus(FocusState.Programmatic))
+            DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
 
     private int Columns => Gallery.ItemsPanelRoot is ItemsWrapGrid { ItemWidth: > 0 } panel
@@ -558,7 +576,8 @@ public sealed partial class MainWindow : Window
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         PreviewOverlay.Visibility = Visibility.Collapsed;
         LibraryView.Visibility = Visibility.Visible;
-        Gallery.SelectedIndex = initialIndex;
+        previewTiles = [];
+        Gallery.SelectedItem = tiles.Find(tile => tile.Media.Id == initialSelection) ?? tiles.FirstOrDefault();
         if (Gallery.SelectedItem is { } selected)
         {
             Gallery.ScrollIntoView(selected);
@@ -583,7 +602,7 @@ public sealed partial class MainWindow : Window
             args.Handled = true;
             if (player is not null)
                 ToggleVideo();
-            else if (previewIndex >= 0 && !tiles[previewIndex].Media.IsVideo)
+            else if (previewIndex >= 0 && !previewTiles[previewIndex].Media.IsVideo)
                 ClosePreview();
             return;
         }
@@ -599,7 +618,7 @@ public sealed partial class MainWindow : Window
             return;
         args.Handled = true;
         var next = previewIndex + delta;
-        if (next >= 0 && next < tiles.Count)
+        if (next >= 0 && next < previewTiles.Count)
             ShowPreview(next);
     }
 
@@ -608,9 +627,9 @@ public sealed partial class MainWindow : Window
         previewIndex = index;
         var generation = ++previewGeneration;
         StopVideo();
-        var tile = tiles[index];
+        var tile = previewTiles[index];
         PreviewTitle.Text = tile.FileName;
-        IndexLabel.Text = $"{index + 1} / {tiles.Count}";
+        IndexLabel.Text = $"{index + 1} / {previewTiles.Count}";
         PreviewError.Visibility = Visibility.Collapsed;
         MainImage.Source = null;
         VideoSurface.Visibility = Visibility.Collapsed;
@@ -644,11 +663,12 @@ public sealed partial class MainWindow : Window
     private async void LoadNeighbor(Image image, int index, int generation)
     {
         image.Source = null;
-        if (index < 0 || index >= tiles.Count || tiles[index].Media.IsVideo)
+        if (index < 0 || index >= previewTiles.Count)
             return;
         try
         {
-            var bitmap = await DecodeImage(tiles[index].Media, 24, false);
+            var media = previewTiles[index].Media;
+            var bitmap = media.IsVideo ? await DecodeVideoThumbnail(media) : await DecodeImage(media, 24, false);
             if (generation == previewGeneration)
                 image.Source = bitmap;
         }
