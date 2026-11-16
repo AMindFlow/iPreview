@@ -32,7 +32,7 @@ jobs:
           name: iPreview-macos-arm64
           path: ${{ runner.temp }}/iPreview-macos-arm64.zip
           if-no-files-found: error
-          archive: false
+          compression-level: 0
 
   windows:
     name: Windows x64
@@ -43,6 +43,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Test catalog
+        run: dotnet run --project apps/windows/CoreChecks/CoreChecks.csproj -c Release
       - name: Publish unpackaged application
         shell: pwsh
         run: |
@@ -58,4 +60,4 @@ jobs:
           name: iPreview-windows-x64
           path: ${{ runner.temp }}/iPreview-windows-x64.zip
           if-no-files-found: error
-          archive: false
+          compression-level: 0
