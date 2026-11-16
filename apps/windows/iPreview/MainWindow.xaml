@@ -1,0 +1,208 @@
+<Window x:Class="IPreview.MainWindow" Title="iPreview"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="using:Microsoft.UI.Xaml.Automation">
+    <Grid x:Name="Root" Background="#182024" RequestedTheme="Dark">
+        <Grid x:Name="LibraryView">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="224" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Background="#253034" Padding="14,18,14,14" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="iPreview" Style="{StaticResource TitleTextBlockStyle}" Margin="10,0,0,10" />
+                <TreeView x:Name="NavTree" Grid.Row="1" SelectionMode="Single" ItemInvoked="Navigate" />
+                <Button x:Name="Rescan" Grid.Row="2" HorizontalAlignment="Stretch" Click="RescanSources">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE72C;" FontSize="13" />
+                        <TextBlock Text="重新扫描" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <Grid Grid.Column="1" Padding="20,16,20,14" RowSpacing="11">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="Query" PlaceholderText="搜索目录或文件名" KeyDown="SearchOnEnter"
+                             AutomationProperties.Name="搜索媒体库" />
+                    <Button Grid.Column="1" Click="SubmitSearch" ToolTipService.ToolTip="搜索"
+                            AutomationProperties.Name="搜索">
+                        <FontIcon Glyph="&#xE721;" FontSize="16" />
+                    </Button>
+                </Grid>
+
+                <Grid Grid.Row="1" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="3">
+                        <TextBlock x:Name="Heading" Text="媒体库" Style="{StaticResource TitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="CountLabel" Foreground="#B6C4C5" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Name="ImportButton" Click="ChooseSource" Background="#285A58" AutomationProperties.Name="导入文件夹">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <FontIcon Glyph="&#xE838;" FontSize="14" />
+                                <TextBlock Text="导入" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="CreateAlbum" AutomationProperties.Name="新建虚拟专辑">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                <TextBlock Text="新建专辑" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel x:Name="SearchOptions" Grid.Row="2" Orientation="Horizontal" Spacing="12" Visibility="Collapsed">
+                    <ComboBox x:Name="SearchMode" SelectedIndex="1" SelectionChanged="ChangeSearchMode" AutomationProperties.Name="搜索精确度">
+                        <ComboBoxItem Content="精确" />
+                        <ComboBoxItem Content="模糊" />
+                    </ComboBox>
+                    <CheckBox x:Name="SearchFolders" Content="目录" IsChecked="True" Click="ChangeSearchScope" />
+                    <CheckBox x:Name="SearchFiles" Content="文件" IsChecked="True" Click="ChangeSearchScope" />
+                    <Button Content="清除搜索" Click="ClearSearch" />
+                </StackPanel>
+
+                <InfoBar x:Name="Notice" Grid.Row="3" IsClosable="True" />
+                <Grid Grid.Row="4">
+                    <GridView x:Name="Gallery" SelectionMode="Single" Margin="-5,0" Padding="0,0,4,0"
+                              DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
+                              SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体项目">
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal" ItemWidth="214" ItemHeight="177" />
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="204" Height="166" CornerRadius="8"
+                                        Background="#243236" BorderThickness="1" BorderBrush="#465659">
+                                    <Grid RowSpacing="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="112" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid Background="#314144">
+                                            <Image Stretch="UniformToFill" Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
+                                            <TextBlock Text="{Binding Label}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                       Padding="6,3" Margin="5" Foreground="White" Background="#A9182326" FontSize="11" />
+                                        </Grid>
+                                        <TextBlock Grid.Row="1" Text="{Binding FileName}" FontWeight="SemiBold"
+                                                   Margin="8,4,8,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Row="2" Text="{Binding DisplayPath}" FontSize="11" Foreground="#C1CECE"
+                                                   Margin="8,0" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+                    <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
+                               Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="#B6C4C5" TextWrapping="Wrap" />
+                </Grid>
+
+                <Grid Grid.Row="5">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Button x:Name="OpenButton" Click="PreviewSelected" Content="预览" />
+                        <Button x:Name="AddButton" Click="AddToAlbum" Content="加入专辑" />
+                        <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="7" Visibility="Collapsed">
+                            <Button Click="RenameAlbum" Content="重命名" />
+                            <Button x:Name="MoveUpButton" Click="MoveEarlier" Content="上移" />
+                            <Button x:Name="MoveDownButton" Click="MoveLater" Content="下移" />
+                            <Button x:Name="RemoveButton" Click="RemoveFromAlbum" Content="移除引用" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="#FF11191D" Padding="20,12"
+              RowSpacing="10" PreviewKeyDown="PreviewKeyDown">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Click="ClosePreviewButton" AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
+                    <FontIcon Glyph="&#xE72B;" FontSize="15" />
+                </Button>
+                <TextBlock x:Name="PreviewTitle" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock x:Name="IndexLabel" Grid.Column="2" Foreground="#B6C4C5" VerticalAlignment="Center" />
+            </Grid>
+
+            <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                            AutomationProperties.Name="预览画布，方向键切换媒体">
+                <Grid ColumnSpacing="12" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="48" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="48" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="112" />
+                        <ColumnDefinition Width="8*" />
+                        <ColumnDefinition Width="*" MaxWidth="112" />
+                    </Grid.ColumnDefinitions>
+                    <Image x:Name="NeighborTop" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
+                    <Image x:Name="NeighborLeft" Grid.Row="1" Opacity=".32" Stretch="UniformToFill" />
+                    <Image x:Name="NeighborRight" Grid.Row="1" Grid.Column="2" Opacity=".32" Stretch="UniformToFill" />
+                    <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
+                    <Border Grid.Row="1" Grid.Column="1" Background="#0C1317" CornerRadius="12">
+                        <Grid>
+                            <Image x:Name="MainImage" Stretch="Uniform" />
+                            <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False" Stretch="Uniform" />
+                            <TextBlock x:Name="PreviewError" Visibility="Collapsed" Foreground="#F0CEAE"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Margin="22" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </ContentControl>
+
+            <StackPanel Grid.Row="2" Spacing="9">
+                <Grid x:Name="VideoControls" Visibility="Collapsed" Background="#253034"
+                      HorizontalAlignment="Stretch" Padding="12,4" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="PlayPause" Content="播放" Click="TogglePlayback"
+                            AutomationProperties.Name="播放或暂停" />
+                    <TextBlock x:Name="TimeLabel" Grid.Column="1" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                    <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
+                            VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
+                </Grid>
+                <TextBlock Text="方向键 切换媒体     Esc 退出预览" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
