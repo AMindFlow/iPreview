@@ -372,7 +372,7 @@ struct LibraryView: View {
                             focusGallery()
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
-                                MediaThumbnail(media: folder.cover)
+                                MediaThumbnail(media: folder.cover, revision: model.revision)
                                     .aspectRatio(1.47, contentMode: .fit)
                                     .clipShape(.rect(cornerRadius: 12))
                                 Text(folder.name)
@@ -402,7 +402,7 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                         ForEach(items) { item in
-                            MediaTile(media: item, selected: selected == item.id, showPath: searching)
+                            MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
                                 .onTapGesture(count: 2) { open(item, among: items, columns: columns.count) }
                                 .onTapGesture {
                                     selected = item.id
@@ -501,6 +501,7 @@ struct LibraryView: View {
     }
 
     private func open(_ item: Media, among items: [Media], columns: Int) {
+        guard !model.isWorking else { return }
         selected = item.id
         preview = PreviewRequest(items: items, selection: item.id, columns: columns)
     }
@@ -614,12 +615,13 @@ private struct ContentScope {
 
 private struct MediaTile: View {
     let media: Media
+    let revision: Int
     let selected: Bool
     let showPath: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MediaThumbnail(media: media)
+            MediaThumbnail(media: media, revision: revision)
                 .aspectRatio(1.47, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 12))
                 .overlay {

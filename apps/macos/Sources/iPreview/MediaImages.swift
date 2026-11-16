@@ -31,7 +31,13 @@ enum MediaImages {
 }
 
 struct MediaThumbnail: View {
+    private struct Load: Equatable {
+        let media: Media
+        let revision: Int
+    }
+
     let media: Media
+    var revision = 0
     @ViewState private var image: CGImage?
 
     var body: some View {
@@ -52,7 +58,7 @@ struct MediaThumbnail: View {
             }
         }
         .accessibilityHidden(true)
-        .task(id: media) {
+        .task(id: Load(media: media, revision: revision)) {
             image = nil
             let item = media
             let newImage = await Task.detached(priority: .utility) {
