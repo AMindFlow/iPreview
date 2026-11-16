@@ -23,10 +23,12 @@
   <!-- Windows App SDK omits app XAML resources from unpackaged publish (#6720). -->
   <Target Name="IncludeWinUIResourcesInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
-      <ResolvedFileToPublish Include="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(ProjectPriFullPath)">
-        <RelativePath>%(Filename)%(Extension)</RelativePath>
-        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)" RelativePath="$(ProjectPriFileName)"
+                             CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)App.xbf" RelativePath="App.xbf"
+                             CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf"
+                             CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>
