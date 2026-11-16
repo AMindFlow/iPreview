@@ -13,7 +13,7 @@ iPreview 是用于本地图片和视频的原生媒体库。可以从已有创�
 在仓库根目录运行对应命令。Windows 需要 .NET 10 SDK 和面向 WinUI 的 Windows SDK 构建工具。macOS 可使用 Swift 命令行工具。
 
 ```sh
-swift test
+swift run iPreviewCoreChecks
 bash scripts/package-macos.sh ./dist/iPreview-macos-arm64.zip
 ```
 

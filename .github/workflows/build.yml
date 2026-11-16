@@ -24,7 +24,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Test catalog
-        run: swift test
+        run: swift run iPreviewCoreChecks
       - name: Assemble application
         run: bash scripts/package-macos.sh "${RUNNER_TEMP}/iPreview-macos-arm64.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
