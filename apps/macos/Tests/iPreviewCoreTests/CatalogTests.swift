@@ -4,6 +4,31 @@ import iPreviewCore
 @main
 struct CatalogChecks {
     static func main() async throws {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if !arguments.isEmpty {
+            try verify(arguments.count == 2)
+            let url = URL(fileURLWithPath: arguments[1], isDirectory: true)
+            try verify(url.pathExtension == "app")
+            let app = try required(Bundle(url: url))
+            let fixtures = try Fixtures()
+            switch arguments[0] {
+            case "--check-packaged-migration":
+                let catalog = try Catalog(directory: fixtures.databaseDirectory, appBundle: app)
+                let id = try await catalog.createAlbum(named: "Package smoke")
+                let snapshot = try await catalog.snapshot()
+                try verify(snapshot.albums.first?.id == id)
+                print("iPreview packaged migration check passed")
+            case "--check-missing-migration":
+                try expectError(CatalogResourceError.self) {
+                    try Catalog(directory: fixtures.databaseDirectory, appBundle: app)
+                }
+                print("iPreview missing packaged migration error check passed")
+            default:
+                throw CheckFailure(location: "unknown check argument")
+            }
+            return
+        }
+
         try checkLayouts()
         try await checkPersistence()
         try await checkSearch()

@@ -1,10 +1,18 @@
 import Foundation
 import SQLite3
 
+public enum CatalogResourceError: LocalizedError {
+    case missingMigration
+
+    public var errorDescription: String? {
+        "缺少媒体库数据库迁移资源。请重新解压完整的 iPreview 应用包。"
+    }
+}
+
 public actor Catalog {
     private let database: Database
 
-    public init(directory: URL) throws {
+    public init(directory: URL, appBundle: Bundle = .main) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let database = try Database(url: directory.appendingPathComponent("catalog.sqlite3"))
         try database.script("PRAGMA foreign_keys = ON")
@@ -12,9 +20,7 @@ public actor Catalog {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
             switch version {
             case 0:
-                let migration = Bundle.module.url(
-                    forResource: "001-initial", withExtension: "sql", subdirectory: "migrations"
-                )!
+                let migration = try Self.migrationURL(in: appBundle)
                 try database.script(String(contentsOf: migration, encoding: .utf8))
             case 1:
                 break
@@ -23,6 +29,24 @@ public actor Catalog {
             }
         }
         self.database = database
+    }
+
+    private static func migrationURL(in appBundle: Bundle) throws -> URL {
+        let resources: Bundle
+        if appBundle.bundleURL.pathExtension.lowercased() == "app" {
+            // The release script installs SwiftPM's resource bundle in Contents/Resources.
+            guard let directory = appBundle.resourceURL,
+                  let bundledResources = Bundle(url: directory.appendingPathComponent("iPreview_iPreviewCore.bundle")) else {
+                throw CatalogResourceError.missingMigration
+            }
+            resources = bundledResources
+        } else {
+            resources = Bundle.module
+        }
+        guard let migration = resources.url(forResource: "001-initial", withExtension: "sql", subdirectory: "migrations") else {
+            throw CatalogResourceError.missingMigration
+        }
+        return migration
     }
 
     public func snapshot() throws -> LibrarySnapshot {

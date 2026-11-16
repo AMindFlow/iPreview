@@ -22,4 +22,13 @@ install -m 644 apps/macos/Info.plist "$application/Contents/Info.plist"
 codesign --force --sign - "$application"
 codesign --verify --strict "$application"
 ditto -c -k --keepParent "$application" "$staging/iPreview-macos-arm64.zip"
+
+# Check a fresh extraction outside the build tree while the SwiftPM resources still exist there.
+smoke="$(mktemp -d "${TMPDIR:-/tmp}/ipreview-package-check.XXXXXX")"
+ditto -x -k "$staging/iPreview-macos-arm64.zip" "$smoke"
+extracted="$smoke/iPreview.app"
+"$products/iPreviewCoreChecks" --check-packaged-migration "$extracted"
+mv "$extracted/Contents/Resources" "$smoke/withheld-resources"
+"$products/iPreviewCoreChecks" --check-missing-migration "$extracted"
+
 mv "$staging/iPreview-macos-arm64.zip" "$output"
