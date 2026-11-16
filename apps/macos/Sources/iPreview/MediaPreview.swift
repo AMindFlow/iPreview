@@ -161,6 +161,7 @@ struct MediaPreview: View {
             neighbor(at: index + vertical, width: size.width * 0.54, height: size.height * 0.22)
                 .offset(y: size.height * 0.43)
         }
+        .frame(width: size.width, height: size.height)
         .opacity(0.31)
         .blur(radius: 7)
         .clipped()
