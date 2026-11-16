@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -595,7 +596,7 @@ public sealed partial class MainWindow : Window
             ClosePreview();
             return;
         }
-        if (FocusManager.GetFocusedElement(Root.XamlRoot) != PreviewCanvas)
+        if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCanvas))
             return;
         if (args.Key == VirtualKey.Space)
         {
