@@ -47,12 +47,13 @@ struct VirtualAlbumTitle: View {
     let rename: (String) async -> Void
     let finished: () -> Void
 
-    @ViewState private var draft: String?
+    @ViewState private var editing = false
+    @ViewState private var draft = ""
     @ViewState private var selection: TextSelection?
 
     var body: some View {
-        if let draft = Binding($draft) {
-            TextField("专辑名称", text: draft, selection: $selection)
+        if editing {
+            TextField("专辑名称", text: $draft, selection: $selection)
                 .textFieldStyle(.roundedBorder)
                 .focused(focus, equals: .albumTitle)
                 .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
@@ -62,25 +63,26 @@ struct VirtualAlbumTitle: View {
                     focus.wrappedValue = .albumTitle
                 }
                 .onSubmit {
-                    let name = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
-                    self.draft = nil
+                    editing = false
                     finished()
                     if name != album.name { Task { await rename(name) } }
                 }
                 .onKeyPress(.escape) {
-                    self.draft = nil
+                    editing = false
                     finished()
                     return .handled
                 }
                 .onChange(of: disabled) {
-                    if disabled { self.draft = nil }
+                    if disabled { editing = false }
                 }
         } else {
             Button {
                 focus.wrappedValue = nil
                 draft = album.name
-                selection = TextSelection(range: album.name.startIndex..<album.name.endIndex)
+                selection = TextSelection(range: draft.startIndex..<draft.endIndex)
+                editing = true
             } label: {
                 Text(album.name)
                     .accessibilityAddTraits(.isHeader)
