@@ -31,37 +31,9 @@ internal static class MediaSearch
     public static IOrderedEnumerable<Media> ByPath(IEnumerable<Media> items) =>
         items.OrderBy(item => Normalize(item.DisplayPath), NaturalName).ThenBy(item => item.Id);
 
-    public static List<Media> Find(IEnumerable<Media> items, string term, bool exact,
-                                   bool directories, bool files)
-    {
-        var query = Normalize(term.Trim());
-        if (!directories && !files)
-            return [];
-        if (query.Length == 0)
-            return ByPath(items).ToList();
-
-        var rankName = Matcher(query, exact);
-        var matches = new List<(Media Media, int Rank)>();
-        foreach (var item in items)
-        {
-            var labels = item.DisplayPath.Split('/');
-            var first = directories ? 0 : labels.Length - 1;
-            var count = files ? labels.Length : labels.Length - 1;
-            var rank = int.MaxValue;
-            for (var index = first; index < count && rank > 0; index++)
-                rank = Math.Min(rank, rankName(labels[index], index == labels.Length - 1));
-            if (rank != int.MaxValue)
-                matches.Add((item, rank));
-        }
-
-        return matches.OrderBy(match => match.Rank)
-            .ThenBy(match => Normalize(match.Media.DisplayPath), NaturalName)
-            .ThenBy(match => match.Media.Id)
-            .Select(match => match.Media).ToList();
-    }
-
-    public static List<GlobalSearchHit> FindGlobal(IEnumerable<Source> sources, IEnumerable<Media> items,
-                                                   GlobalSearchTerm term, GlobalSearchScope scope)
+    public static List<GlobalSearchHit> Find(IEnumerable<Source> sources, IEnumerable<Media> items,
+                                             GlobalSearchTerm term, GlobalSearchScope scope,
+                                             string? folderRoot = null)
     {
         if (term.Text.Length == 0)
             return [];
@@ -77,11 +49,12 @@ internal static class MediaSearch
             if (rank != int.MaxValue)
                 matches.Add((new(source, folder.Length == 0 ? null : folder, label, location), rank));
         }
-        if (scope != GlobalSearchScope.Files)
+        if (scope != GlobalSearchScope.Files && folderRoot is null)
             foreach (var source in sources)
                 AddFolder(source, "", source.Name, Path.GetDirectoryName(source.Path) ?? source.Path);
 
-        foreach (var item in items.Where(item => item.Present))
+        foreach (var item in items.Where(item => item.Present &&
+            (folderRoot is null || item.RelativePath.StartsWith(folderRoot, StringComparison.Ordinal))))
         {
             var parts = item.RelativePath.Split('/');
             var folder = "";
@@ -89,7 +62,8 @@ internal static class MediaSearch
             {
                 var parent = folder;
                 folder += parts[index] + "/";
-                if (scope != GlobalSearchScope.Files)
+                if (scope != GlobalSearchScope.Files &&
+                    (folderRoot is null || folder.StartsWith(folderRoot, StringComparison.Ordinal)))
                     AddFolder(item.Source, folder, parts[index], DirectoryDisplay(item.Source, parent));
             }
             if (scope == GlobalSearchScope.Directories)

@@ -11,7 +11,7 @@ public sealed partial class MainWindow
     private sealed record TitleEdit(Navigation Page, long? ExpectedMedia);
     private TitleEdit? titleEdit;
 
-    private bool CanEditTitle => catalog is not null && !busy && !searching && selectionAlbum is null &&
+    private bool CanEditTitle => catalog is not null && !busy && selectionAlbum is null &&
         (current.Album is not null || current is { Source: long source, Folder: not null } && sources[source].Available);
 
     private void BeginTitleEdit(object sender, DoubleTappedRoutedEventArgs args)
@@ -39,7 +39,7 @@ public sealed partial class MainWindow
 
     private void RefreshTitleEditor()
     {
-        var editing = titleEdit?.Page == current && !searching;
+        var editing = titleEdit?.Page == current;
         TitleEditor.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         Heading.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
         ToolTipService.SetToolTip(Heading, CanEditTitle ? "双击标题重命名" : null);
