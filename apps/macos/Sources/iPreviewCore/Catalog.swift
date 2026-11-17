@@ -11,6 +11,7 @@ public enum CatalogResourceError: LocalizedError {
 
 public actor Catalog {
     private let database: Database
+    public nonisolated let renameRecoveryNotice: String?
 
     public init(directory: URL, appBundle: Bundle = .main) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -18,20 +19,29 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            switch version {
-            case 0:
-                let migration = try Self.migrationURL(in: appBundle)
-                try database.script(String(contentsOf: migration, encoding: .utf8))
-            case 1:
-                break
-            default:
+            guard (0...2).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
+            }
+            if version == 0 {
+                let initial = try Self.migrationURL(named: "001-initial", in: appBundle)
+                try database.script(String(contentsOf: initial, encoding: .utf8))
+            }
+            if version < 2 {
+                let rename = try Self.migrationURL(named: "002-pending-rename", in: appBundle)
+                try database.script(String(contentsOf: rename, encoding: .utf8))
             }
         }
         self.database = database
+        let rename = SourceRename(database: database)
+        do {
+            try rename.recover()
+            renameRecoveryNotice = nil
+        } catch {
+            renameRecoveryNotice = try rename.recoveryNotice() ?? error.localizedDescription
+        }
     }
 
-    private static func migrationURL(in appBundle: Bundle) throws -> URL {
+    private static func migrationURL(named name: String, in appBundle: Bundle) throws -> URL {
         let resources: Bundle
         if appBundle.bundleURL.pathExtension.lowercased() == "app" {
             // The release script installs SwiftPM's resource bundle in Contents/Resources.
@@ -43,7 +53,7 @@ public actor Catalog {
         } else {
             resources = Bundle.module
         }
-        guard let migration = resources.url(forResource: "001-initial", withExtension: "sql", subdirectory: "migrations") else {
+        guard let migration = resources.url(forResource: name, withExtension: "sql", subdirectory: "migrations") else {
             throw CatalogResourceError.missingMigration
         }
         return migration
@@ -81,8 +91,21 @@ public actor Catalog {
         }
     }
 
-    public func importSource(root: URL, candidate: ImportCandidate) throws {
+    public func scanVersion(for sourceID: Int64? = nil) throws -> Int64 {
+        if let sourceID {
+            try SourceRename(database: database).blockScan(sourceID: sourceID)
+        }
+        return try database.select("PRAGMA data_version") { sqlite3_column_int64($0, 0) }.first!
+    }
+
+    private func validateScan(_ expectedVersion: Int64?) throws {
+        if let expectedVersion, try scanVersion() != expectedVersion { throw SourceRenameError.staleScan }
+    }
+
+    public func importSource(root: URL, candidate: ImportCandidate, expectedVersion: Int64? = nil) throws {
         try database.transaction {
+            try validateScan(expectedVersion)
+            try SourceRename(database: database).blockImport(path: root.path)
             let path = SQLiteValue.text(root.path)
             let layout = SQLiteValue.text(candidate.layout.rawValue)
             try database.execute("INSERT OR IGNORE INTO sources (path, layout) VALUES (?, ?)", [path, layout])
@@ -92,15 +115,26 @@ public actor Catalog {
         }
     }
 
-    public func update(source: Source, entries: [ScanEntry]) throws {
+    public func update(source: Source, entries: [ScanEntry], expectedVersion: Int64? = nil) throws {
         try database.transaction {
+            try validateScan(expectedVersion)
+            try SourceRename(database: database).blockScan(sourceID: source.id)
             try database.execute("UPDATE sources SET available = 1 WHERE id = ?", [.integer(source.id)])
             try replaceMedia(sourceID: source.id, entries: entries)
         }
     }
 
-    public func markUnavailable(source: Source) throws {
-        try database.execute("UPDATE sources SET available = 0 WHERE id = ?", [.integer(source.id)])
+    public func markUnavailable(source: Source, expectedVersion: Int64? = nil) throws {
+        try database.transaction {
+            try validateScan(expectedVersion)
+            try database.execute("UPDATE sources SET available = 0 WHERE id = ?", [.integer(source.id)])
+        }
+    }
+
+    public func renameSourceItem(sourceID: Int64, path: String, mediaID: Int64?, to name: String,
+                                 expectedFolderMemberID: Int64? = nil) throws -> String {
+        try SourceRename(database: database).rename(sourceID: sourceID, path: path, mediaID: mediaID, to: name,
+                                                    expectedFolderMemberID: expectedFolderMemberID)
     }
 
     @discardableResult

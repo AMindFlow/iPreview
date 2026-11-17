@@ -10,5 +10,7 @@
     <Compile Include="../iPreview/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <EmbeddedResource Include="../../../shared/migrations/001-initial.sql"
                       LogicalName="iPreview.Migrations.001-initial.sql" />
+    <EmbeddedResource Include="../../../shared/migrations/002-pending-rename.sql"
+                      LogicalName="iPreview.Migrations.002-pending-rename.sql" />
   </ItemGroup>
 </Project>

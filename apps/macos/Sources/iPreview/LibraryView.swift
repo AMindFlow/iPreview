@@ -15,6 +15,7 @@ struct LibraryView: View {
     @ViewState private var matches: [Media] = []
     @ViewState private var filtersShown = false
     @ViewState private var editAlbum: AlbumEdit?
+    @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
@@ -82,6 +83,16 @@ struct LibraryView: View {
                     } else if let id = await model.createAlbum(named: name, with: edit.firstMediaID) {
                         navigate(.virtual(id))
                     }
+                }
+            }
+        }
+        .sheet(item: $editSourceName, onDismiss: focusBrowser) { edit in
+            SourceNameSheet(edit: edit) { name in
+                let path = try await model.renameSourceItem(edit, to: name)
+                switch edit.folder {
+                case .creator(let sourceID, _): selectedFolder = .creator(sourceID, path)
+                case .folder(let sourceID, _): selectedFolder = .folder(sourceID, path)
+                default: selected = edit.mediaID
                 }
             }
         }
@@ -436,13 +447,15 @@ struct LibraryView: View {
                 .focusable()
                 .focusEffectDisabled()
                 .focused($focus, equals: .browser)
-                .onKeyPress(keys: [.return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
+                .onKeyPress(keys: [.space, .return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
                             phases: [.down, .repeat]) { press in
                     if press.key == .escape { return backKey(press, sourceLayout: sourceLayout) }
 
                     let index = folders.firstIndex(where: { $0.page == selectedFolder }) ?? 0
-                    if press.key == .return {
+                    if press.key == .space {
                         if press.phase == .down { navigate(folders[index].page) }
+                    } else if press.key == .return {
+                        if press.phase == .down { beginRename(SourceNameEdit(folder: folders[index])) }
                     } else if let destination = layout.neighbor(of: index, toward: press.key, count: folders.count) {
                         let folder = folders[destination].page
                         selectedFolder = folder
@@ -497,13 +510,15 @@ struct LibraryView: View {
                     .focusable()
                     .focusEffectDisabled()
                     .focused($focus, equals: .browser)
-                    .onKeyPress(keys: [.space, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
+                    .onKeyPress(keys: [.space, .return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
                                 phases: [.down, .repeat]) { press in
                         if press.key == .escape { return backKey(press, sourceLayout: sourceLayout) }
 
                         let index = items.firstIndex(where: { $0.id == selected }) ?? 0
                         if press.key == .space {
                             if press.phase == .down { open(items[index], among: items, layout: layout) }
+                        } else if press.key == .return {
+                            if press.phase == .down, selected == items[index].id { beginRename(SourceNameEdit(media: items[index])) }
                         } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
                             selected = items[destination].id
                             reader.scrollTo(items[destination].id, anchor: .center)
@@ -688,6 +703,16 @@ struct LibraryView: View {
         guard preview == nil, !searching, let parent = page.parent(in: sourceLayout) else { return .ignored }
         if press.phase == .down { navigate(parent.page, selecting: page) }
         return .handled
+    }
+
+    private func beginRename(_ edit: SourceNameEdit) {
+        guard !model.isWorking, preview == nil else { return }
+        guard edit.source.isAvailable,
+              edit.mediaID == nil || model.snapshot.media.contains(where: { $0.id == edit.mediaID && $0.isAvailable }) else {
+            model.error = SourceRenameError.unavailable.localizedDescription
+            return
+        }
+        editSourceName = edit
     }
 
     private func open(_ item: Media, among items: [Media], layout: BrowseLayout) {
