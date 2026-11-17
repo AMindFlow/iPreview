@@ -83,3 +83,9 @@ Get-IPreviewSnapshot | Set-Content -Encoding UTF8 "$env:TEMP\ipreview-before.jso
 Get-IPreviewSnapshot | Set-Content -Encoding UTF8 "$env:TEMP\ipreview-after.jsonl"
 Compare-Object (Get-Content "$env:TEMP\ipreview-before.jsonl") (Get-Content "$env:TEMP\ipreview-after.jsonl")
 ```
+
+## 视图切换与应用图标
+
+用混合图片与视频的来源专辑及虚拟专辑在两端切换图标、列表和画廊。列表核对名称、修改日期、大小及种类。画廊用鼠标和方向键切换缩略图，检查大图或视频样张随之更新。切换布局前后选中项保持一致。在各布局按 Space 进入预览，再切项并用 Space 返回最后查看项。另用 Esc 验证回到进入独立预览时选中的媒体。
+
+在 Windows 的默认窗口尺寸确认标题、文件数和视图切换控件可读。用有同名文件的搜索样例检查路径在三种布局中可获得。检查 Finder 与 Dock、资源管理器和任务栏的白底星光眼睛图标。只读比对步骤见[比对源文件](#比对源文件)。

@@ -5,7 +5,7 @@
 | 阶段 | 状态 | 需求与可交付结果 |
 | --- | --- | --- |
 | 首版 | 已合入 | 交付 Apple Silicon macOS 和 Windows 11 x64 原生本地媒体库、目录导入与重扫、精确与模糊搜索、键盘图片和基础视频预览、跨来源虚拟专辑。范围见 [Issue #1](https://github.com/AMindFlow/iPreview/issues/1)，结果见[当前状态](current-state.md)。 |
-| 首版体验补缺 | 待实施 | [PRE-007](../specs/official/preview.md#pre-007-space-打开和关闭预览) 再按 Space 关闭，[LIB-009](../specs/official/library.md#lib-009-多创作者来源的浏览层级) 先选择创作者，[BRW-001](../specs/official/browsing.md) 点击响应与 [BRW-002](../specs/official/browsing.md#brw-002-图标列表和画廊视图) 图标／列表／画廊视图，以及 [UI-001](../specs/official/appearance.md#ui-001-眼睛主题应用图标) 眼睛主题图标。 |
+| 首版体验补缺 | 已合入 | [PRE-007](../specs/official/preview.md#pre-007-space-打开和关闭预览) 再按 Space 关闭，[LIB-009](../specs/official/library.md#lib-009-多创作者来源的浏览层级) 先选择创作者，[BRW-001](../specs/official/browsing.md) 点击响应与 [BRW-002](../specs/official/browsing.md#brw-002-图标列表和画廊视图) 图标／列表／画廊视图，以及 [UI-001](../specs/official/appearance.md#ui-001-眼睛主题应用图标) 眼睛主题图标。 |
 | 图片库深化 | 待实施 | 补齐 [LIB-003–005](../specs/spike/library.md#lib-003-旧版图库管理) 的旧目录管理、多工作区和旧库迁移，[ALB-002–003](../specs/spike/virtual-albums.md) 的旧版专辑工作流，[SRCH-002](../specs/spike/search.md) 标签搜索，[PRE-002–003](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容) 常规预览及漫画双页，以及[旧版主题选择](requirements.md#设计要求)。用合成旧库及相同样例验收迁移、隔离和浏览。 |
 | 视频作品 | 待实施 | [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构) 两种作品目录、官方样张及写真集，[PRE-004](../specs/spike/preview.md#pre-004-视频作品的影碟与图册预览) 分层预览，[PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展) 实测格式扩展，[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息) 先覆盖视频读取。首批样张和写真集可用本地样例验收。 |
 | 音频 | 后置，设计待审阅 | [LIB-007](../specs/spike/library.md#lib-007-音频组织) 常见格式及分组，[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机) 封面和 CD 机预览，[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息) 扩至音频。设计通过后实施并在实机验证听音。 |
@@ -38,4 +38,16 @@ flowchart LR
     I --> J
     J --> K[最终提交审阅与交付]
     K --> L[Merge Queue 合入]
+```
+
+## 首版体验补缺任务依赖
+
+```mermaid
+flowchart LR
+    A[点击响应] --> E[三种浏览视图]
+    B[Space 预览切换] --> E
+    C[创作者浏览层级] --> E
+    D[星光眼睛图标] --> F[同源双端构建]
+    E --> F
+    F --> G[本机 Mac 与 gigabit 实机验收]
 ```
