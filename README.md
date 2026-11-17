@@ -22,4 +22,4 @@ dotnet run --project apps/windows/CoreChecks/CoreChecks.csproj -c Release
 dotnet publish apps/windows/iPreview/iPreview.csproj -c Release -r win-x64 --self-contained true -o dist/iPreview-windows-x64
 ```
 
-[实机验收与样例](docs/project/acceptance.md) · [规格和路线图](docs/README.md)
+[实机验收与样例](docs/project/acceptance.md) · [完整需求](docs/project/requirements.md) · [路线图](docs/project/roadmap.md)
