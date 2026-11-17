@@ -60,6 +60,12 @@
                         </StackPanel>
                     </Grid>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <ComboBox x:Name="ViewModePicker" SelectedIndex="0" SelectionChanged="ChangeBrowseMode"
+                                  AutomationProperties.Name="浏览视图" ToolTipService.ToolTip="浏览视图">
+                            <ComboBoxItem Content="图标" />
+                            <ComboBoxItem Content="列表" />
+                            <ComboBoxItem Content="画廊" />
+                        </ComboBox>
                         <AutoSuggestBox x:Name="Query" Width="236" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
                                         QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索媒体库" />
                         <Button ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
@@ -121,6 +127,118 @@
                             </DataTemplate>
                         </GridView.ItemTemplate>
                     </GridView>
+                    <Grid x:Name="DetailsPane" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Padding="10,0,16,0" MinHeight="28" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="72" />
+                                <ColumnDefinition Width="84" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="名称" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="修改日期" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="大小" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       HorizontalAlignment="Right" />
+                            <TextBlock Grid.Column="3" Text="种类" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </Grid>
+                        <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" SingleSelectionFollowsFocus="True"
+                                  DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
+                                  SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="MinHeight" Value="29" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="10,0,16,0" MinHeight="29" ColumnSpacing="8"
+                                          Background="{Binding RowBackground}" ToolTipService.ToolTip="{Binding DisplayPath}"
+                                          Loaded="LoadListDetails" DataContextChanged="UpdateListDetails">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="72" />
+                                            <ColumnDefinition Width="84" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid ColumnSpacing="7">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="20" Height="17" Background="#E4EAF4" CornerRadius="3">
+                                                <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
+                                                       DataContextChanged="UpdateThumbnail" />
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                       FontSize="12" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <TextBlock Grid.Column="1" Text="{Binding Details.Modified}" Foreground="#576375"
+                                                   FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Details.Size}" Foreground="#576375"
+                                                   FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Kind}" Foreground="#576375"
+                                                   FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                    <Grid x:Name="FilmstripPane" Visibility="Collapsed" RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border Background="#E7EBF2" CornerRadius="12" Padding="12">
+                            <Grid>
+                                <Image x:Name="FilmstripImage" Stretch="Uniform" />
+                                <TextBlock x:Name="FilmstripMessage" Visibility="Collapsed" Foreground="#576375"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ListView x:Name="Filmstrip" Grid.Row="1" SelectionMode="Single" SingleSelectionFollowsFocus="True"
+                                  DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
+                                  SelectionChanged="SelectionChanged" AutomationProperties.Name="画廊缩略图"
+                                  ScrollViewer.HorizontalScrollMode="Enabled"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsStackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="5" />
+                                    <Setter Property="Margin" Value="0,0,2,0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Width="88" RowSpacing="3" ToolTipService.ToolTip="{Binding DisplayPath}">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="58" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Border Background="#E4EAF4" CornerRadius="5">
+                                            <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
+                                                   DataContextChanged="UpdateThumbnail" />
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Text="{Binding FileName}" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
                     <ListView x:Name="SourceFolders" Visibility="Collapsed"
                               SelectionMode="None" IsItemClickEnabled="True" ItemClick="OpenSourceFolder"
                               AutomationProperties.Name="创作者与专辑">
