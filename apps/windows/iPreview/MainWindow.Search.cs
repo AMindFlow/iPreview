@@ -33,9 +33,8 @@ public sealed partial class MainWindow
 
     private void FindInLibrary(KeyRoutedEventArgs args)
     {
-        if (args.Key != VirtualKey.F || catalog is null || busy || globalSearchOpen || titleEdit is not null ||
-            SelectingAlbumMembers || IsComposingText || !KeyIsDown(VirtualKey.Control) || KeyIsDown(VirtualKey.Menu) ||
-            KeyIsDown(VirtualKey.LeftWindows) || KeyIsDown(VirtualKey.RightWindows))
+        if (!IsFindShortcut(args) || catalog is null || busy || globalSearchOpen || titleEdit is not null ||
+            SelectingAlbumMembers || IsComposingText)
             return;
 
         var global = KeyIsDown(VirtualKey.Shift);
@@ -56,6 +55,10 @@ public sealed partial class MainWindow
 
     private static bool KeyIsDown(VirtualKey key) =>
         (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
+
+    private static bool IsFindShortcut(KeyRoutedEventArgs args) =>
+        args.Key == VirtualKey.F && KeyIsDown(VirtualKey.Control) && !KeyIsDown(VirtualKey.Menu) &&
+        !KeyIsDown(VirtualKey.LeftWindows) && !KeyIsDown(VirtualKey.RightWindows);
 
     private static TextBox? FindQueryInput(DependencyObject parent)
     {
@@ -102,7 +105,7 @@ public sealed partial class MainWindow
         globalSearchScope = GlobalSearchScope.All;
         GlobalFileScope.IsChecked = GlobalDirectoryScope.IsChecked = false;
         GlobalSearchInput.Text = "";
-        GlobalSearchModeHint.Text = "以 @ 开头精确匹配";
+        GlobalSearchExactBadge.Visibility = Visibility.Collapsed;
         globalSearchOpen = true;
         GlobalSearchOverlay.Visibility = Visibility.Visible;
         LibraryView.IsHitTestVisible = false;
@@ -150,7 +153,7 @@ public sealed partial class MainWindow
     {
         var generation = ++globalSearchRevision;
         var query = GlobalSearchTerm.Parse(GlobalSearchInput.Text);
-        GlobalSearchModeHint.Text = query.Exact ? "@ 精确匹配" : "以 @ 开头精确匹配";
+        GlobalSearchExactBadge.Visibility = query.Exact ? Visibility.Visible : Visibility.Collapsed;
         SetGlobalSearchHits([]);
         GlobalSearchStatus.Visibility = query.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (query.Text.Length == 0)
@@ -213,6 +216,13 @@ public sealed partial class MainWindow
         var editingQuery = GlobalSearchInput.FocusState != FocusState.Unfocused;
         if (editingQuery && IsComposingText)
             return;
+        if (IsFindShortcut(args) && KeyIsDown(VirtualKey.Shift))
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+                GlobalSearchInput.Focus(FocusState.Keyboard);
+            return;
+        }
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
         var resultFocused = focused is ListViewItem row && GlobalSearchResults.ItemFromContainer(row) is GlobalSearchHit;
         switch (args.Key)

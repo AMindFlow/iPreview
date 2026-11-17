@@ -8,8 +8,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Background="#EDF1FA" BorderBrush="#DFE5F1" BorderThickness="0,0,0,1"
-                Padding="12,8" CornerRadius="10,10,0,0">
+        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"
+                Padding="12,10" CornerRadius="14,14,0,0">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -30,12 +30,12 @@
                           HorizontalAlignment="Stretch" SelectionChanged="AlbumChanged"
                           DisplayMemberPath="Label" AutomationProperties.Name="来源专辑" />
                 <Button x:Name="SelectAllButton" Grid.Column="2" Content="全选" Click="SelectCurrentAlbum"
-                        IsEnabled="False" Padding="9,4" VerticalAlignment="Bottom"
+                        IsEnabled="False" MinHeight="32" Padding="10,4" CornerRadius="8" VerticalAlignment="Bottom"
                         AutomationProperties.Name="全选当前专辑" ToolTipService.ToolTip="全选当前专辑" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Background="#FAFBFE" Padding="8,6">
+        <Grid Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="8,6">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -59,10 +59,10 @@
                 <GridView.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Spacing="4" ToolTipService.ToolTip="{Binding Media.DisplayPath}">
-                            <Border Height="84" CornerRadius="8" Background="#E6EBF6">
+                            <Border Height="84" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                 <Grid>
                                     <FontIcon Glyph="{Binding PlaceholderGlyph}" HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" Foreground="#677997" FontSize="18"
+                                              VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="18"
                                               AutomationProperties.AccessibilityView="Raw" />
                                     <Image Stretch="UniformToFill" Loaded="ThumbnailLoaded"
                                            DataContextChanged="ThumbnailContextChanged" />
@@ -82,15 +82,15 @@
             </GridView>
             <StackPanel x:Name="CandidateEmpty" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Spacing="8" Margin="8" IsHitTestVisible="False">
-                <FontIcon Glyph="&#xE91B;" FontSize="23" Foreground="#7788A5"
+                <FontIcon Glyph="&#xE91B;" FontSize="23" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           AutomationProperties.AccessibilityView="Raw" />
                 <TextBlock x:Name="CandidateStatus" Text="先选择来源或创作者"
-                           Foreground="#576375" TextWrapping="Wrap" TextAlignment="Center" />
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" />
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="2" Background="#F1F4FA" BorderBrush="#DFE5F1" BorderThickness="0,1,0,0"
-                Padding="12,7,12,0" CornerRadius="0,0,10,10">
+        <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                Padding="12,9,12,0" CornerRadius="0,0,14,14">
             <Grid RowSpacing="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -118,17 +118,17 @@
                         <DataTemplate>
                             <StackPanel Width="108" Spacing="3" ToolTipService.ToolTip="{Binding Media.DisplayPath}">
                                 <Grid Height="49">
-                                    <Border CornerRadius="6" Background="#E1E8F5">
+                                    <Border CornerRadius="6" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                         <Grid>
                                             <FontIcon Glyph="{Binding PlaceholderGlyph}" FontSize="15"
-                                                      Foreground="#677997" AutomationProperties.AccessibilityView="Raw" />
+                                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.AccessibilityView="Raw" />
                                             <Image Stretch="UniformToFill" Loaded="ThumbnailLoaded"
                                                    DataContextChanged="ThumbnailContextChanged" />
                                         </Grid>
                                     </Border>
                                     <Button Click="RemoveStaged" Width="26" Height="26" Padding="0"
                                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="3"
-                                            Background="#F6F8FE" BorderBrush="#D6E0F2" CornerRadius="13"
+                                            Background="{ThemeResource ControlSolidFillColorDefaultBrush}" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" CornerRadius="13"
                                             AutomationProperties.Name="{Binding RemoveLabel}"
                                             ToolTipService.ToolTip="从待添加移除">
                                         <FontIcon Glyph="&#xE711;" FontSize="10" />
@@ -140,7 +140,7 @@
                     </ListView.ItemTemplate>
                 </ListView>
                 <TextBlock x:Name="QueueEmpty" Grid.Row="1" Text="还没有待添加的媒体"
-                           VerticalAlignment="Center" Foreground="#576375" FontSize="12"
+                           VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
                            IsHitTestVisible="False" />
             </Grid>
         </Border>
