@@ -31,6 +31,7 @@ struct LibraryView: View {
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+    private var libraryOverlayShown: Bool { preview != nil || globalSearchShown }
 
     var body: some View {
         @Bindable var model = model
@@ -50,6 +51,7 @@ struct LibraryView: View {
                 content(scope)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .accessibilityHidden(libraryOverlayShown)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -57,7 +59,7 @@ struct LibraryView: View {
                         Label("导入", systemImage: "folder.badge.plus")
                     }
                     .keyboardShortcut("o", modifiers: .command)
-                    .disabled(model.isWorking || preview != nil)
+                    .disabled(model.isWorking || libraryOverlayShown)
                     .help("导入本地媒体目录")
                 }
             }
@@ -231,6 +233,7 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityLabel("媒体库导航")
+        .accessibilityHidden(libraryOverlayShown)
     }
 
     private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,
