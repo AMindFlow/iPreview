@@ -16,7 +16,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = $"添加到「{current.Label}」",
+            Title = $"添加到合集「{current.Label}」",
             PrimaryButtonText = "添加媒体",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,

@@ -30,7 +30,7 @@ public enum ScanError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .inaccessibleRoot(let name): "无法读取来源「\(name)」。请确认磁盘已连接并允许访问。"
+        case .inaccessibleRoot(let name): "无法读取媒体源「\(name)」。请确认磁盘已连接并允许访问。"
         case .noSupportedMedia: "此目录未发现支持的媒体或专辑结构。"
         case .overlappingCatalog: "请选择应用数据目录之外的媒体目录。"
         }

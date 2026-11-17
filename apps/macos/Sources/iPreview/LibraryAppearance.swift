@@ -105,7 +105,7 @@ struct LibraryTitleEdit {
 
     var placeholder: String {
         switch target {
-        case .album: "专辑名称"
+        case .album: "合集名称"
         case .directory: "文件夹名称"
         }
     }

@@ -7,7 +7,7 @@ internal sealed record CatalogSnapshot(
     Dictionary<long, List<Media>> AlbumMembers);
 
 internal sealed class AlbumOrderChangedException() :
-    InvalidOperationException("专辑顺序已在其他窗口更新。请按当前顺序重新拖动。");
+    InvalidOperationException("合集顺序已在其他窗口更新。请按当前顺序重新拖动。");
 
 internal sealed partial class Catalog : IDisposable
 {
@@ -121,7 +121,7 @@ internal sealed partial class Catalog : IDisposable
         {
             EnsureCurrentScan(scanVersion);
             if (HasPendingRename(source))
-                throw new InvalidOperationException("此来源有待恢复的重命名，暂时无法重新扫描。");
+                throw new InvalidOperationException("此媒体源有待恢复的重命名，暂时无法重新扫描。");
             if (files is null)
                 database.Execute("UPDATE sources SET available = 0 WHERE id = ?;", source);
             else

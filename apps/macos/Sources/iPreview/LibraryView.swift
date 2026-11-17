@@ -5,6 +5,7 @@ import iPreviewCore
 struct LibraryView: View {
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
+    @ViewState private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
     @ViewState private var browseMode = MediaBrowseMode.icons
@@ -25,6 +26,11 @@ struct LibraryView: View {
 
     private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
 
+    private var canChooseFolder: Bool {
+        !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
+            && !creatingAlbum && editSourceName == nil && addAlbumMedia == nil
+    }
+
     private var searchActions: LibrarySearchActions {
         guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum,
               addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
@@ -37,11 +43,21 @@ struct LibraryView: View {
         @Bindable var model = model
         let scope = model.contentScope(for: page)
 
-        NavigationSplitView {
-            sidebar
-                .accessibilityHidden(libraryOverlayShown)
-                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
-                .toolbar(removing: preview == nil ? nil : .sidebarToggle)
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 4) {
+                    sidebarToggle
+                    sidebarButton("导入文件夹", symbol: "folder.badge.plus", action: chooseFolder)
+                        .disabled(!canChooseFolder)
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                sidebar
+            }
+            .accessibilityHidden(libraryOverlayShown)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 header(scope)
@@ -50,21 +66,10 @@ struct LibraryView: View {
             }
             .accessibilityHidden(libraryOverlayShown)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: chooseFolder) {
-                        Label("导入", systemImage: "folder.badge.plus")
-                    }
-                    .keyboardShortcut("o", modifiers: .command)
-                    .disabled(model.isWorking || libraryOverlayShown)
-                    .opacity(preview == nil ? 1 : 0)
-                    .accessibilityHidden(preview != nil)
-                    .help("导入本地媒体目录")
-                }
-            }
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(\.librarySearchActions, searchActions)
+        .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
         .background {
             if let preview {
@@ -143,6 +148,28 @@ struct LibraryView: View {
         }
     }
 
+    private var sidebarToggle: some View {
+        let collapsed = sidebarVisibility == .detailOnly
+        return sidebarButton(collapsed ? "展开侧边栏" : "收起侧边栏", symbol: "sidebar.left") {
+            sidebarVisibility = collapsed ? .all : .detailOnly
+        }
+        .disabled(libraryOverlayShown)
+    }
+
+    private func sidebarButton(_ title: LocalizedStringKey, symbol: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(title)
+        .help(title)
+    }
+
     private var sidebar: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
@@ -158,23 +185,13 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("全局搜索")
                     .accessibilityIdentifier("show-global-search")
-                    .help("搜索所有来源（⇧⌘F）")
+                    .help("搜索所有媒体源（⇧⌘F）")
                 }
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Label("来源", systemImage: "folder")
-                        Spacer()
-                        Button(action: chooseFolder) {
-                            Image(systemName: "plus")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(model.isWorking)
-                        .accessibilityLabel("导入文件夹")
-                        .help("导入文件夹")
-                    }
-                    .padding(.horizontal, 11)
-                    .frame(height: 32)
-                    .foregroundStyle(.secondary)
+                    Label("源", systemImage: "folder")
+                        .padding(.horizontal, 11)
+                        .frame(height: 32)
+                        .foregroundStyle(.secondary)
 
                     ForEach(model.snapshot.sources) { source in
                         sidebarRow(source.name, icon: source.layout.sidebarSymbol,
@@ -194,7 +211,7 @@ struct LibraryView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
-                        Label("虚拟专辑", systemImage: "square.stack")
+                        Label("合集", systemImage: "square.stack")
                         Spacer()
                         Button {
                             creatingAlbum = true
@@ -203,8 +220,8 @@ struct LibraryView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(model.isWorking)
-                        .accessibilityLabel("新建虚拟专辑")
-                        .help("新建虚拟专辑")
+                        .accessibilityLabel("新建合集")
+                        .help("新建合集")
                     }
                     .padding(.horizontal, 11)
                     .frame(height: 32)
@@ -260,6 +277,9 @@ struct LibraryView: View {
     private func header(_ scope: ContentScope) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
+                if sidebarVisibility == .detailOnly {
+                    sidebarToggle
+                }
                 if let parent = page.parent(in: scope.source?.layout) {
                     Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
@@ -346,7 +366,7 @@ struct LibraryView: View {
                         return .handled
                     }
             } else if !model.isWorking, let album = scope.virtualAlbum, removalSelection == nil {
-                editableTitle(scope.title, controlID: "virtual-album", hint: "双击标题重命名虚拟专辑") {
+                editableTitle(scope.title, controlID: "virtual-album", hint: "双击标题重命名合集") {
                     beginTitleEdit(.album(album))
                 }
             } else if !model.isWorking, let source = scope.source, source.isAvailable,
@@ -402,7 +422,7 @@ struct LibraryView: View {
             }
             .buttonStyle(.bordered)
             .disabled(removalSelection.isEmpty || model.isWorking)
-            .help("仅从当前专辑移除所选引用")
+            .help("仅从当前合集移除所选引用")
         } else {
             if hasItems {
                 Button {
@@ -454,7 +474,7 @@ struct LibraryView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
-                Text("专辑为空").font(.title3.weight(.semibold))
+                Text("合集为空").font(.title3.weight(.semibold))
             }
         } else if scope.source != nil {
             ContentUnavailableView("没有可显示的媒体", systemImage: "photo.on.rectangle")
@@ -715,7 +735,7 @@ struct LibraryView: View {
             }
             .contextMenu {
                 if let album, removalSelection == nil {
-                    Button("从专辑移除", role: .destructive) {
+                    Button("从合集移除", role: .destructive) {
                         Task { await model.remove(mediaID: item.id, from: album.id) }
                     }
                     .disabled(model.isWorking)
@@ -784,7 +804,7 @@ struct LibraryView: View {
     }
 
     private func chooseFolder() {
-        guard !model.isWorking, preview == nil, searchDomain == nil else { return }
+        guard canChooseFolder else { return }
         let picker = NSOpenPanel()
         picker.title = "导入媒体目录"
         picker.prompt = "扫描"
@@ -955,12 +975,12 @@ enum LibraryPage: Hashable, Sendable {
     func parent(in layout: iPreviewCore.Layout?) -> (page: LibraryPage, label: String)? {
         switch self {
         case .creator(let id, _):
-            return (.source(id), "返回来源")
+            return (.source(id), "返回媒体源")
         case .folder(let id, let key):
             if layout == .multiCreator, let creator = key.split(separator: "/").first {
                 return (.creator(id, String(creator)), "返回创作者")
             }
-            return (.source(id), "返回来源")
+            return (.source(id), "返回媒体源")
         case .library, .source, .virtual:
             return nil
         }
@@ -995,7 +1015,7 @@ struct ContentScope {
             folders = []
             virtualAlbum = nil
         case .source(let id):
-            title = source?.name ?? "来源"
+            title = source?.name ?? "媒体源"
             let sourceItems = active.filter { page.contains($0) }
             switch source?.layout {
             case .multiCreator:
@@ -1025,7 +1045,7 @@ struct ContentScope {
         case .virtual(let id):
             let album = snapshot.albums.first { $0.id == id }
             let byID = Dictionary(uniqueKeysWithValues: snapshot.media.map { ($0.id, $0) })
-            title = album?.name ?? "虚拟专辑"
+            title = album?.name ?? "合集"
             items = album?.mediaIDs.compactMap { byID[$0] } ?? []
             folders = []
             virtualAlbum = album

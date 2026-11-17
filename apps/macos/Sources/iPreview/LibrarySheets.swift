@@ -60,10 +60,10 @@ struct NewAlbumSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("新建虚拟专辑")
+            Text("新建合集")
                 .font(.title2.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
-            TextField("专辑名称", text: $name)
+            TextField("合集名称", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .accessibilityIdentifier("album-name")

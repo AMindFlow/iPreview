@@ -16,9 +16,9 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox x:Name="Creators" Header="来源与创作者" PlaceholderText="请选择" MinWidth="0"
+                <ComboBox x:Name="Creators" Header="媒体源与创作者" PlaceholderText="请选择" MinWidth="0"
                           HorizontalAlignment="Stretch" SelectionChanged="CreatorChanged"
-                          AutomationProperties.Name="来源与创作者">
+                          AutomationProperties.Name="媒体源与创作者">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
@@ -26,9 +26,9 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <ComboBox x:Name="Folders" Grid.Column="1" Header="来源专辑" PlaceholderText="请选择" MinWidth="0"
+                <ComboBox x:Name="Folders" Grid.Column="1" Header="源专辑" PlaceholderText="请选择" MinWidth="0"
                           HorizontalAlignment="Stretch" SelectionChanged="AlbumChanged"
-                          DisplayMemberPath="Label" AutomationProperties.Name="来源专辑" />
+                          DisplayMemberPath="Label" AutomationProperties.Name="源专辑" />
                 <Button x:Name="SelectAllButton" Grid.Column="2" Content="全选" Click="SelectCurrentAlbum"
                         IsEnabled="False" MinHeight="32" Padding="10,4" CornerRadius="8" VerticalAlignment="Bottom"
                         AutomationProperties.Name="全选当前专辑" ToolTipService.ToolTip="全选当前专辑" />
@@ -42,7 +42,7 @@
             </Grid.RowDefinitions>
             <InfoBar x:Name="AddError" Title="无法添加媒体" Severity="Error" />
             <GridView x:Name="Candidates" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="MediaSelectionChanged"
-                      SizeChanged="CandidateGridSizeChanged" AutomationProperties.Name="来源媒体">
+                      SizeChanged="CandidateGridSizeChanged" AutomationProperties.Name="源媒体">
                 <GridView.ItemsPanel>
                     <ItemsPanelTemplate>
                         <ItemsWrapGrid Orientation="Horizontal" ItemWidth="152" ItemHeight="116" />
@@ -84,7 +84,7 @@
                         Spacing="8" Margin="8" IsHitTestVisible="False">
                 <FontIcon Glyph="&#xE91B;" FontSize="23" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           AutomationProperties.AccessibilityView="Raw" />
-                <TextBlock x:Name="CandidateStatus" Text="先选择来源或创作者"
+                <TextBlock x:Name="CandidateStatus" Text="先选择媒体源或创作者"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" />
             </StackPanel>
         </Grid>

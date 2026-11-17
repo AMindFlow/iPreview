@@ -74,7 +74,7 @@ public sealed partial class MainWindow
         }
         if (!available)
         {
-            ShowNotice("无法重命名", "来源或所选项目当前不可用。");
+            ShowNotice("无法重命名", "媒体源或所选项目当前不可用。");
             return;
         }
 

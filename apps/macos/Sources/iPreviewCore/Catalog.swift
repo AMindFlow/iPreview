@@ -231,7 +231,7 @@ public actor Catalog {
     private func validatedAlbumName(_ name: String) throws -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("\0") else {
-            throw SQLiteError(message: "请输入有效的专辑名称")
+            throw SQLiteError(message: "请输入有效的合集名称")
         }
         return trimmed
     }
@@ -241,6 +241,6 @@ public enum AlbumOrderError: LocalizedError {
     case changed
 
     public var errorDescription: String? {
-        "专辑顺序已在其他窗口更新。请按当前顺序重新拖动。"
+        "合集内的顺序已在其他窗口更新。请按当前顺序重新拖动。"
     }
 }

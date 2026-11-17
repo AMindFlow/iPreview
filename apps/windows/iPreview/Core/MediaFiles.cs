@@ -193,6 +193,6 @@ internal static class MediaFiles
         "flat" => Layout.Flat,
         "creator" => Layout.Creator,
         "multi-creator" => Layout.MultiCreator,
-        _ => throw new InvalidDataException("不支持的媒体来源结构。")
+        _ => throw new InvalidDataException("不支持此媒体源的目录结构。")
     };
 }
