@@ -539,7 +539,11 @@ public sealed partial class MainWindow : Window
     }
 
     private void LoadThumbnail(object sender, RoutedEventArgs args) => LoadThumbnail((Image)sender);
-    private void UpdateThumbnail(FrameworkElement sender, DataContextChangedEventArgs args) => LoadThumbnail((Image)sender);
+    private void UpdateThumbnail(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (sender.IsLoaded)
+            LoadThumbnail((Image)sender);
+    }
 
     private async void LoadThumbnail(Image image)
     {
@@ -551,7 +555,7 @@ public sealed partial class MainWindow : Window
             var thumbnail = tile.Media.IsVideo
                 ? await DecodeVideoThumbnail(tile.Media)
                 : await DecodeImage(tile.Media, 320, false);
-            if (ReferenceEquals(tile, image.DataContext))
+            if (image.IsLoaded && ReferenceEquals(tile, image.DataContext))
                 image.Source = thumbnail;
         }
         catch (Exception error) when (MediaFailure(error))
@@ -563,7 +567,7 @@ public sealed partial class MainWindow : Window
     private static async Task<BitmapImage> DecodeImage(Media media, int width, bool animated,
                                                        ExceptionRoutedEventHandler? imageFailed = null)
     {
-        var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(media));
+        var file = await OpenMediaFile(media);
         using var stream = await file.OpenReadAsync();
         var bitmap = new BitmapImage { DecodePixelWidth = width, AutoPlay = animated };
         if (imageFailed is not null)
@@ -574,13 +578,19 @@ public sealed partial class MainWindow : Window
 
     private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media, uint width = 320)
     {
-        var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(media));
+        var file = await OpenMediaFile(media);
         using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, width, ThumbnailOptions.ResizeThumbnail);
         if (stream is null || stream.Type != ThumbnailType.Image)
             return null;
         var bitmap = new BitmapImage();
         await bitmap.SetSourceAsync(stream);
         return bitmap;
+    }
+
+    private static async Task<StorageFile> OpenMediaFile(Media media)
+    {
+        var path = await Task.Run(() => MediaFiles.OpenPath(media));
+        return await StorageFile.GetFileFromPathAsync(path);
     }
 
     private static bool MediaFailure(Exception error) =>
@@ -690,7 +700,7 @@ public sealed partial class MainWindow : Window
         {
             if (tile.Media.IsVideo)
             {
-                var file = await StorageFile.GetFileFromPathAsync(MediaFiles.OpenPath(tile.Media));
+                var file = await OpenMediaFile(tile.Media);
                 if (generation == previewGeneration)
                     StartVideo(file, generation);
                 return;
