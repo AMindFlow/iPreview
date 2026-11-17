@@ -14,7 +14,7 @@ struct LibraryView: View {
     @ViewState private var searchFiles = true
     @ViewState private var matches: [Media] = []
     @ViewState private var filtersShown = false
-    @ViewState private var editAlbum: AlbumEdit?
+    @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
@@ -29,20 +29,28 @@ struct LibraryView: View {
         let scope = model.contentScope(for: page, matches: searching ? matches : nil)
 
         ZStack {
-            HStack(spacing: 0) {
+            NavigationSplitView {
                 sidebar
-                    .frame(width: 188)
-                Rectangle()
-                    .fill(Color.libraryInk.opacity(0.07))
-                    .frame(width: 1)
+                    .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+            } detail: {
                 VStack(alignment: .leading, spacing: 0) {
                     header(scope)
                     content(scope)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.libraryCanvas)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: chooseFolder) {
+                            Label("导入", systemImage: "square.and.arrow.up")
+                        }
+                        .keyboardShortcut("o", modifiers: .command)
+                        .disabled(model.isWorking || preview != nil)
+                        .help("导入本地媒体目录")
+                    }
+                }
             }
+            .navigationSplitViewStyle(.balanced)
             .allowsHitTesting(preview == nil)
             .accessibilityHidden(preview != nil)
 
@@ -56,7 +64,6 @@ struct LibraryView: View {
                 .transition(.opacity)
             }
         }
-        .background(Color.libraryCanvas)
         .task { await model.start() }
         .onChange(of: searching) { removalSelection = nil }
         .task(id: SearchRequest(query: query, mode: mode, directories: searchDirectories, files: searchFiles, revision: model.revision)) {
@@ -77,12 +84,10 @@ struct LibraryView: View {
                 }
             }
         }
-        .sheet(item: $editAlbum) { edit in
-            AlbumSheet(edit: edit) { name in
+        .sheet(isPresented: $creatingAlbum, onDismiss: focusBrowser) {
+            NewAlbumSheet { name in
                 Task {
-                    if let albumID = edit.idToRename {
-                        await model.rename(albumID: albumID, to: name)
-                    } else if let id = await model.createAlbum(named: name, with: edit.firstMediaID) {
+                    if let id = await model.createAlbum(named: name, with: nil) {
                         navigate(.virtual(id))
                     }
                 }
@@ -91,10 +96,19 @@ struct LibraryView: View {
         .sheet(item: $editSourceName, onDismiss: focusBrowser) { edit in
             SourceNameSheet(edit: edit) { name in
                 let path = try await model.renameSourceItem(edit, to: name)
+                let renamed: LibraryPage
                 switch edit.folder {
-                case .creator(let sourceID, _): selectedFolder = .creator(sourceID, path)
-                case .folder(let sourceID, _): selectedFolder = .folder(sourceID, path)
-                default: selected = edit.mediaID
+                case .creator(let sourceID, _): renamed = .creator(sourceID, path)
+                case .folder(let sourceID, _): renamed = .folder(sourceID, path)
+                default:
+                    selected = edit.mediaID
+                    return
+                }
+                if page == edit.folder {
+                    page = renamed
+                    selectedFolder = nil
+                } else {
+                    selectedFolder = renamed
                 }
             }
         }
@@ -134,8 +148,10 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
 
                     ForEach(model.snapshot.sources) { source in
-                        sidebarRow(source.name, icon: source.isAvailable ? "externaldrive" : "externaldrive.badge.xmark",
-                                   active: page.sourceID == source.id && !searching) {
+                        sidebarRow(source.name, icon: source.layout.sidebarSymbol,
+                                   active: page.sourceID == source.id && !searching,
+                                   status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
+                                   offline: !source.isAvailable) {
                             navigate(.source(source.id))
                         }
                         .help(source.path)
@@ -152,7 +168,7 @@ struct LibraryView: View {
                         Label("虚拟专辑", systemImage: "square.stack")
                         Spacer()
                         Button {
-                            editAlbum = AlbumEdit()
+                            creatingAlbum = true
                         } label: {
                             Image(systemName: "plus")
                         }
@@ -169,29 +185,21 @@ struct LibraryView: View {
                         sidebarRow(album.name, icon: "rectangle.stack", active: page == .virtual(album.id) && !searching) {
                             navigate(.virtual(album.id))
                         }
-                        .contextMenu {
-                            Button("重命名专辑") { editAlbum = AlbumEdit(album: album) }
-                                .disabled(model.isWorking)
-                        }
                     }
                 }
                 .padding(.top, 11)
             }
             .font(.callout)
             .padding(.horizontal, 12)
-            .padding(.top, 49)
+            .padding(.top, 8)
             .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
-        .background {
-            Color.libraryCanvas
-                .overlay(Color.ipreviewAccent.opacity(0.035))
-        }
-        .background(.regularMaterial)
         .accessibilityLabel("媒体库导航")
     }
 
-    private func sidebarRow(_ name: String, icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+    private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,
+                            action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
                 Image(systemName: icon)
@@ -200,15 +208,22 @@ struct LibraryView: View {
                 Text(name)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if offline {
+                    Image(systemName: "bolt.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
             }
             .fontWeight(active ? .semibold : .medium)
-            .foregroundStyle(Color.libraryInk)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 10)
             .frame(height: 34)
             .background(active ? Color.ipreviewAccent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(status)
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 
@@ -223,12 +238,7 @@ struct LibraryView: View {
                     .accessibilityLabel(parent.label)
                     .help(parent.label)
                 }
-                Text(scope.title)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Color.libraryInk)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .accessibilityAddTraits(.isHeader)
+                browserTitle(scope)
                 if let source = scope.source, !source.isAvailable {
                     Label("离线", systemImage: "externaldrive.badge.xmark")
                         .font(.caption.weight(.medium))
@@ -237,15 +247,6 @@ struct LibraryView: View {
                 Spacer(minLength: 8)
                 searchField
                     .frame(idealWidth: 265, maxWidth: 310)
-                Button(action: chooseFolder) {
-                    Label("导入", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .keyboardShortcut("o", modifiers: .command)
-                .disabled(model.isWorking)
-                .help("导入本地媒体目录")
             }
 
             if searching || scope.source != nil || scope.virtualAlbum != nil || selected != nil {
@@ -282,25 +283,43 @@ struct LibraryView: View {
                         .controlSize(.small)
                         .frame(width: 114)
                     }
-                    if removalSelection == nil, let media = scope.items.first(where: { $0.id == selected }) {
-                        Menu {
-                            mediaActions(media, in: scope.virtualAlbum)
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .frame(width: 25)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                        .accessibilityLabel("所选媒体的操作")
-                        .disabled(model.isWorking)
-                    }
                 }
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 43)
-        .padding(.bottom, 21)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+    }
+
+    @ViewBuilder
+    private func browserTitle(_ scope: ContentScope) -> some View {
+        Group {
+            if let album = scope.virtualAlbum {
+                VirtualAlbumTitle(album: album, disabled: model.isWorking || removalSelection != nil,
+                                  rename: { name in await model.rename(albumID: album.id, to: name) },
+                                  finished: focusBrowser)
+                    .id(album.id)
+            } else if !searching, let source = scope.source, let folder = page.indexedDirectory {
+                let member = scope.items.first(where: \.isAvailable)
+                    ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
+                Button {
+                    beginRename(SourceNameEdit(folder: folder, source: source, expectedMember: member))
+                } label: {
+                    Text(scope.title)
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isWorking || !source.isAvailable)
+                .accessibilityHint("重命名真实文件夹")
+                .accessibilityIdentifier("source-directory-title")
+                .help("点击标题重命名文件夹")
+            } else {
+                Text(scope.title)
+            }
+        }
+        .font(.system(size: 28, weight: .bold))
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
@@ -343,17 +362,10 @@ struct LibraryView: View {
                     removalSelection = []
                     focusBrowser()
                 }
-                .buttonStyle(.borderless)
+                .libraryGlassButton()
                 .disabled(model.isWorking)
                 .help("选择多个媒体引用")
             }
-            Button {
-                editAlbum = AlbumEdit(album: album)
-            } label: {
-                Label("重命名", systemImage: "pencil")
-            }
-            .buttonStyle(.borderless)
-            .disabled(model.isWorking)
         }
     }
 
@@ -407,12 +419,7 @@ struct LibraryView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
-        .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(focus == .search ? Color.ipreviewAccent : Color.libraryInk.opacity(0.10))
-                .allowsHitTesting(false)
-        }
+        .libraryGlassSurface()
     }
 
     @ViewBuilder
@@ -696,7 +703,12 @@ struct LibraryView: View {
                 .accessibilityHidden(true)
             }
             .contextMenu {
-                if removalSelection == nil { mediaActions(item, in: album) }
+                if let album, removalSelection == nil {
+                    Button("从专辑移除", role: .destructive) {
+                        Task { await model.remove(mediaID: item.id, from: album.id) }
+                    }
+                    .disabled(model.isWorking)
+                }
             }
             .help(item.directories.joined(separator: " / ") + " / " + item.name)
             .accessibilityElement(children: .ignore)
@@ -724,30 +736,6 @@ struct LibraryView: View {
             selection.remove(mediaID)
         }
         removalSelection = selection
-    }
-
-    @ViewBuilder
-    private func mediaActions(_ media: Media, in album: VirtualAlbum?) -> some View {
-        if let album {
-            let position = album.mediaIDs.firstIndex(of: media.id)
-            Button("上移") { Task { await model.move(mediaID: media.id, in: album.id, by: -1) } }
-                .disabled(position == album.mediaIDs.indices.first)
-            Button("下移") { Task { await model.move(mediaID: media.id, in: album.id, by: 1) } }
-                .disabled(position == album.mediaIDs.indices.last)
-            Divider()
-            Button("从专辑移除", role: .destructive) {
-                Task { await model.remove(mediaID: media.id, from: album.id) }
-            }
-        } else {
-            Menu("加入虚拟专辑") {
-                ForEach(model.snapshot.albums) { album in
-                    Button(album.name) { Task { await model.add(mediaID: media.id, to: album.id) } }
-                        .disabled(album.mediaIDs.contains(media.id))
-                }
-                if !model.snapshot.albums.isEmpty { Divider() }
-                Button("新建专辑并添加…") { editAlbum = AlbumEdit(firstMediaID: media.id) }
-            }
-        }
     }
 
     private func columns(for width: CGFloat) -> [GridItem] {

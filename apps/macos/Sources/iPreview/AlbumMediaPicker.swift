@@ -81,10 +81,9 @@ struct AlbumMediaPicker: View {
                 stagedStrip.disabled(saving)
                 footer
             }
-            .background(Color.mediaSurface.opacity(0.64))
+            .background(.thinMaterial)
         }
         .foregroundStyle(Color.libraryInk)
-        .background(Color.libraryCanvas)
         .frame(width: 740, height: 463)
         .onChange(of: creator) { folder = nil }
         .task(id: requestedFolder) {

@@ -17,3 +17,11 @@
 - **设计决定** 按用户选择采用底部胶片条，参考旧版跨来源待添加流程和首版浅色图库。确认时发现文件不可用，提示后仍可操作胶片条和页脚。并排分栏方案随交付材料保留。
 - **来源** [跨专辑选片 #22](https://github.com/AMindFlow/iPreview/issues/22)，用户指定的美术流程。
 - **验收** 在两端从空专辑加号进入选片器。用有多条暂存媒体的同一状态对照采用方案，核对顶部选择、中央缩略图和底部胶片条。对待添加项做横向滚动和撤回测试。调整 Windows 窗口宽度并复测错误状态，确认主要操作仍可见。
+
+## UI-003 macOS 原生液态玻璃
+
+- **要求** macOS 26 及以上使用原生窗口工具栏、分栏侧边栏和系统绘制的红黄绿窗口按钮。侧边栏延续到窗口控制区域，采用系统外观随浅色、深色和辅助功能变化。主要交互控件和全局搜索使用系统液态玻璃，媒体内容保持清晰。macOS 15 使用系统材质。
+- **要求** 直属媒体目录用文件夹，单创作者来源用个人，多创作者来源用多人。离线来源保留结构图标并附可见状态。
+- **设计决定** 采用 Safari 参考中的连续侧栏和浅层微透明。按苹果规范将玻璃用于导航与控件，保持内容层和控制层清楚分离。[Apple 迁移指南](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass) · [Apple 材质规范](https://developer.apple.com/design/human-interface-guidelines/materials)
+- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，用户提供的 Safari 与 iPreview 窗口对照。
+- **验收** 在同一 macOS 版本对照 Safari，检查红绿灯、侧栏及其上方区域是否连续，核对三种来源图标和离线提示。打开搜索、预览和选片器，核对文字、媒体及交互状态在不同系统外观下可辨识。
