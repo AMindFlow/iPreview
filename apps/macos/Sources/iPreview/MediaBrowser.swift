@@ -64,10 +64,9 @@ struct MediaListRow: View {
     var body: some View {
         MediaListColumns {
             HStack(spacing: 8) {
-                MediaThumbnail(media: media, revision: revision)
+                MediaThumbnail(media: media, revision: revision, previewCornerRadius: 3)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
-                    .anchorPreference(key: PreviewOriginKey.self, value: .bounds) { [media.id: $0] }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(media.name)
                         .fontWeight(selected ? .semibold : .regular)

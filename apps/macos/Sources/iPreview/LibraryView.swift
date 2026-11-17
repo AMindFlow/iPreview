@@ -15,7 +15,7 @@ struct LibraryView: View {
     @ViewState private var matches: (request: SearchRequest, items: [Media])?
     @ViewState private var filtersShown = false
     @ViewState private var globalSearchShown = false
-    @ViewState private var revealSearchResult: Int64?
+    @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var titleEdit: LibraryTitleEdit?
@@ -63,8 +63,6 @@ struct LibraryView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .allowsHitTesting(preview == nil)
-        .accessibilityHidden(preview != nil)
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
@@ -79,13 +77,15 @@ struct LibraryView: View {
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 GeometryReader { geometry in
-                    MediaPreview(request: preview, sourceFrame: { id in
+                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
                         guard !globalSearchShown else { return nil }
-                        return origins[id].map { geometry[$0] }
-                    }) { selection in
+                        return origins.thumbnail(for: id, in: geometry)
+                    }
+                    MediaPreview(request: preview, thumbnail: thumbnail) { selection in
                         self.preview = nil
                         if !globalSearchShown {
                             self.selected = selection
+                            if thumbnail(selection) == nil { self.mediaToReveal = selection }
                             focusBrowser()
                         }
                     }
@@ -640,21 +640,16 @@ struct LibraryView: View {
                         }
                         return .handled
                     }
-                    .onChange(of: preview == nil) { _, closed in
-                        if closed, let selected {
-                            reader.scrollTo(selected)
-                        }
-                    }
                     .onChange(of: items, initial: true) { _, updated in
                         if let selected, updated.contains(where: { $0.id == selected }) { return }
                         selected = updated.first?.id
                     }
-                    .task(id: revealSearchResult) {
-                        guard let target = revealSearchResult, items.contains(where: { $0.id == target }) else { return }
+                    .task(id: mediaToReveal) {
+                        guard let target = mediaToReveal, items.contains(where: { $0.id == target }) else { return }
                         await Task.yield()
                         guard !Task.isCancelled else { return }
                         reader.scrollTo(target, anchor: .center)
-                        revealSearchResult = nil
+                        mediaToReveal = nil
                     }
                     .onChange(of: browseMode) {
                         if let selected {
@@ -685,6 +680,7 @@ struct LibraryView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
+            .previewScrollViewport()
             .albumOrderViewport(albumOrder, album: album)
         case .list:
             VStack(spacing: 0) {
@@ -715,6 +711,7 @@ struct LibraryView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 6)
                 }
+                .previewScrollViewport()
                 .albumOrderViewport(albumOrder, album: album)
             }
         case .gallery:
@@ -736,6 +733,7 @@ struct LibraryView: View {
                     .padding(.vertical, 5)
                 }
                 .frame(height: searching ? 101 : 88)
+                .previewScrollViewport()
                 .albumOrderViewport(albumOrder, album: album)
             }
             .padding(.horizontal, 24)
@@ -865,7 +863,7 @@ struct LibraryView: View {
         removalSelection = nil
         query = ""
         selected = mediaID
-        revealSearchResult = mediaID
+        mediaToReveal = mediaID
         selectedFolder = folder
         focusBrowser()
     }
@@ -1139,10 +1137,9 @@ private struct MediaTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MediaThumbnail(media: media, revision: revision)
+            MediaThumbnail(media: media, revision: revision, previewCornerRadius: 12)
                 .aspectRatio(1.47, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 12))
-                .anchorPreference(key: PreviewOriginKey.self, value: .bounds) { [media.id: $0] }
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(selected ? Color.ipreviewAccent : .clear, lineWidth: 2)
