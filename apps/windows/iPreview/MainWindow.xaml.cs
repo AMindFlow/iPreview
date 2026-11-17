@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
@@ -736,6 +737,18 @@ public sealed partial class MainWindow : Window
         var browser = ActiveMediaBrowser;
         browser.SelectedItem = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         FocusSelectedMedia();
+    }
+
+    private void CopyPreviewFilename(object sender, DoubleTappedRoutedEventArgs args)
+    {
+        if (previewIndex < 0 || previewClosing)
+            return;
+
+        var content = new DataPackage();
+        content.SetText(previewTiles[previewIndex].FileName);
+        Clipboard.SetContent(content);
+        Clipboard.Flush();
+        args.Handled = true;
     }
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
