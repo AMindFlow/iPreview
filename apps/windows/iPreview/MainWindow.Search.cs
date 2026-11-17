@@ -96,7 +96,7 @@ public sealed partial class MainWindow
     private Task ChangeSearchDomain(bool allSources)
     {
         searchAllSources = allSources;
-        var label = allSources ? "搜索所有来源" : "搜索当前范围";
+        var label = allSources ? "搜索所有媒体源" : "搜索当前范围";
         SearchInput.PlaceholderText = label;
         AutomationProperties.SetName(SearchInput, label);
         SearchDomain.Content = allSources ? "Ctrl+0 全局" : "Ctrl+0 当前范围";

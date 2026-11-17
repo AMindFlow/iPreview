@@ -216,7 +216,7 @@ public sealed partial class MainWindow
         catch (Exception error) when (MediaFailure(error))
         {
             if (generation == filmstripGeneration)
-                ShowFilmstripMessage(tile.Media.Available ? "无法显示此媒体" : "来源不可用");
+                ShowFilmstripMessage(tile.Media.Available ? "无法显示此媒体" : "媒体源不可用");
         }
     }
 

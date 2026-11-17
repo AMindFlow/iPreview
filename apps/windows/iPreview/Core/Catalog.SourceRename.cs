@@ -29,7 +29,7 @@ internal sealed partial class Catalog
                 row => new Source(sourceId, row.Text(0), MediaFiles.DecodeLayout(row.Text(1)), row.Number(2) != 0),
                 sourceId).Single();
             if (!source.Available)
-                throw new IOException("来源离线，无法重命名。");
+                throw new IOException("媒体源离线，无法重命名。");
             SourceRename.RequireStableIdentity(source);
             using var parent = SourceRename.OpenParent(source, oldPath);
             EnsureRenameLocation(source, oldPath, newPath);
@@ -56,7 +56,7 @@ internal sealed partial class Catalog
                         throw new IOException("重命名记录已在另一个 iPreview 窗口处理。");
                     var registeredPath = ReadSourcePath(sourceId);
                     if (!StringComparer.OrdinalIgnoreCase.Equals(registeredPath, source.Path))
-                        throw new IOException("来源路径已改变。");
+                        throw new IOException("媒体源路径已改变。");
                     EnsureSeparateRoots(source, pending);
                     ValidateRenameProjection(pending, expectedMediaId);
                     EnsureRenameLocation(source, oldPath, newPath);
@@ -149,7 +149,7 @@ internal sealed partial class Catalog
         var after = Path.Combine(source.Path, pending.After.Replace('/', Path.DirectorySeparatorChar));
         var otherRoots = database.Query("SELECT path FROM sources WHERE id <> ?;", row => row.Text(0), source.Id);
         if (otherRoots.Any(root => PathsOverlap(root, before) || PathsOverlap(root, after)))
-            throw new IOException("此项目的路径与另一个已登记来源重叠。");
+            throw new IOException("此项目的路径与另一个已登记的媒体源重叠。");
     }
 
     private void EnsureImportOutsidePendingRename(string path)
@@ -231,5 +231,5 @@ internal sealed partial class Catalog
         error is IOException or UnauthorizedAccessException or InvalidOperationException;
 
     private static string DescribeRecovery(PendingRename pending) =>
-        $"无法确认「{pending.Before}」和「{pending.After}」之间的重命名状态。此来源暂停重扫。";
+        $"无法确认「{pending.Before}」和「{pending.After}」之间的重命名状态。此媒体源暂停重扫。";
 }

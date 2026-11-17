@@ -34,6 +34,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="LibraryHomeButton" Click="GoToLibrary" Style="{StaticResource LibrarySubtleButton}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,0"
@@ -47,6 +48,11 @@
                     <Button Grid.Column="1" Click="ShowGlobalSearch" ToolTipService.ToolTip="全局搜索（Ctrl+Shift+F）"
                             Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="全局搜索">
                         <FontIcon Glyph="&#xE721;" FontSize="15" />
+                    </Button>
+                    <Button x:Name="ImportButton" Grid.Column="2" Click="ChooseSource"
+                            Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="导入文件夹"
+                            ToolTipService.ToolTip="导入媒体文件夹">
+                        <FontIcon Glyph="&#xE8B5;" FontSize="15" AutomationProperties.AccessibilityView="Raw" />
                     </Button>
                 </Grid>
                 <TreeView x:Name="NavTree" Grid.Row="1" SelectionMode="Single" ItemInvoked="Navigate"
@@ -71,10 +77,10 @@
                     <Border Height="1" Margin="0,0,0,3" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                     <Button x:Name="CreateAlbumButton" Click="CreateAlbum" Style="{StaticResource LibrarySubtleButton}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,0"
-                            AutomationProperties.Name="新建虚拟专辑">
+                            AutomationProperties.Name="新建合集">
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <FontIcon Glyph="&#xE710;" FontSize="14" />
-                            <TextBlock Text="新建专辑" />
+                            <TextBlock Text="新建合集" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="Rescan" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,0"
@@ -123,18 +129,10 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="CountLabel" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                        <Button x:Name="ImportButton" Grid.Column="1" Click="ChooseSource"
-                                Style="{StaticResource LibrarySubtleButton}" AutomationProperties.Name="导入文件夹">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE8B5;" FontSize="14" />
-                                <TextBlock Text="导入" />
-                            </StackPanel>
-                        </Button>
-                        <Border Grid.Column="2" CornerRadius="9" Padding="2,0"
+                        <Border Grid.Column="1" CornerRadius="9" Padding="2,0"
                                 Background="{ThemeResource ControlFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
                                 Visibility="{Binding Visibility, ElementName=ViewModePicker}">
@@ -386,7 +384,7 @@
                                 </Border>
                             </Grid>
                         </Button>
-                        <TextBlock Text="专辑为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="合集为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
                     </StackPanel>
                     <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
                                Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -468,8 +466,8 @@
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE721;" FontSize="20" VerticalAlignment="Center"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBox x:Name="SearchInput" Grid.Column="1" PlaceholderText="搜索所有来源"
-                                 AutomationProperties.Name="搜索所有来源" VerticalAlignment="Center" MinWidth="0"
+                        <TextBox x:Name="SearchInput" Grid.Column="1" PlaceholderText="搜索所有媒体源"
+                                 AutomationProperties.Name="搜索所有媒体源" VerticalAlignment="Center" MinWidth="0"
                                  FontSize="21" Padding="0,4" BorderThickness="0" Background="Transparent"
                                  TextChanged="SearchEdited" TextCompositionStarted="TextCompositionStarted"
                                  TextCompositionEnded="TextCompositionEnded" />

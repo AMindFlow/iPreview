@@ -101,7 +101,7 @@ public sealed partial class MainWindow : Window
         NavTree.RootNodes.Clear();
         if (sources.Count > 0)
         {
-            var sourcesNode = new TreeViewNode { Content = new NavigationHeading("来源", "\uE8B7"), IsExpanded = true };
+            var sourcesNode = new TreeViewNode { Content = new NavigationHeading("源", "\uE8B7"), IsExpanded = true };
             foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
             {
                 var label = source.Available ? source.Name : $"{source.Name}（离线）";
@@ -124,7 +124,7 @@ public sealed partial class MainWindow : Window
 
         if (albums.Count > 0)
         {
-            var albumsNode = new TreeViewNode { Content = new NavigationHeading("虚拟专辑", "\uE7B8"), IsExpanded = true };
+            var albumsNode = new TreeViewNode { Content = new NavigationHeading("合集", "\uE7B8"), IsExpanded = true };
             foreach (var album in albums)
                 albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id, Glyph: "\uE7B8") });
             NavTree.RootNodes.Add(albumsNode);
@@ -307,9 +307,9 @@ public sealed partial class MainWindow : Window
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
             : $"{tiles.Count} 项" + (current.Source is null && current.Album is null
-                ? $" · {sources.Count} 个来源" : "");
+                ? $" · {sources.Count} 个媒体源" : "");
         if (current.Source is long source && !sources[source].Available)
-            CountLabel.Text += " · 来源离线";
+            CountLabel.Text += " · 媒体源离线";
         var showAlbum = current.Album is not null;
         var isEmptyAlbum = showAlbum && tiles.Count == 0;
         AlbumTools.Visibility = showAlbum ? Visibility.Visible : Visibility.Collapsed;
@@ -425,12 +425,12 @@ public sealed partial class MainWindow : Window
                 var warning = $"待恢复重命名：{string.Join("、", pending)}";
                 if (offline.Count > 0)
                     warning += $"。离线：{string.Join("、", offline)}";
-                ShowNotice("部分来源暂未重扫", warning, InfoBarSeverity.Warning);
+                ShowNotice("部分媒体源暂未重扫", warning, InfoBarSeverity.Warning);
             }
             else if (offline.Count == 0)
                 Notice.IsOpen = false;
             else
-                ShowNotice("部分来源不可用", string.Join("、", offline), InfoBarSeverity.Warning);
+                ShowNotice("部分媒体源不可用", string.Join("、", offline), InfoBarSeverity.Warning);
             Reload(Selection?.Media.Id);
         }
         catch (InvalidOperationException error)
@@ -453,7 +453,7 @@ public sealed partial class MainWindow : Window
 
     private async Task<string?> AskAlbumName(string title, string initial)
     {
-        var entry = new TextBox { Header = "专辑名称", Text = initial };
+        var entry = new TextBox { Header = "合集名称", Text = initial };
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
@@ -472,7 +472,7 @@ public sealed partial class MainWindow : Window
     {
         if (catalog is null)
             return;
-        var name = await AskAlbumName("新建虚拟专辑", "");
+        var name = await AskAlbumName("新建合集", "");
         if (name is null)
             return;
         try
@@ -480,7 +480,7 @@ public sealed partial class MainWindow : Window
             current = new(name, Album: Database.CreateAlbum(name));
             Reload();
         }
-        catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }
+        catch (InvalidOperationException error) { ShowNotice("无法创建合集", error.Message); }
     }
 
     private void SelectionChanged(object sender, SelectionChangedEventArgs args)
