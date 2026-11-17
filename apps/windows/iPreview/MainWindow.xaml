@@ -581,7 +581,9 @@
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
                     <TextBlock x:Name="PreviewTitle" Margin="52,0" TextTrimming="CharacterEllipsis" TextAlignment="Center"
-                               VerticalAlignment="Center" FontWeight="SemiBold" />
+                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                               DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名"
+                               AutomationProperties.HelpText="双击复制文件名" />
                 </Grid>
 
                 <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
