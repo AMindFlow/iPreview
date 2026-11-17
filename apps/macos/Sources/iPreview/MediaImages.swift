@@ -38,6 +38,7 @@ struct MediaThumbnail: View {
 
     let media: Media
     var revision = 0
+    var previewCornerRadius: CGFloat?
     @ViewState private var image: CGImage?
 
     var body: some View {
@@ -57,6 +58,11 @@ struct MediaThumbnail: View {
                 }
             }
         }
+        .transformAnchorPreference(key: PreviewOriginKey.self, value: .bounds) { origins, bounds in
+            if let previewCornerRadius {
+                origins.items[media.id] = PreviewOrigin(bounds: bounds, cornerRadius: previewCornerRadius, image: image)
+            }
+        }
         .accessibilityHidden(true)
         .task(id: Load(media: media, revision: revision)) {
             image = nil
@@ -71,6 +77,7 @@ struct MediaThumbnail: View {
 
 struct PhotoCanvas: View {
     let media: Media
+    var poster: CGImage?
     @ViewState private var photo: CGImage?
     @ViewState private var animation: NSImage?
     @ViewState private var error: String?
@@ -80,12 +87,12 @@ struct PhotoCanvas: View {
             Group {
                 if let animation {
                     AnimatedPhoto(image: animation)
-                } else if let photo {
-                    Image(decorative: photo, scale: 1)
-                        .resizable()
-                        .scaledToFit()
                 } else if let error {
                     PreviewError(message: error)
+                } else if let still = photo ?? poster {
+                    Image(decorative: still, scale: 1)
+                        .resizable()
+                        .scaledToFit()
                 } else {
                     ProgressView()
                         .controlSize(.small)

@@ -53,7 +53,7 @@ struct MediaListRow: View {
     let selected: Bool
     let shaded: Bool
     let showPath: Bool
-    let checked: Bool?
+    let checked: Bool
     @ViewState private var facts: Facts?
 
     private struct Facts: Sendable {
@@ -64,14 +64,9 @@ struct MediaListRow: View {
     var body: some View {
         MediaListColumns {
             HStack(spacing: 8) {
-                if let checked {
-                    MediaSelectionMark(isChecked: checked)
-                        .frame(width: 17)
-                }
-                MediaThumbnail(media: media, revision: revision)
+                MediaThumbnail(media: media, revision: revision, previewCornerRadius: 3)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
-                    .anchorPreference(key: PreviewOriginKey.self, value: .bounds) { [media.id: $0] }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(media.name)
                         .fontWeight(selected ? .semibold : .regular)
@@ -98,6 +93,13 @@ struct MediaListRow: View {
         .frame(height: showPath ? 37 : 29)
         .background(selected ? Color.ipreviewAccent.opacity(0.16) : shaded ? Color.libraryInk.opacity(0.045) : .clear,
                     in: RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .bottomTrailing) {
+            if checked {
+                MediaSelectionMark()
+                    .padding(.trailing, 5)
+                    .padding(.bottom, 4)
+            }
+        }
         .contentShape(Rectangle())
         .task(id: revision) {
             facts = nil
@@ -120,12 +122,10 @@ struct MediaListRow: View {
 }
 
 struct MediaSelectionMark: View {
-    let isChecked: Bool
-
     var body: some View {
-        Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+        Image(systemName: "checkmark.circle.fill")
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(isChecked ? .white : Color.libraryInk.opacity(0.65), Color.ipreviewAccent)
+            .foregroundStyle(.white, Color.ipreviewAccent)
             .background(.white, in: Circle())
             .allowsHitTesting(false)
             .accessibilityHidden(true)
