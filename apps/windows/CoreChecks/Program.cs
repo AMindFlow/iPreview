@@ -1,5 +1,25 @@
 using IPreview;
 
+var list = new BrowseLayout(BrowseMode.List, 1);
+Check(list.NeighborOf(1, 3, BrowseDirection.Up) == 0 &&
+      list.NeighborOf(1, 3, BrowseDirection.Down) == 2 &&
+      list.NeighborOf(1, 3, BrowseDirection.Left) is null &&
+      list.NeighborOf(1, 3, BrowseDirection.Right) is null, "preview follows list axis");
+
+var gallery = new BrowseLayout(BrowseMode.Gallery, 1);
+Check(gallery.NeighborOf(1, 3, BrowseDirection.Left) == 0 &&
+      gallery.NeighborOf(1, 3, BrowseDirection.Right) == 2 &&
+      gallery.NeighborOf(1, 3, BrowseDirection.Up) is null &&
+      gallery.NeighborOf(1, 3, BrowseDirection.Down) is null, "preview follows gallery axis");
+
+var grid = new BrowseLayout(BrowseMode.Icons, 3);
+Check(grid.NeighborOf(1, 8, BrowseDirection.Right) == 2 &&
+      grid.NeighborOf(2, 8, BrowseDirection.Right) is null &&
+      grid.NeighborOf(3, 8, BrowseDirection.Left) is null, "preview stays in a grid row");
+Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
+      grid.NeighborOf(7, 8, BrowseDirection.Up) == 4 &&
+      grid.NeighborOf(5, 8, BrowseDirection.Down) is null, "preview stays in a grid column");
+
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
@@ -84,7 +104,7 @@ try
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
-    Console.WriteLine("Windows catalog and search checks passed.");
+    Console.WriteLine("Windows catalog, search and preview navigation checks passed.");
 }
 finally
 {

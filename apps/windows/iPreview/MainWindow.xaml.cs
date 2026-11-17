@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private int previewIndex = -1;
     private long? initialSelection;
     private List<Tile> previewTiles = [];
+    private BrowseLayout previewLayout;
     private int previewGeneration;
     private MediaPlayer? player;
     private MediaSource? videoSource;
@@ -164,7 +165,11 @@ public sealed partial class MainWindow : Window
     {
         var content = args.InvokedItem is TreeViewNode node ? node.Content : args.InvokedItem;
         if (content is Navigation target)
+        {
             NavigateTo(target);
+            if (browsingFolders)
+                FocusSourceFolder();
+        }
     }
 
     private void NavigateTo(Navigation target)
@@ -183,28 +188,65 @@ public sealed partial class MainWindow : Window
             NavigateFromContent(target);
     }
 
-    private void GoBackToSourceFolder(object sender, RoutedEventArgs args)
+    private void SourceFoldersKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (current.Source is not long sourceID || current.Folder is not { } path)
+        if (args.Key is VirtualKey.Left or VirtualKey.Right)
+        {
+            args.Handled = true;
+            return;
+        }
+        if (args.Key == VirtualKey.Escape)
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+                NavigateToSourceParent();
+            return;
+        }
+        if (args.Key != VirtualKey.Enter)
+            return;
+        args.Handled = true;
+        if (!args.KeyStatus.WasKeyDown &&
+            FocusManager.GetFocusedElement(Root.XamlRoot) is ListViewItem item &&
+            SourceFolders.ItemFromContainer(item) is Navigation target)
+            NavigateFromContent(target);
+    }
+
+    private Source? MultiCreatorSource => !searching && current.Source is long id &&
+        sources[id] is { Layout: Layout.MultiCreator } source ? source : null;
+
+    private void GoBackToSourceFolder(object sender, RoutedEventArgs args) => NavigateToSourceParent();
+
+    private void NavigateToSourceParent()
+    {
+        if (MultiCreatorSource is not { } source || current.Folder is not { } path)
             return;
         var separator = path.IndexOf('/');
         var creator = path[..separator];
         var target = separator == path.Length - 1
-            ? new Navigation(sources[sourceID].Name, Source: sourceID)
-            : new Navigation(creator, Source: sourceID, Folder: path[..(separator + 1)]);
-        NavigateFromContent(target);
+            ? new Navigation(source.Name, Source: source.Id)
+            : new Navigation(creator, Source: source.Id, Folder: path[..(separator + 1)]);
+        NavigateFromContent(target, restoringFolder: path);
     }
 
-    private void NavigateFromContent(Navigation target)
+    private void NavigateFromContent(Navigation target, string? restoringFolder = null)
     {
         NavigateTo(target);
-        var browser = SourceFolders.Visibility == Visibility.Visible ? (Control)SourceFolders : ActiveMediaBrowser;
-        browser.Focus(FocusState.Programmatic);
+        if (browsingFolders)
+            FocusSourceFolder(restoringFolder);
+        else
+            FocusSelectedMedia();
+    }
+
+    private void FocusSourceFolder(string? restoringFolder = null)
+    {
+        var folders = SourceFolders.Items.OfType<Navigation>();
+        var folder = folders.FirstOrDefault(item => item.Folder == restoringFolder) ?? folders.FirstOrDefault();
+        FocusBrowserItem(SourceFolders, folder, FocusState.Keyboard);
     }
 
     private bool ShowSourceFolders()
     {
-        var isMultiCreator = !searching && current.Source is long id && sources[id].Layout == Layout.MultiCreator;
+        var isMultiCreator = MultiCreatorSource is not null;
         var path = current.Folder;
         var atAlbum = path is not null && path.IndexOf('/') != path.Length - 1;
         var browseFolders = isMultiCreator && !atAlbum;
@@ -342,6 +384,8 @@ public sealed partial class MainWindow : Window
                 current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
                 Notice.IsOpen = false;
                 Reload();
+                if (browsingFolders)
+                    FocusSourceFolder();
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or COMException)
@@ -601,6 +645,13 @@ public sealed partial class MainWindow : Window
 
     private void GalleryKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (args.Key == VirtualKey.Escape && MultiCreatorSource is not null && current.Folder is not null)
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+                NavigateToSourceParent();
+            return;
+        }
         if (args.Key != VirtualKey.Space)
             return;
         args.Handled = true;
@@ -615,7 +666,15 @@ public sealed partial class MainWindow : Window
             return;
         initialSelection = Selection?.Media.Id;
         previewTiles = tiles;
-        previewColumns = Columns;
+        if (browseMode == BrowseMode.Icons)
+            Gallery.UpdateLayout();
+        previewLayout = new(browseMode, Columns);
+        PreviewHint.Text = (previewLayout.Mode switch
+        {
+            BrowseMode.List => "↑ / ↓ 切换媒体",
+            BrowseMode.Gallery => "← / → 切换媒体",
+            _ => "方向键 切换媒体"
+        }) + "     Space / Esc 退出预览";
         PreviewOverlay.Visibility = Visibility.Visible;
         LibraryView.Visibility = Visibility.Collapsed;
         ShowPreview(browser.SelectedIndex);
@@ -627,7 +686,6 @@ public sealed partial class MainWindow : Window
         Gallery.ItemsPanelRoot is ItemsWrapGrid { ItemWidth: > 0 } panel
         ? Math.Max(1, (int)Math.Floor(panel.ActualWidth / panel.ItemWidth))
         : 1;
-    private int previewColumns = 1;
 
     private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview(initialSelection);
 
@@ -663,19 +721,18 @@ public sealed partial class MainWindow : Window
                 ClosePreview(previewTiles[previewIndex].Media.Id);
             return;
         }
-        var delta = args.Key switch
+        BrowseDirection? direction = args.Key switch
         {
-            VirtualKey.Left => -1,
-            VirtualKey.Right => 1,
-            VirtualKey.Up => -previewColumns,
-            VirtualKey.Down => previewColumns,
-            _ => 0
+            VirtualKey.Left => BrowseDirection.Left,
+            VirtualKey.Right => BrowseDirection.Right,
+            VirtualKey.Up => BrowseDirection.Up,
+            VirtualKey.Down => BrowseDirection.Down,
+            _ => null
         };
-        if (delta == 0)
+        if (direction is not { } arrow)
             return;
         args.Handled = true;
-        var next = previewIndex + delta;
-        if (next >= 0 && next < previewTiles.Count)
+        if (previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
             ShowPreview(next);
     }
 
@@ -691,10 +748,10 @@ public sealed partial class MainWindow : Window
         MainImage.Source = null;
         VideoSurface.Visibility = Visibility.Collapsed;
         VideoControls.Visibility = Visibility.Collapsed;
-        LoadNeighbor(NeighborLeft, index - 1, generation);
-        LoadNeighbor(NeighborRight, index + 1, generation);
-        LoadNeighbor(NeighborTop, index - previewColumns, generation);
-        LoadNeighbor(NeighborBottom, index + previewColumns, generation);
+        LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
+        LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
+        LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
+        LoadNeighbor(NeighborBottom, BrowseDirection.Down, generation);
 
         try
         {
@@ -725,10 +782,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void LoadNeighbor(Image image, int index, int generation)
+    private async void LoadNeighbor(Image image, BrowseDirection direction, int generation)
     {
         image.Source = null;
-        if (index < 0 || index >= previewTiles.Count)
+        if (previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not int index)
             return;
         try
         {
