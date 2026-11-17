@@ -114,6 +114,7 @@ struct AlbumMediaPicker: View {
             HStack(spacing: 7) {
                 Text("来源与创作者")
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
                     .accessibilityHidden(true)
                 Picker("来源与创作者", selection: $creator) {
                     Text("请选择").tag(nil as LibraryPage?)
@@ -133,6 +134,7 @@ struct AlbumMediaPicker: View {
             HStack(spacing: 7) {
                 Text("来源专辑")
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
                     .accessibilityHidden(true)
                 Picker("来源专辑", selection: $folder) {
                     Text("请选择").tag(nil as LibraryPage?)
