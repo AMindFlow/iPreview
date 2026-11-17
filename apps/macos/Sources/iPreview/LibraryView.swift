@@ -15,22 +15,23 @@ struct LibraryView: View {
     @ViewState private var matches: (request: SearchRequest, items: [Media])?
     @ViewState private var filtersShown = false
     @ViewState private var globalSearchShown = false
-    @ViewState private var revealSearchResult: Int64?
+    @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
-    @ViewState private var editDirectoryTitle: SourceNameEdit?
-    @ViewState private var directoryName = ""
-    @ViewState private var directoryNameSelection: TextSelection?
+    @ViewState private var titleEdit: LibraryTitleEdit?
+    @ViewState private var titleDraft = ""
+    @ViewState private var titleSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, search, albumTitle, directoryTitle }
+    enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, title }
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+    private var libraryOverlayShown: Bool { preview != nil || globalSearchShown }
 
     var body: some View {
         @Bindable var model = model
@@ -50,6 +51,7 @@ struct LibraryView: View {
                 content(scope)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .accessibilityHidden(libraryOverlayShown)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -57,18 +59,16 @@ struct LibraryView: View {
                         Label("导入", systemImage: "folder.badge.plus")
                     }
                     .keyboardShortcut("o", modifiers: .command)
-                    .disabled(model.isWorking || preview != nil)
+                    .disabled(model.isWorking || libraryOverlayShown)
                     .help("导入本地媒体目录")
                 }
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .allowsHitTesting(preview == nil)
-        .accessibilityHidden(preview != nil)
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
-                                  mode: $mode, directories: $searchDirectories, files: $searchFiles,
+                                  focus: $focus,
                                   dismiss: dismissGlobalSearch, open: openSearchResult) { item, results in
                     open(item, among: results, layout: .list)
                 }
@@ -79,13 +79,15 @@ struct LibraryView: View {
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 GeometryReader { geometry in
-                    MediaPreview(request: preview, sourceFrame: { id in
+                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
                         guard !globalSearchShown else { return nil }
-                        return origins[id].map { geometry[$0] }
-                    }) { selection in
+                        return origins.thumbnail(for: id, in: geometry)
+                    }
+                    MediaPreview(request: preview, thumbnail: thumbnail) { selection in
                         self.preview = nil
                         if !globalSearchShown {
                             self.selected = selection
+                            if thumbnail(selection) == nil { self.mediaToReveal = selection }
                             focusBrowser()
                         }
                     }
@@ -154,6 +156,7 @@ struct LibraryView: View {
                         navigate(.library)
                     }
                     Button {
+                        focus = nil
                         globalSearchShown = true
                     } label: {
                         Image(systemName: "magnifyingglass")
@@ -230,6 +233,7 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityLabel("媒体库导航")
+        .accessibilityHidden(libraryOverlayShown)
     }
 
     private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,
@@ -330,55 +334,39 @@ struct LibraryView: View {
     @ViewBuilder
     private func browserTitle(_ scope: ContentScope) -> some View {
         Group {
-            if let album = scope.virtualAlbum {
-                VirtualAlbumTitle(album: album, disabled: model.isWorking || removalSelection != nil, focus: $focus,
-                                  rename: { name in await model.rename(albumID: album.id, to: name) },
-                                  finished: focusBrowser)
-                    .id(album.id)
-            } else if !searching, let source = scope.source, let folder = page.indexedDirectory {
-                if editDirectoryTitle?.folder == folder {
-                    TextField("文件夹名称", text: $directoryName, selection: $directoryNameSelection)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($focus, equals: .directoryTitle)
-                        .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
-                        .accessibilityIdentifier("source-directory-name")
-                        .background {
-                            RenameClickBoundary(onOutsideClick: finishDirectoryTitle)
-                                .allowsHitTesting(false)
-                        }
-                        .task {
-                            await Task.yield()
-                            focus = .directoryTitle
-                        }
-                        .onSubmit {
-                            finishDirectoryTitle()
-                            focusBrowser()
-                        }
-                        .onKeyPress(.escape) {
-                            editDirectoryTitle = nil
-                            focusBrowser()
-                            return .handled
-                        }
-                } else if !model.isWorking, source.isAvailable {
-                    let start = {
-                        let member = scope.items.first(where: \.isAvailable)
-                            ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
-                        let edit = SourceNameEdit(folder: folder, source: source, expectedMember: member)
-                        directoryName = edit.name
-                        directoryNameSelection = TextSelection(range: directoryName.startIndex..<directoryName.endIndex)
-                        editDirectoryTitle = edit
+            if let edit = titleEdit, page == edit.page {
+                TextField(edit.placeholder, text: $titleDraft, selection: $titleSelection)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($focus, equals: .title)
+                    .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
+                    .accessibilityIdentifier(edit.controlID + "-name")
+                    .background {
+                        RenameClickBoundary { finishTitleEdit(edit) }
+                            .allowsHitTesting(false)
                     }
-                    Text(scope.title)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2, perform: start)
-                        .accessibilityAddTraits([.isHeader, .isButton])
-                        .accessibilityAction { start() }
-                        .accessibilityHint("双击标题重命名文件夹")
-                        .accessibilityIdentifier("source-directory-title")
-                        .help("双击标题重命名文件夹")
-                } else {
-                    Text(scope.title)
-                        .accessibilityAddTraits(.isHeader)
+                    .task {
+                        await Task.yield()
+                        focus = .title
+                    }
+                    .onSubmit {
+                        finishTitleEdit(edit)
+                        focusBrowser()
+                    }
+                    .onKeyPress(.escape) {
+                        titleEdit = nil
+                        focusBrowser()
+                        return .handled
+                    }
+            } else if !model.isWorking, let album = scope.virtualAlbum, removalSelection == nil {
+                editableTitle(scope.title, controlID: "virtual-album", hint: "双击标题重命名虚拟专辑") {
+                    beginTitleEdit(.album(album))
+                }
+            } else if !model.isWorking, !searching, let source = scope.source, source.isAvailable,
+                      let folder = page.indexedDirectory {
+                editableTitle(scope.title, controlID: "source-directory", hint: "双击标题重命名文件夹") {
+                    let member = scope.items.first(where: \.isAvailable)
+                        ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
+                    beginTitleEdit(.directory(SourceNameEdit(folder: folder, source: source, expectedMember: member)))
                 }
             } else {
                 Text(scope.title)
@@ -388,6 +376,18 @@ struct LibraryView: View {
         .font(.system(size: 28, weight: .bold))
         .lineLimit(1)
         .truncationMode(.tail)
+    }
+
+    private func editableTitle(_ title: String, controlID: String, hint: String,
+                               start: @escaping () -> Void) -> some View {
+        Text(title)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: start)
+            .accessibilityAddTraits([.isHeader, .isButton])
+            .accessibilityAction { start() }
+            .accessibilityHint(hint)
+            .accessibilityIdentifier(controlID + "-title")
+            .help(hint)
     }
 
     @ViewBuilder
@@ -426,13 +426,13 @@ struct LibraryView: View {
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
                 .disabled(model.isWorking)
-                Button("选择") {
+                Button("调整") {
                     removalSelection = []
                     focusBrowser()
                 }
                 .libraryGlassButton()
                 .disabled(model.isWorking)
-                .help("选择多个媒体引用")
+                .help("勾选媒体或按住媒体拖动排序")
             }
         }
     }
@@ -643,21 +643,16 @@ struct LibraryView: View {
                         }
                         return .handled
                     }
-                    .onChange(of: preview == nil) { _, closed in
-                        if closed, let selected {
-                            reader.scrollTo(selected)
-                        }
-                    }
                     .onChange(of: items, initial: true) { _, updated in
                         if let selected, updated.contains(where: { $0.id == selected }) { return }
                         selected = updated.first?.id
                     }
-                    .task(id: revealSearchResult) {
-                        guard let target = revealSearchResult, items.contains(where: { $0.id == target }) else { return }
+                    .task(id: mediaToReveal) {
+                        guard let target = mediaToReveal, items.contains(where: { $0.id == target }) else { return }
                         await Task.yield()
                         guard !Task.isCancelled else { return }
                         reader.scrollTo(target, anchor: .center)
-                        revealSearchResult = nil
+                        mediaToReveal = nil
                     }
                     .onChange(of: browseMode) {
                         if let selected {
@@ -681,18 +676,19 @@ struct LibraryView: View {
                     ForEach(items) { item in
                         browseItem(item, among: items, album: album, layout: layout) {
                             MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                      showPath: searching, checked: removalSelection?.contains(item.id))
+                                      showPath: searching, checked: removalSelection?.contains(item.id) == true)
                         }
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
+            .previewScrollViewport()
             .albumOrderViewport(albumOrder, album: album)
         case .list:
             VStack(spacing: 0) {
                 MediaListColumns {
-                    Text("名称").padding(.leading, removalSelection == nil ? 33 : 58)
+                    Text("名称").padding(.leading, 33)
                 } modified: {
                     Text("修改日期")
                 } size: {
@@ -711,13 +707,14 @@ struct LibraryView: View {
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaListRow(media: item, revision: model.revision, selected: isMediaSelected(item.id),
                                              shaded: !index.isMultiple(of: 2), showPath: searching,
-                                             checked: removalSelection?.contains(item.id))
+                                             checked: removalSelection?.contains(item.id) == true)
                             }
                         }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 6)
                 }
+                .previewScrollViewport()
                 .albumOrderViewport(albumOrder, album: album)
             }
         case .gallery:
@@ -731,7 +728,7 @@ struct LibraryView: View {
                         ForEach(items) { item in
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                          showPath: searching, checked: removalSelection?.contains(item.id))
+                                          showPath: searching, checked: removalSelection?.contains(item.id) == true)
                                     .frame(width: 94)
                             }
                         }
@@ -739,6 +736,7 @@ struct LibraryView: View {
                     .padding(.vertical, 5)
                 }
                 .frame(height: searching ? 101 : 88)
+                .previewScrollViewport()
                 .albumOrderViewport(albumOrder, album: album)
             }
             .padding(.horizontal, 24)
@@ -749,6 +747,16 @@ struct LibraryView: View {
     @ViewBuilder
     private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, layout: BrowseLayout,
                                         @ViewBuilder label: () -> Label) -> some View {
+        let adjusting = removalSelection != nil
+        let click: (Int) -> Void = { count in
+            selected = item.id
+            focus = .browser
+            if adjusting {
+                toggleRemoval(item.id)
+            } else if count == 2 {
+                open(item, among: items, layout: layout)
+            }
+        }
         let avatar = label()
         let cell = avatar
             .overlay {
@@ -758,18 +766,6 @@ struct LibraryView: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
-            }
-            .overlay {
-                MediaTileClick { clickCount in
-                    selected = item.id
-                    focus = .browser
-                    if removalSelection != nil {
-                        if clickCount == 1 { toggleRemoval(item.id) }
-                    } else if clickCount == 2 {
-                        open(item, among: items, layout: layout)
-                    }
-                }
-                .accessibilityHidden(true)
             }
             .contextMenu {
                 if let album, removalSelection == nil {
@@ -794,16 +790,16 @@ struct LibraryView: View {
             }
             .id(item.id)
         if let album, album.mediaIDs.count > 1 {
-            let enabled = removalSelection == nil && !model.isWorking && !searching
-            AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, enabled: enabled,
-                           content: cell, avatar: avatar) {
+            let canReorder = adjusting && !model.isWorking && !searching
+            AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, adjusting: adjusting,
+                           canReorder: canReorder, content: cell, avatar: avatar, click: click) {
                 selected = item.id
                 focus = .browser
             } commit: { expected, position in
                 Task { await model.move(mediaID: item.id, in: expected, to: position) }
             }
             .accessibilityActions {
-                if enabled {
+                if canReorder {
                     if item.id != album.mediaIDs.first {
                         Button("上移") {
                             Task { await model.move(mediaID: item.id, in: album.id, by: -1) }
@@ -818,6 +814,10 @@ struct LibraryView: View {
             }
         } else {
             cell
+                .overlay {
+                    MediaTileClick(adjusting: adjusting, onClick: click)
+                        .accessibilityHidden(true)
+                }
         }
     }
 
@@ -866,7 +866,7 @@ struct LibraryView: View {
         removalSelection = nil
         query = ""
         selected = mediaID
-        revealSearchResult = mediaID
+        mediaToReveal = mediaID
         selectedFolder = folder
         focusBrowser()
     }
@@ -894,16 +894,28 @@ struct LibraryView: View {
         return .handled
     }
 
-    private func finishDirectoryTitle() {
-        guard let edit = editDirectoryTitle else { return }
-        editDirectoryTitle = nil
-        let name = directoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func beginTitleEdit(_ target: LibraryTitleEdit.Target) {
+        let edit = LibraryTitleEdit(page: page, target: target)
+        titleDraft = edit.name
+        titleSelection = TextSelection(range: titleDraft.startIndex..<titleDraft.endIndex)
+        titleEdit = edit
+    }
+
+    private func finishTitleEdit(_ edit: LibraryTitleEdit) {
+        guard titleEdit?.id == edit.id else { return }
+        titleEdit = nil
+        let name = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != edit.name else { return }
         Task {
-            do {
-                try await renameSourceItem(edit, to: name)
-            } catch {
-                model.error = error.localizedDescription
+            switch edit.target {
+            case .album(let album):
+                await model.rename(albumID: album.id, to: name)
+            case .directory(let source):
+                do {
+                    try await renameSourceItem(source, to: name)
+                } catch {
+                    model.error = error.localizedDescription
+                }
             }
         }
     }
@@ -1124,22 +1136,21 @@ private struct MediaTile: View {
     let revision: Int
     let selected: Bool
     let showPath: Bool
-    let checked: Bool?
+    let checked: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MediaThumbnail(media: media, revision: revision)
+            MediaThumbnail(media: media, revision: revision, previewCornerRadius: 12)
                 .aspectRatio(1.47, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 12))
-                .anchorPreference(key: PreviewOriginKey.self, value: .bounds) { [media.id: $0] }
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(selected ? Color.ipreviewAccent : .clear, lineWidth: 2)
                 }
-                .overlay(alignment: .topTrailing) {
-                    if let checked {
-                        MediaSelectionMark(isChecked: checked)
-                            .padding(7)
+                .overlay(alignment: .bottomTrailing) {
+                    if checked {
+                        MediaSelectionMark()
+                            .padding(6)
                     }
                 }
                 .overlay(alignment: .bottomLeading) {

@@ -7,17 +7,60 @@ struct PreviewRequest {
     let layout: BrowseLayout
 }
 
-struct PreviewOriginKey: PreferenceKey {
-    static let defaultValue: [Int64: Anchor<CGRect>] = [:]
+struct PreviewOrigin {
+    let bounds: Anchor<CGRect>
+    let cornerRadius: CGFloat
+    let image: CGImage?
+}
 
-    static func reduce(value: inout [Int64: Anchor<CGRect>], nextValue: () -> [Int64: Anchor<CGRect>]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+struct PreviewThumbnail {
+    let bounds: CGRect
+    let visibleBounds: CGRect
+    let cornerRadius: CGFloat
+    let image: CGImage?
+
+    var aspectRatio: CGFloat? {
+        image.map { CGFloat($0.width) / CGFloat($0.height) }
+    }
+}
+
+struct PreviewOrigins {
+    var items: [Int64: PreviewOrigin] = [:]
+    var viewport: Anchor<CGRect>?
+
+    func thumbnail(for id: Int64, in geometry: GeometryProxy) -> PreviewThumbnail? {
+        guard let item = items[id] else { return nil }
+        let bounds = geometry[item.bounds]
+        let window = geometry.frame(in: .local)
+        let visibleArea = viewport.map { geometry[$0].intersection(window) } ?? window
+        let visibleBounds = bounds.intersection(visibleArea)
+        guard visibleBounds.width >= 8 && visibleBounds.height >= 8 else { return nil }
+        return PreviewThumbnail(bounds: bounds, visibleBounds: visibleBounds, cornerRadius: item.cornerRadius,
+                                image: item.image)
+    }
+}
+
+struct PreviewOriginKey: PreferenceKey {
+    static var defaultValue: PreviewOrigins { PreviewOrigins() }
+
+    static func reduce(value: inout PreviewOrigins, nextValue: () -> PreviewOrigins) {
+        let next = nextValue()
+        value.items.merge(next.items, uniquingKeysWith: { _, latest in latest })
+        if let viewport = next.viewport { value.viewport = viewport }
+    }
+}
+
+extension View {
+    func previewScrollViewport() -> some View {
+        transformAnchorPreference(key: PreviewOriginKey.self, value: .bounds) { origins, viewport in
+            origins.viewport = viewport
+        }
     }
 }
 
 struct MediaPreview: View {
     let request: PreviewRequest
-    let sourceFrame: (Int64) -> CGRect?
+    let thumbnail: (Int64) -> PreviewThumbnail?
     let close: (Int64) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -36,9 +79,9 @@ struct MediaPreview: View {
 
     private var media: Media { request.items[index] }
 
-    init(request: PreviewRequest, sourceFrame: @escaping (Int64) -> CGRect?, close: @escaping (Int64) -> Void) {
+    init(request: PreviewRequest, thumbnail: @escaping (Int64) -> PreviewThumbnail?, close: @escaping (Int64) -> Void) {
         self.request = request
-        self.sourceFrame = sourceFrame
+        self.thumbnail = thumbnail
         self.close = close
         _index = ViewState(initialValue: request.items.firstIndex(where: { $0.id == request.selection })!)
     }
@@ -48,43 +91,52 @@ struct MediaPreview: View {
             let size = geometry.size
             let window = CGRect(origin: .zero, size: size)
             let destination = window.insetBy(dx: size.width * 0.12, dy: size.height * 0.14)
-            let thumbnail = sourceFrame(closingSelection ?? request.selection)?.intersection(window)
-            let origin = thumbnail.flatMap { $0.width >= 8 && $0.height >= 8 ? $0 : nil }
-            let fallback = destination.insetBy(dx: size.width * 0.10, dy: size.height * 0.10)
-            let frame = expanded || reduceMotion ? destination : origin ?? fallback
+            let source = reduceMotion ? nil : thumbnail(closingSelection ?? request.selection)
+            let displayedThumbnail = thumbnail(media.id)
             ZStack {
-                Color(red: 0.050, green: 0.058, blue: 0.074)
-                    .opacity(expanded ? 1 : 0)
+                Color.clear
+                    .contentShape(Rectangle())
                     .onTapGesture { focus = .canvas }
+                    .accessibilityHidden(true)
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .opacity(expanded ? 1 : 0)
+                    .allowsHitTesting(false)
                 neighbors(in: size)
                     .opacity(expanded ? 1 : 0)
-                stage
-                    .id(media.id)
-                    .frame(width: frame.width, height: frame.height)
-                    .clipShape(.rect(cornerRadius: expanded ? 12 : min(12, frame.height * 0.12)))
-                    .position(x: frame.midX, y: frame.midY)
-                    .opacity(expanded || (!reduceMotion && origin != nil) ? 1 : 0)
-                    .accessibilityLabel(media.name)
-                    .onTapGesture { focus = .canvas }
+                PreviewStage(progress: expanded || reduceMotion ? 1 : 0, source: source, destination: destination,
+                             aspectRatio: displayedThumbnail?.aspectRatio) {
+                    stage(poster: displayedThumbnail?.image)
+                        .id(media.id)
+                }
+                .opacity(expanded || source != nil ? 1 : 0)
+                .accessibilityLabel(media.name)
+                .onTapGesture { focus = .canvas }
                 navigation
                     .opacity(expanded ? 1 : 0)
+                    .disabled(closingSelection != nil)
             }
+            .frame(width: size.width, height: size.height)
             .focusable()
             .focusEffectDisabled()
             .focused($focus, equals: .canvas)
             .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
-            .overlay(alignment: .top) { topControls.opacity(expanded ? 1 : 0) }
+            .overlay(alignment: .top) {
+                topControls
+                    .opacity(expanded ? 1 : 0)
+                    .disabled(closingSelection != nil)
+            }
             .overlay(alignment: .bottom) {
                 if media.kind == .video, video.message == nil {
                     playerControls
                         .frame(width: min(size.width * 0.65, 620))
                         .padding(.bottom, 22)
                         .opacity(expanded ? 1 : 0)
+                        .disabled(closingSelection != nil)
                 }
             }
         }
-        .environment(\.colorScheme, .dark)
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
         .task {
             await Task.yield()
             guard closingSelection == nil else { return }
@@ -105,7 +157,6 @@ struct MediaPreview: View {
             if message != nil { focus = .canvas }
         }
         .onDisappear { video.stop() }
-        .allowsHitTesting(closingSelection == nil)
         .accessibilityIdentifier("media-preview")
     }
 
@@ -133,7 +184,7 @@ struct MediaPreview: View {
             guard focus == .canvas else { return .ignored }
             if press.phase == .down { dismiss(returningTo: media.id) }
         case .tab:
-            guard media.kind == .video, video.message == nil, video.duration > 0 else { return .ignored }
+            guard media.kind == .video, video.message == nil, video.duration > 0 else { return .handled }
             if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
         default:
             if focus == .timeline {
@@ -175,16 +226,24 @@ struct MediaPreview: View {
     }
 
     @ViewBuilder
-    private var stage: some View {
+    private func stage(poster: CGImage?) -> some View {
         if media.kind == .video {
             if let message = video.message {
                 PreviewError(message: message)
             } else {
                 VideoCanvas(player: video.player)
-                    .background(.black)
+                    .background {
+                        if let poster {
+                            Image(decorative: poster, scale: 1)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            Color.black
+                        }
+                    }
             }
         } else {
-            PhotoCanvas(media: media)
+            PhotoCanvas(media: media, poster: poster)
         }
     }
 
@@ -314,6 +373,53 @@ struct MediaPreview: View {
     private func time(_ seconds: Double) -> String {
         let rounded = Int(seconds)
         return String(format: "%d:%02d", rounded / 60, rounded % 60)
+    }
+}
+
+private struct PreviewStage<Content: View>: View, Animatable {
+    nonisolated var progress: CGFloat
+    let source: PreviewThumbnail?
+    let destination: CGRect
+    let aspectRatio: CGFloat?
+    @ViewBuilder let content: () -> Content
+
+    nonisolated var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let fitted = mediaBounds(in: destination, fill: false)
+        let fallback = fitted.insetBy(dx: fitted.width * 0.10, dy: fitted.height * 0.10)
+        let clip = interpolate(from: source?.visibleBounds ?? fallback, to: fitted)
+        let media = interpolate(from: mediaBounds(in: source?.bounds ?? fallback, fill: true), to: fitted)
+        let radius = interpolate(from: source?.cornerRadius ?? 12, to: 12)
+
+        content()
+            .frame(width: media.width, height: media.height)
+            .position(x: media.midX - clip.minX, y: media.midY - clip.minY)
+            .frame(width: clip.width, height: clip.height)
+            .clipShape(.rect(cornerRadius: radius))
+            .position(x: clip.midX, y: clip.midY)
+    }
+
+    private func mediaBounds(in bounds: CGRect, fill: Bool) -> CGRect {
+        guard let aspectRatio else { return bounds }
+        let widthLimitedHeight = bounds.width / aspectRatio
+        let height = fill ? max(bounds.height, widthLimitedHeight) : min(bounds.height, widthLimitedHeight)
+        return bounds.insetBy(dx: (bounds.width - height * aspectRatio) / 2,
+                              dy: (bounds.height - height) / 2)
+    }
+
+    private func interpolate(from start: CGRect, to end: CGRect) -> CGRect {
+        CGRect(x: interpolate(from: start.minX, to: end.minX),
+               y: interpolate(from: start.minY, to: end.minY),
+               width: interpolate(from: start.width, to: end.width),
+               height: interpolate(from: start.height, to: end.height))
+    }
+
+    private func interpolate(from start: CGFloat, to end: CGFloat) -> CGFloat {
+        start + (end - start) * progress
     }
 }
 
