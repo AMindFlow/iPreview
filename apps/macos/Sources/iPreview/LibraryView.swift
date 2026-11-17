@@ -196,13 +196,13 @@ struct LibraryView: View {
     private func header(_ scope: ContentScope) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
-                if !searching, case .folder(let sourceID, _) = page {
-                    Button { navigate(.source(sourceID)) } label: {
+                if !searching, let parent = page.parent(in: scope.source?.layout) {
+                    Button { navigate(parent.page) } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("返回来源")
-                    .help("返回来源")
+                    .accessibilityLabel(parent.label)
+                    .help(parent.label)
                 }
                 Text(scope.title)
                     .font(.system(size: 28, weight: .bold))
@@ -363,13 +363,13 @@ struct LibraryView: View {
         }
     }
 
-    private func folderGallery(_ folders: [FolderAlbum]) -> some View {
+    private func folderGallery(_ folders: [LibraryFolder]) -> some View {
         GeometryReader { geometry in
             ScrollView {
                 LazyVGrid(columns: columns(for: geometry.size.width), alignment: .leading, spacing: 18) {
                     ForEach(folders) { folder in
                         Button {
-                            navigate(.folder(folder.cover.source.id, folder.id))
+                            navigate(folder.page)
                             focusGallery()
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
@@ -379,7 +379,7 @@ struct LibraryView: View {
                                 Text(folder.name)
                                     .font(.callout.weight(.semibold))
                                     .lineLimit(1)
-                                Text("\(folder.creator) · \(folder.count) 项")
+                                Text(folder.caption)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -531,41 +531,53 @@ private struct SearchRequest: Equatable {
 private enum LibraryPage: Hashable {
     case library
     case source(Int64)
+    case creator(Int64, String)
     case folder(Int64, String)
     case virtual(Int64)
 
     var sourceID: Int64? {
         switch self {
-        case .source(let id), .folder(let id, _): id
+        case .source(let id), .creator(let id, _), .folder(let id, _): id
         case .library, .virtual: nil
+        }
+    }
+
+    func parent(in layout: iPreviewCore.Layout?) -> (page: LibraryPage, label: String)? {
+        switch self {
+        case .creator(let id, _):
+            return (.source(id), "返回来源")
+        case .folder(let id, let key):
+            if layout == .multiCreator, let creator = key.split(separator: "/").first {
+                return (.creator(id, String(creator)), "返回创作者")
+            }
+            return (.source(id), "返回来源")
+        case .library, .source, .virtual:
+            return nil
         }
     }
 }
 
-private struct FolderAlbum: Identifiable {
-    let id: String
+private struct LibraryFolder: Identifiable {
+    let page: LibraryPage
+    let name: String
     let cover: Media
-    let count: Int
+    let caption: String
 
-    var name: String { cover.album }
-    var creator: String { cover.creator }
+    var id: LibraryPage { page }
 }
 
 private struct ContentScope {
     let title: String
+    let subtitle: String
     let items: [Media]
-    let folders: [FolderAlbum]
+    let folders: [LibraryFolder]
     let source: Source?
     let virtualAlbum: VirtualAlbum?
-
-    var subtitle: String {
-        if let source { return "\(source.layout.title) · \(folders.isEmpty ? "\(items.count) 项" : "\(folders.count) 个专辑")" }
-        return "\(items.count) 项"
-    }
 
     init(page: LibraryPage, snapshot: LibrarySnapshot, matches: [Media]?) {
         if let matches {
             title = "搜索结果"
+            subtitle = "\(matches.count) 项"
             items = matches
             folders = []
             source = nil
@@ -574,7 +586,8 @@ private struct ContentScope {
         }
 
         let active = snapshot.media.filter(\.existsInSource)
-        source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
+        let source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
+        self.source = source
         switch page {
         case .library:
             title = "媒体库"
@@ -584,20 +597,25 @@ private struct ContentScope {
         case .source(let id):
             title = source?.name ?? "来源"
             let sourceItems = active.filter { $0.source.id == id }
-            if source?.layout == .flat {
-                items = sourceItems
-                folders = []
-            } else {
-                let groups = Dictionary(grouping: sourceItems, by: Self.folderKey)
-                var seen: Set<String> = []
-                folders = sourceItems.compactMap {
-                    let key = Self.folderKey($0)
-                    guard seen.insert(key).inserted else { return nil }
-                    let members = groups[key]!
-                    return FolderAlbum(id: key, cover: members[0], count: members.count)
+            switch source?.layout {
+            case .multiCreator:
+                folders = Self.groupFolders(sourceItems, by: \.creator) { name, members in
+                    LibraryFolder(page: .creator(id, name), name: name, cover: members[0],
+                                  caption: "\(Set(members.map(\.album)).count) 个专辑")
                 }
                 items = []
+            case .creator:
+                folders = Self.albumFolders(sourceItems)
+                items = []
+            case .flat, nil:
+                folders = []
+                items = sourceItems
             }
+            virtualAlbum = nil
+        case .creator(let id, let creator):
+            title = creator
+            items = []
+            folders = Self.albumFolders(active.filter { $0.source.id == id && $0.creator == creator })
             virtualAlbum = nil
         case .folder(let id, let key):
             items = active.filter { $0.source.id == id && Self.folderKey($0) == key }
@@ -611,6 +629,36 @@ private struct ContentScope {
             items = album?.mediaIDs.compactMap { byID[$0] } ?? []
             folders = []
             virtualAlbum = album
+        }
+
+        if let source {
+            let count = switch page {
+            case .source where source.layout == .multiCreator: "\(folders.count) 位创作者"
+            case .source where source.layout == .creator: "\(folders.count) 个专辑"
+            case .creator: "\(folders.count) 个专辑"
+            default: "\(items.count) 项"
+            }
+            subtitle = "\(source.layout.title) · \(count)"
+        } else {
+            subtitle = "\(items.count) 项"
+        }
+    }
+
+    private static func albumFolders(_ items: [Media]) -> [LibraryFolder] {
+        groupFolders(items, by: folderKey) { key, members in
+            let cover = members[0]
+            return LibraryFolder(page: .folder(cover.source.id, key), name: cover.album, cover: cover,
+                                 caption: "\(cover.creator) · \(members.count) 项")
+        }
+    }
+
+    private static func groupFolders(_ items: [Media], by key: (Media) -> String,
+                                     folder: (String, [Media]) -> LibraryFolder) -> [LibraryFolder] {
+        let groups = Dictionary(grouping: items, by: key)
+        var seen: Set<String> = []
+        return items.compactMap {
+            let id = key($0)
+            return seen.insert(id).inserted ? folder(id, groups[id]!) : nil
         }
     }
 
