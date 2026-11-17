@@ -1,0 +1,72 @@
+name: Windows WinUI comparison
+
+on:
+  push:
+    branches: [qa/windows-winui-comparison]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 75f9c62d3127335638984773d737b7bd27b9fc7f
+          path: before
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2051bd53056704cabd0550cf98d4426d0c74324a
+          path: after
+          persist-credentials: false
+      - name: Publish both source trees and record evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'comparison'
+          New-Item -ItemType Directory $evidence | Out-Null
+          dotnet --info | Out-File (Join-Path $evidence 'dotnet-info.txt') -Encoding utf8
+          Get-ChildItem Env:ImageOS,Env:ImageVersion | Out-File (Join-Path $evidence 'runner-image.txt') -Encoding utf8
+          foreach ($variant in 'before', 'after') {
+            $result = New-Item -ItemType Directory (Join-Path $evidence $variant)
+            $publish = Join-Path $env:RUNNER_TEMP ('publish-' + $variant)
+            $expanded = Join-Path $env:RUNNER_TEMP ('expanded-' + $variant)
+            $zip = Join-Path $result.FullName 'iPreview-windows-x64.zip'
+            Push-Location $variant
+            git rev-parse HEAD | Out-File (Join-Path $result.FullName 'source-sha.txt') -Encoding utf8
+            $project = 'apps/windows/iPreview/iPreview.csproj'
+            dotnet publish $project -c Release -r win-x64 --self-contained true -o $publish
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet list $project package --include-transitive --no-restore --format json | Out-File (Join-Path $result.FullName 'nuget-packages.json') -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Copy-Item 'apps/windows/iPreview/obj/project.assets.json' (Join-Path $result.FullName 'project.assets.json')
+            Pop-Location
+            Compress-Archive -Path "$publish\*" -DestinationPath $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $expanded
+            foreach ($relative in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf', 'AlbumMediaPicker.xbf', 'Assets/AppIcon.ico', 'coreclr.dll', 'hostfxr.dll', 'Microsoft.UI.Xaml.dll') {
+              $file = Get-Item -LiteralPath (Join-Path $expanded $relative)
+              if ($file.PSIsContainer -or $file.Length -le 0) { throw "Missing or empty $relative" }
+            }
+            $files = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Force | Sort-Object FullName)
+            $files | ForEach-Object {
+              [pscustomobject]@{
+                path = [IO.Path]::GetRelativePath($expanded, $_.FullName).Replace('\', '/')
+                bytes = $_.Length
+              }
+            } | Export-Csv -Path (Join-Path $result.FullName 'files.csv') -NoTypeInformation -Encoding utf8
+            [pscustomobject]@{
+              zipBytes = (Get-Item -LiteralPath $zip).Length
+              fileBytes = ($files | Measure-Object -Property Length -Sum).Sum
+              files = $files.Count
+              sha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            } | ConvertTo-Json | Out-File (Join-Path $result.FullName 'sizes.json') -Encoding utf8
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-winui-comparison
+          path: ${{ runner.temp }}/comparison
+          if-no-files-found: error
+          compression-level: 0
