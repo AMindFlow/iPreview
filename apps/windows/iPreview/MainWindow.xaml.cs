@@ -33,7 +33,8 @@ public sealed partial class MainWindow : Window
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
     private ObservableCollection<Tile> tiles = [];
-    private bool searching;
+    private string submittedQuery = "";
+    private bool searching => submittedQuery.Length != 0;
     private bool busy;
     private int previewIndex = -1;
     private long? initialSelection;
@@ -190,8 +191,7 @@ public sealed partial class MainWindow : Window
     private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
-        searching = false;
-        Query.Text = "";
+        ClearScopedSearch();
         Notice.IsOpen = false;
         NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
         ShowItems(selectedMedia);
@@ -299,7 +299,7 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), Query.Text,
+                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), submittedQuery,
                     SearchMode.SelectedIndex == 0, SearchFolders.IsChecked == true, SearchFiles.IsChecked == true);
             }
             catch (Exception error) when (error is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
@@ -318,7 +318,7 @@ public sealed partial class MainWindow : Window
                 albumRemovalIds.IntersectWith(tiles.Select(tile => tile.Media.Id));
         }
         RefreshMediaBrowser(selected);
-        Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        Heading.Text = searching ? $"“{submittedQuery}”的搜索结果" : current.Label;
         RefreshTitleEditor();
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
@@ -344,17 +344,25 @@ public sealed partial class MainWindow : Window
 
     private void SearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        searching = !string.IsNullOrWhiteSpace(args.QueryText);
+        if (IsComposingText)
+            return;
+        submittedQuery = args.QueryText.Trim();
         ShowItems();
     }
 
     private void SearchEdited(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (searching && string.IsNullOrWhiteSpace(sender.Text))
+        if (searching && !IsComposingText && args.CheckCurrent() && string.IsNullOrWhiteSpace(sender.Text))
         {
-            searching = false;
+            submittedQuery = "";
             ShowItems();
         }
+    }
+
+    private void ClearScopedSearch()
+    {
+        submittedQuery = "";
+        Query.Text = "";
     }
 
     private void ChangeSearchMode(object sender, SelectionChangedEventArgs args)
@@ -418,8 +426,7 @@ public sealed partial class MainWindow : Window
             if (result == ContentDialogResult.Primary)
             {
                 var imported = Database.Import(summary.Path, layout, summary.Options[layout], scanVersion);
-                searching = false;
-                Query.Text = "";
+                ClearScopedSearch();
                 current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
                 Notice.IsOpen = false;
                 Reload();
@@ -524,8 +531,7 @@ public sealed partial class MainWindow : Window
         try
         {
             current = new(name, Album: Database.CreateAlbum(name));
-            searching = false;
-            Query.Text = "";
+            ClearScopedSearch();
             Reload();
         }
         catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }

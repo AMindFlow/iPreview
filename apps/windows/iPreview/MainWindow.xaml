@@ -677,7 +677,7 @@
                             <Button x:Name="VideoForward" Grid.Column="2" Content="+15 秒" Click="SeekVideoForward"
                                     Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="前进 15 秒" />
                             <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center" Foreground="#D2DEDE" />
-                            <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25"
+                            <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
                                     VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
                             <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center" Foreground="#D2DEDE" />
                             <ToggleButton x:Name="VideoLock" Grid.Column="6" Click="ToggleVideoLock"
