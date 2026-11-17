@@ -14,6 +14,6 @@
 
 ## PLAT-003 旧版桌面安装与升级体验
 
-- **要求** 记录原 Electron 版本的 macOS、Windows 桌面分发、安装升级和旧数据发现，包括 Windows 旧 Squirrel 安装形态及向导中的语言、目录选择、确认和进度。新版本的安装器、升级方式及支持的旧版本待定。旧库数据迁移见 [LIB-005](library.md#lib-005-旧库迁移备份与恢复)。
-- **来源** [总体需求 #3](https://github.com/AMindFlow/iPreview/issues/3)，旧版桌面分发规格
+- **要求** 记录原 Electron 版本的 macOS、Windows 桌面分发、安装升级和旧数据发现，包括 Windows 旧 Squirrel 安装形态，以及旧版已提出的安装向导要求（语言、目录选择、确认及进度）。新版本的安装器、升级方式及支持的旧版本待定。旧库数据迁移见 [LIB-005](library.md#lib-005-旧库迁移备份与恢复)。
+- **来源** [总体需求 #3](https://github.com/AMindFlow/iPreview/issues/3)，旧版桌面分发与桌面体验补缺规格
 - **验收** 确认分发形态后，用实机验证全新安装、支持版本的升级及保留库数据。使用测试工作区验证。
