@@ -36,7 +36,7 @@ enum LibrarySearchDomain: Sendable {
     case current, global
 
     var title: String { self == .current ? "当前范围" : "全局" }
-    var prompt: String { self == .current ? "搜索当前范围" : "搜索所有来源" }
+    var prompt: String { self == .current ? "搜索当前范围" : "搜索所有媒体源" }
 }
 
 struct LibrarySearchPanel: View {

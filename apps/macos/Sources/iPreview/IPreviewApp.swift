@@ -10,7 +10,33 @@ struct IPreviewApp: App {
         }
         .defaultSize(width: 1120, height: 740)
         .windowToolbarStyle(.unified(showsTitle: false))
-        .commands { LibrarySearchCommands() }
+        .commands {
+            LibraryImportCommands()
+            LibrarySearchCommands()
+        }
+    }
+}
+
+private struct LibraryImportActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
+extension FocusedValues {
+    var libraryImportAction: (@MainActor () -> Void)? {
+        get { self[LibraryImportActionKey.self] }
+        set { self[LibraryImportActionKey.self] = newValue }
+    }
+}
+
+private struct LibraryImportCommands: Commands {
+    @FocusedValue(\.libraryImportAction) private var importFolder
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("导入文件夹…") { importFolder?() }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(importFolder == nil)
+        }
     }
 }
 

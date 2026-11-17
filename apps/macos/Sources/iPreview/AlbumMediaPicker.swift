@@ -101,8 +101,8 @@ struct AlbumMediaPicker: View {
     }
 
     private var emptyMessage: String {
-        if creators.isEmpty { return "没有可用来源" }
-        if creator == nil { return "先选择来源或创作者" }
+        if creators.isEmpty { return "没有可用媒体源" }
+        if creator == nil { return "先选择媒体源或创作者" }
         if folder == nil { return "请选择一个专辑" }
         if checkedFolder != folder { return "正在检查媒体…" }
         return "此专辑没有可添加的媒体"
@@ -111,11 +111,11 @@ struct AlbumMediaPicker: View {
     private func filters(_ folders: [(id: LibraryPage, title: String)], remaining: [Media]) -> some View {
         HStack(spacing: 18) {
             HStack(spacing: 7) {
-                Text("来源与创作者")
+                Text("媒体源与创作者")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: true, vertical: false)
                     .accessibilityHidden(true)
-                Picker("来源与创作者", selection: $creator) {
+                Picker("媒体源与创作者", selection: $creator) {
                     Text("请选择").tag(nil as LibraryPage?)
                     ForEach(creators, id: \.id) { item in
                         Text(item.title)
@@ -131,11 +131,11 @@ struct AlbumMediaPicker: View {
             }
 
             HStack(spacing: 7) {
-                Text("来源专辑")
+                Text("源专辑")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: true, vertical: false)
                     .accessibilityHidden(true)
-                Picker("来源专辑", selection: $folder) {
+                Picker("源专辑", selection: $folder) {
                     Text("请选择").tag(nil as LibraryPage?)
                     ForEach(folders, id: \.id) { item in
                         Text(item.title).tag(Optional(item.id))
