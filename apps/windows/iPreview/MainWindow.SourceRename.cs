@@ -140,13 +140,8 @@ public sealed partial class MainWindow
             var result = await dialog.ShowAsync();
             if (result == ContentDialogResult.Primary && renamedPath is not null && renamedPath != path)
             {
-                if (isDirectory && current is { Source: long activeSource, Folder: { } folder } &&
-                    activeSource == sourceId && folder.StartsWith(path + "/", StringComparison.Ordinal))
-                {
-                    var updated = renamedPath + folder[path.Length..];
-                    current = new Navigation(SourceRename.SplitPath(updated.TrimEnd('/')).Leaf,
-                        Source: sourceId, Folder: updated);
-                }
+                if (isDirectory)
+                    FollowRenamedDirectory(sourceId, path, renamedPath);
                 Reload(isDirectory ? Selection?.Media.Id : expectedMediaId);
             }
         }
@@ -160,5 +155,14 @@ public sealed partial class MainWindow
             else
                 FocusSelectedMedia();
         }
+    }
+
+    private void FollowRenamedDirectory(long sourceId, string originalPath, string renamedPath)
+    {
+        if (current is not { Source: long activeSource, Folder: { } folder } ||
+            activeSource != sourceId || !folder.StartsWith(originalPath + "/", StringComparison.Ordinal))
+            return;
+        var updated = renamedPath + folder[originalPath.Length..];
+        current = current with { Label = SourceRename.SplitPath(updated.TrimEnd('/')).Leaf, Folder = updated };
     }
 }

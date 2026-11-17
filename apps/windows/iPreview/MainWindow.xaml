@@ -8,14 +8,23 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Grid Background="#CDE8EBF3" Padding="12,17,12,14" RowSpacing="10">
+            <Grid Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Padding="12,17,12,14" RowSpacing="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TreeView x:Name="NavTree" Grid.RowSpan="2" SelectionMode="Single" ItemInvoked="Navigate"
-                          PreviewKeyDown="NavigationTreeKeyDown" />
+                          PreviewKeyDown="NavigationTreeKeyDown">
+                    <TreeView.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="{Binding Content.Glyph}" FontSize="14" />
+                                <TextBlock Text="{Binding Content.Label}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
                 <StackPanel Grid.Row="2" Spacing="6">
                     <Button x:Name="CreateAlbumButton" Click="CreateAlbum" HorizontalAlignment="Stretch" AutomationProperties.Name="新建虚拟专辑">
                         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -55,8 +64,14 @@
                             <FontIcon Glyph="&#xE72B;" FontSize="14" />
                         </Button>
                         <StackPanel Grid.Column="1" Spacing="2">
-                            <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
-                                       Foreground="#18202D" TextTrimming="CharacterEllipsis" />
+                            <Grid>
+                                <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
+                                           Foreground="#18202D" TextTrimming="CharacterEllipsis"
+                                           HorizontalAlignment="Left" DoubleTapped="BeginTitleEdit" />
+                                <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Left"
+                                         FontSize="21" MinWidth="175" MaxWidth="350" MaxLength="255"
+                                         PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称" />
+                            </Grid>
                             <TextBlock x:Name="CountLabel" Foreground="#576375" FontSize="12" />
                         </StackPanel>
                     </Grid>
@@ -316,13 +331,11 @@
                 <Grid Grid.Row="3">
                     <StackPanel x:Name="BrowseTools" Orientation="Horizontal" Spacing="7">
                         <Button x:Name="OpenButton" Click="PreviewSelected" Content="预览" />
-                        <Button x:Name="AddButton" Click="AddToAlbum" Content="加入专辑" />
                         <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="7" Visibility="Collapsed">
                             <Button x:Name="AlbumPickerButton" Click="PickAlbumMedia" AutomationProperties.Name="添加媒体"
                                     ToolTipService.ToolTip="添加媒体" Visibility="Collapsed">
                                 <FontIcon Glyph="&#xE710;" FontSize="14" />
                             </Button>
-                            <Button Click="RenameAlbum" Content="重命名" />
                             <Button x:Name="MoveUpButton" Click="MoveEarlier" Content="上移" />
                             <Button x:Name="MoveDownButton" Click="MoveLater" Content="下移" />
                             <Button x:Name="RemoveButton" Click="RemoveFromAlbum" Content="移除引用" />

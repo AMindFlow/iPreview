@@ -16,12 +16,15 @@ namespace IPreview;
 
 public sealed partial class MainWindow : Window
 {
-    private sealed record Navigation(string Label, long? Source = null, string? Folder = null, long? Album = null)
+    private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
+        long? Album = null, string Glyph = "\uE8B7")
     {
         public override string ToString() => Label;
     }
 
-    private static readonly Navigation Library = new("媒体库");
+    private sealed record NavigationHeading(string Label, string Glyph);
+
+    private static readonly Navigation Library = new("媒体库", Glyph: "\uE8B9");
     private Catalog? catalog;
     private Navigation current = Library;
     private Dictionary<long, Source> sources = [];
@@ -47,6 +50,7 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
+        Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
         Closed += (_, _) =>
         {
@@ -94,13 +98,19 @@ public sealed partial class MainWindow : Window
         NavTree.RootNodes.Add(new TreeViewNode { Content = Library });
         if (sources.Count > 0)
         {
-            var sourcesNode = new TreeViewNode { Content = "文件夹", IsExpanded = true };
+            var sourcesNode = new TreeViewNode { Content = new NavigationHeading("来源", "\uE8B7"), IsExpanded = true };
             foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
             {
                 var label = source.Available ? source.Name : $"{source.Name}（离线）";
+                var glyph = source.Layout switch
+                {
+                    Layout.MultiCreator => "\uE902",
+                    Layout.Creator => "\uE77B",
+                    _ => "\uE8B7"
+                };
                 var node = new TreeViewNode
                 {
-                    Content = new Navigation(label, Source: source.Id),
+                    Content = new Navigation(label, Source: source.Id, Glyph: glyph),
                     IsExpanded = expanded.Contains(source.Id)
                 };
                 AddFolders(node, source.Id, media.Where(item => item.Source.Id == source.Id && item.Present));
@@ -111,9 +121,9 @@ public sealed partial class MainWindow : Window
 
         if (albums.Count > 0)
         {
-            var albumsNode = new TreeViewNode { Content = "虚拟专辑", IsExpanded = true };
+            var albumsNode = new TreeViewNode { Content = new NavigationHeading("虚拟专辑", "\uE7B8"), IsExpanded = true };
             foreach (var album in albums)
-                albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id) });
+                albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id, Glyph: "\uE7B8") });
             NavTree.RootNodes.Add(albumsNode);
         }
 
@@ -308,6 +318,7 @@ public sealed partial class MainWindow : Window
         }
         RefreshMediaBrowser(selected);
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        RefreshTitleEditor();
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
@@ -519,55 +530,6 @@ public sealed partial class MainWindow : Window
         catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }
     }
 
-    private async void RenameAlbum(object sender, RoutedEventArgs args)
-    {
-        if (current.Album is not long album)
-            return;
-        var name = await AskAlbumName("重命名虚拟专辑", current.Label);
-        if (name is null)
-            return;
-        try
-        {
-            Database.RenameAlbum(album, name);
-            Reload(Selection?.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法重命名专辑", error.Message); }
-    }
-
-    private async void AddToAlbum(object sender, RoutedEventArgs args)
-    {
-        if (Selection is not Tile tile)
-            return;
-        try
-        {
-            if (albums.Count == 0)
-            {
-                var name = await AskAlbumName("新建虚拟专辑并添加媒体", "");
-                if (name is null)
-                    return;
-                Database.CreateAlbum(name, tile.Media.Id);
-            }
-            else
-            {
-                var combo = new ComboBox { ItemsSource = albums, DisplayMemberPath = nameof(Album.Name), SelectedIndex = 0 };
-                var choice = await new ContentDialog
-                {
-                    XamlRoot = Root.XamlRoot,
-                    Title = "加入虚拟专辑",
-                    Content = combo,
-                    PrimaryButtonText = "加入",
-                    CloseButtonText = "取消",
-                    DefaultButton = ContentDialogButton.Primary
-                }.ShowAsync();
-                if (choice != ContentDialogResult.Primary || combo.SelectedItem is not Album album)
-                    return;
-                Database.AddToAlbum(album.Id, tile.Media.Id);
-            }
-            Reload(tile.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法添加媒体", error.Message); }
-    }
-
     private void MoveEarlier(object sender, RoutedEventArgs args) => MoveMember(-1);
     private void MoveLater(object sender, RoutedEventArgs args) => MoveMember(1);
 
@@ -609,12 +571,11 @@ public sealed partial class MainWindow : Window
 
     private void UpdateSelection()
     {
-        if (OpenButton is null || AddButton is null || MoveUpButton is null ||
+        if (OpenButton is null || MoveUpButton is null ||
             MoveDownButton is null || RemoveButton is null || AlbumSelectionTools is null)
             return;
         UpdateAlbumSelectionTools();
         OpenButton.IsEnabled = Selection is not null;
-        AddButton.IsEnabled = Selection is not null;
         RemoveButton.IsEnabled = Selection is not null;
         MoveUpButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex > 0;
         MoveDownButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex < tiles.Count - 1;
