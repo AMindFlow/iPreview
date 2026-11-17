@@ -24,7 +24,7 @@ struct LibraryView: View {
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
-    @ViewState private var preview: PreviewRequest?
+    @ViewState private var preview: PreviewSession?
     @FocusState private var focus: Focus?
 
     enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, title }
@@ -52,6 +52,7 @@ struct LibraryView: View {
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+                .toolbar(removing: preview == nil ? nil : .sidebarToggle)
         } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 header(scope)
@@ -61,18 +62,37 @@ struct LibraryView: View {
             .accessibilityHidden(libraryOverlayShown)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: chooseFolder) {
-                        Label("导入", systemImage: "folder.badge.plus")
+                if let preview {
+                    ToolbarItem(placement: .navigation) { PreviewCloseButton(session: preview) }
+                    ToolbarItem(placement: .principal) {
+                        Text(preview.media.name)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                            .frame(maxWidth: 420)
+                            .accessibilityAddTraits(.isHeader)
                     }
-                    .keyboardShortcut("o", modifiers: .command)
-                    .disabled(model.isWorking || libraryOverlayShown)
-                    .help("导入本地媒体目录")
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: chooseFolder) {
+                            Label("导入", systemImage: "folder.badge.plus")
+                        }
+                        .keyboardShortcut("o", modifiers: .command)
+                        .disabled(model.isWorking || libraryOverlayShown)
+                        .help("导入本地媒体目录")
+                    }
                 }
             }
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(\.librarySearchActions, searchActions)
+        .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
+        .background {
+            if preview != nil {
+                PreviewWindowButtons()
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
@@ -91,7 +111,7 @@ struct LibraryView: View {
                         guard !globalSearchShown else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
-                    MediaPreview(request: preview, thumbnail: thumbnail) { selection in
+                    MediaPreview(session: preview, thumbnail: thumbnail) { selection in
                         self.preview = nil
                         if !globalSearchShown {
                             self.selected = selection
@@ -966,7 +986,7 @@ struct LibraryView: View {
     private func open(_ item: Media, among items: [Media], layout: BrowseLayout) {
         guard !model.isWorking else { return }
         if !globalSearchShown { selected = item.id }
-        preview = PreviewRequest(items: items, selection: item.id, layout: layout)
+        preview = PreviewSession(items: items, selection: item.id, layout: layout)
     }
 
     private func focusBrowser() {
