@@ -50,37 +50,30 @@ struct AlbumMediaPicker: View {
         let remaining = candidates.filter { !stagedIDs.contains($0.id) }
 
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                navigationPane(folders)
+            VStack(spacing: 0) {
+                Text("添加到「\(album.name)」")
+                    .font(.system(size: 21, weight: .semibold))
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .help(album.name)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 17)
+                    .frame(height: 49)
 
-                Divider()
+                Divider().padding(.horizontal, 16)
 
-                VStack(spacing: 0) {
-                    Text("添加到「\(album.name)」")
-                        .font(.system(size: 21, weight: .semibold))
-                        .lineLimit(1)
-                        .accessibilityAddTraits(.isHeader)
-                        .help(album.name)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 17)
-                        .frame(height: 53)
-
-                    Divider()
-
-                    HStack(spacing: 0) {
-                        candidatePane(candidates, stagedIDs: stagedIDs, remaining: remaining,
-                                      title: folders.first(where: { $0.id == requestedFolder })?.title ?? "媒体")
-                        Divider()
-                        stagedPane
-                    }
-                }
+                filters(folders, remaining: remaining)
+                candidatePane(candidates, stagedIDs: stagedIDs)
             }
-            .frame(maxHeight: .infinity)
             .disabled(saving)
 
             Divider()
 
-            footer
+            VStack(spacing: 0) {
+                stagedStrip.disabled(saving)
+                footer
+            }
+            .background(Color.mediaSurface.opacity(0.64))
         }
         .foregroundStyle(Color.libraryInk)
         .background(Color.libraryCanvas)
@@ -108,84 +101,54 @@ struct AlbumMediaPicker: View {
         return "此专辑没有可添加的媒体"
     }
 
-    private func navigationPane(_ folders: [(id: LibraryPage, title: String)]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            navigationHeading("来源与创作者")
-            List(selection: $creator) {
-                ForEach(creators, id: \.id) { item in
-                    HStack(spacing: 7) {
-                        Image(systemName: item.source.layout == .multiCreator ? "person" : "externaldrive")
-                            .frame(width: 15)
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).lineLimit(1)
-                            if item.source.layout == .multiCreator {
-                                Text(item.source.name)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
+    private func filters(_ folders: [(id: LibraryPage, title: String)], remaining: [Media]) -> some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 7) {
+                Text("来源与创作者").foregroundStyle(.secondary)
+                Picker("来源与创作者", selection: $creator) {
+                    Text("请选择").tag(nil as LibraryPage?)
+                    ForEach(creators, id: \.id) { item in
+                        let title = item.source.layout == .multiCreator
+                            ? "\(item.title) · \(item.source.name)"
+                            : item.title
+                        Text(title).tag(Optional(item.id))
                     }
-                    .help(item.source.path)
-                    .accessibilityHint(item.source.path)
-                    .tag(item.id)
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .accessibilityLabel("来源与创作者")
+                .frame(width: 150)
+                .disabled(creators.isEmpty)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .accessibilityLabel("来源与创作者")
-            .frame(height: CGFloat(min(max(creators.count, 1), 4)) * 40)
 
-            Divider().padding(.horizontal, 13)
-
-            navigationHeading("专辑")
-            List(selection: $folder) {
-                ForEach(folders, id: \.id) { item in
-                    Label(item.title, systemImage: "folder")
-                        .lineLimit(1)
-                        .tag(item.id)
+            HStack(spacing: 7) {
+                Text("来源专辑").foregroundStyle(.secondary)
+                Picker("来源专辑", selection: $folder) {
+                    Text("请选择").tag(nil as LibraryPage?)
+                    ForEach(folders, id: \.id) { item in
+                        Text(item.title).tag(Optional(item.id))
+                    }
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .accessibilityLabel("来源专辑")
+                .frame(width: 165)
+                .disabled(folders.isEmpty)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .accessibilityLabel("来源专辑")
+
+            Spacer(minLength: 0)
+
+            Button("全选当前专辑") { staged.append(contentsOf: remaining) }
+                .controlSize(.small)
+                .disabled(remaining.isEmpty)
         }
-        .frame(width: 157)
-        .background(Color.mediaSurface.opacity(0.47))
+        .font(.callout)
+        .padding(.horizontal, 16)
+        .frame(height: 39)
     }
 
-    private func navigationHeading(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .accessibilityAddTraits(.isHeader)
-            .padding(.horizontal, 14)
-            .padding(.top, 13)
-            .padding(.bottom, 4)
-    }
-
-    private func candidatePane(_ candidates: [Media], stagedIDs: Set<Int64>, remaining: [Media],
-                               title: String) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                if !candidates.isEmpty {
-                    Text("\(candidates.count) 项")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Button("全选") { staged.append(contentsOf: remaining) }
-                    .controlSize(.small)
-                    .accessibilityLabel("全选当前专辑")
-                    .help("全选当前专辑")
-                    .disabled(remaining.isEmpty)
-            }
+    private func candidatePane(_ candidates: [Media], stagedIDs: Set<Int64>) -> some View {
+        Group {
             if candidates.isEmpty {
                 Text(emptyMessage)
                     .font(.callout)
@@ -193,7 +156,7 @@ struct AlbumMediaPicker: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 11) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 4), spacing: 9) {
                         ForEach(candidates) { item in
                             let selected = stagedIDs.contains(item.id)
                             Button {
@@ -208,77 +171,63 @@ struct AlbumMediaPicker: View {
                             .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }
-                    .padding(.bottom, 2)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
                 }
             }
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 13)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.white.opacity(0.56))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var stagedPane: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("待添加")
-                    .font(.headline)
-                Text(staged.count, format: .number)
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.ipreviewAccent)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Color.ipreviewAccent.opacity(0.12), in: Capsule())
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+    private var stagedStrip: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("待添加 · \(staged.count) 项")
+                .font(.callout.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.horizontal, 16)
 
-            if staged.isEmpty {
-                Text("尚未选择媒体")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 9) {
                     ForEach(staged) { item in
-                        HStack(spacing: 7) {
-                            MediaThumbnail(media: item)
-                                .frame(width: 40, height: 29)
-                                .clipShape(.rect(cornerRadius: 6))
-
-                            Text(item.name)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .layoutPriority(1)
-                                .help(item.directories.joined(separator: " / ") + " / " + item.name)
-                            Spacer(minLength: 0)
-
-                            Button {
-                                staged.removeAll { $0.id == item.id }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary, Color.libraryInk.opacity(0.08))
-                                    .frame(width: 22, height: 26)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("移除\(item.name)")
-                        }
-                        .font(.callout)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-                        .listRowBackground(Color.clear)
+                        stagedTile(item)
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .accessibilityLabel("待添加媒体")
+                .padding(.horizontal, 16)
+                .padding(.vertical, 3)
             }
+            .frame(height: 67)
+            .accessibilityLabel("待添加媒体")
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 13)
-        .frame(width: 190)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .padding(.top, 7)
+    }
+
+    private func stagedTile(_ item: Media) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            MediaThumbnail(media: item)
+                .frame(width: 82, height: 44)
+                .clipShape(.rect(cornerRadius: 6))
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        staged.removeAll { $0.id == item.id }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Color.libraryInk)
+                            .frame(width: 20, height: 20)
+                            .background(.white, in: Circle())
+                            .overlay { Circle().strokeBorder(Color.libraryInk.opacity(0.12)) }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(2)
+                    .accessibilityLabel("移除\(item.name)")
+                }
+            Text(item.name)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(item.directories.joined(separator: " / ") + " / " + item.name)
+        }
+        .frame(width: 82, alignment: .leading)
     }
 
     private var footer: some View {
@@ -301,15 +250,15 @@ struct AlbumMediaPicker: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(staged.isEmpty || saving)
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 11)
-        .frame(minHeight: 49)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 7)
+        .frame(minHeight: 40)
     }
 
     private func tile(_ item: Media, selected: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             MediaThumbnail(media: item)
-                .aspectRatio(1.57, contentMode: .fit)
+                .aspectRatio(1.66, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
@@ -338,6 +287,7 @@ struct AlbumMediaPicker: View {
             Text(item.name)
                 .font(.caption)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .contentShape(Rectangle())
         .help(item.name)
@@ -371,7 +321,7 @@ struct AlbumMediaPicker: View {
                 let readableIDs = Set(readable.map(\.id))
                 let unavailableIDs = Set(chosen.lazy.map(\.id).filter { !readableIDs.contains($0) })
                 readableCandidates.removeAll { unavailableIDs.contains($0.id) }
-                error = "有选中的媒体已不可用。请从待添加列表移除后重试。"
+                error = "有选中的媒体已不可用。请从待添加栏移除后重试。"
                 return
             }
             if await model.add(mediaIDs: readable.map(\.id), to: album.id) {
