@@ -24,7 +24,7 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    private enum Focus: Hashable { case browser, search }
+    enum Focus: Hashable { case browser, search, albumTitle }
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -343,7 +343,7 @@ struct LibraryView: View {
     private func browserTitle(_ scope: ContentScope) -> some View {
         Group {
             if let album = scope.virtualAlbum {
-                VirtualAlbumTitle(album: album, disabled: model.isWorking || removalSelection != nil,
+                VirtualAlbumTitle(album: album, disabled: model.isWorking || removalSelection != nil, focus: $focus,
                                   rename: { name in await model.rename(albumID: album.id, to: name) },
                                   finished: focusBrowser)
                     .id(album.id)
@@ -354,6 +354,7 @@ struct LibraryView: View {
                     beginRename(SourceNameEdit(folder: folder, source: source, expectedMember: member))
                 } label: {
                     Text(scope.title)
+                        .accessibilityAddTraits(.isHeader)
                 }
                 .buttonStyle(.plain)
                 .disabled(model.isWorking || !source.isAvailable)
@@ -362,12 +363,12 @@ struct LibraryView: View {
                 .help("点击标题重命名文件夹")
             } else {
                 Text(scope.title)
+                    .accessibilityAddTraits(.isHeader)
             }
         }
         .font(.system(size: 28, weight: .bold))
         .lineLimit(1)
         .truncationMode(.tail)
-        .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder

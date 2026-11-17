@@ -43,21 +43,24 @@ extension View {
 struct VirtualAlbumTitle: View {
     let album: VirtualAlbum
     let disabled: Bool
+    let focus: FocusState<LibraryView.Focus?>.Binding
     let rename: (String) async -> Void
     let finished: () -> Void
 
     @ViewState private var draft: String?
     @ViewState private var selection: TextSelection?
-    @FocusState private var focused: Bool
 
     var body: some View {
         if let draft = Binding($draft) {
             TextField("专辑名称", text: draft, selection: $selection)
                 .textFieldStyle(.roundedBorder)
-                .focused($focused)
+                .focused(focus, equals: .albumTitle)
                 .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
                 .accessibilityIdentifier("virtual-album-name")
-                .task { focused = true }
+                .task {
+                    await Task.yield()
+                    focus.wrappedValue = .albumTitle
+                }
                 .onSubmit {
                     let name = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
@@ -75,10 +78,12 @@ struct VirtualAlbumTitle: View {
                 }
         } else {
             Button {
+                focus.wrappedValue = nil
                 draft = album.name
                 selection = TextSelection(range: album.name.startIndex..<album.name.endIndex)
             } label: {
                 Text(album.name)
+                    .accessibilityAddTraits(.isHeader)
             }
             .buttonStyle(.plain)
             .disabled(disabled)
