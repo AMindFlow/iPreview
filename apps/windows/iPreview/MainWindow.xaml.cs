@@ -697,6 +697,18 @@ public sealed partial class MainWindow : Window
             PreviewHint.Text = "剪贴板正忙，请双击文件名重试。";
             return;
         }
+        // Clipboard.Flush can lose the race for the clipboard after SetContentWithOptions succeeds.
+        const int cannotOpenClipboard = unchecked((int)0x800401D0);
+        const int cannotCloseClipboard = unchecked((int)0x800401D4);
+        try
+        {
+            Clipboard.Flush();
+        }
+        catch (ExternalException error) when (error.HResult is cannotOpenClipboard or cannotCloseClipboard)
+        {
+            PreviewHint.Text = "剪贴板正忙，请双击文件名重试。";
+            return;
+        }
         SetPreviewVideoLock(previewVideoLocked);
     }
 
