@@ -13,7 +13,7 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 | 专辑组织 | [ALB-001、ALB-004](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、拖动重排与删除](../specs/spike/virtual-albums.md) |
 | 媒体元信息 | | [从文件提取及修改后写回](../specs/spike/metadata.md) |
 | 应用视觉 | [UI-001 应用图标、UI-002 虚拟专辑选片器](../specs/official/appearance.md) | |
-| 平台与分发 | [平台与技术栈](overview.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
+| 平台与分发 | [平台与技术栈](overview.md)、[PLAT-004 Windows 自包含 ZIP](../specs/official/platforms.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
 
 ## 设计要求
 
