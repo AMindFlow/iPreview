@@ -129,7 +129,7 @@
           stroke="#f3fdff" stroke-opacity=".62" stroke-width="3"/>
   </g>
 
-  <g id="front-orbit" fill="none" stroke-linecap="round">
+  <g id="foreground-orbit" fill="none" stroke-linecap="round">
     <use href="#foreground-track" stroke="url(#front-orbit)" stroke-width="21"/>
     <use href="#foreground-track" transform="translate(0 -3)" stroke="url(#orbit-glint)" stroke-width="4"/>
   </g>
