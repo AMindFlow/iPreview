@@ -43,6 +43,7 @@ struct MediaListRow: View {
     let revision: Int
     let selected: Bool
     let shaded: Bool
+    let showPath: Bool
     @ViewState private var facts: Facts?
 
     private struct Facts: Sendable {
@@ -56,8 +57,16 @@ struct MediaListRow: View {
                 MediaThumbnail(media: media, revision: revision)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
-                Text(media.name)
-                    .fontWeight(selected ? .semibold : .regular)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(media.name)
+                        .fontWeight(selected ? .semibold : .regular)
+                    if showPath {
+                        Text(media.directories.joined(separator: " / "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .truncationMode(.middle)
+                    }
+                }
             }
         } modified: {
             Text(facts?.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—")
@@ -71,7 +80,7 @@ struct MediaListRow: View {
         }
         .font(.system(size: 12))
         .lineLimit(1)
-        .frame(height: 29)
+        .frame(height: showPath ? 37 : 29)
         .background(selected ? Color.ipreviewAccent.opacity(0.16) : shaded ? Color.libraryInk.opacity(0.045) : .clear,
                     in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())

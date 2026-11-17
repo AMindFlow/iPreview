@@ -490,7 +490,7 @@ struct LibraryView: View {
                             let item = items[index]
                             browseItem(item, among: items, album: album, columns: columnCount) {
                                 MediaListRow(media: item, revision: model.revision, selected: selected == item.id,
-                                             shaded: !index.isMultiple(of: 2))
+                                             shaded: !index.isMultiple(of: 2), showPath: searching)
                             }
                         }
                     }
@@ -508,14 +508,14 @@ struct LibraryView: View {
                     LazyHStack(alignment: .top, spacing: 9) {
                         ForEach(items) { item in
                             browseItem(item, among: items, album: album, columns: columnCount) {
-                                MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: false)
+                                MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
                                     .frame(width: 94)
                             }
                         }
                     }
                     .padding(.vertical, 5)
                 }
-                .frame(height: 88)
+                .frame(height: searching ? 101 : 88)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
@@ -536,6 +536,7 @@ struct LibraryView: View {
                 .accessibilityHidden(true)
             }
             .contextMenu { mediaActions(item, in: album) }
+            .help(item.directories.joined(separator: " / ") + " / " + item.name)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(item.name)
             .accessibilityValue(item.isAvailable ? item.directories.joined(separator: "，") : "不可用")
@@ -801,6 +802,5 @@ private struct MediaTile: View {
             }
         }
         .contentShape(Rectangle())
-        .help(media.directories.joined(separator: " / ") + " / " + media.name)
     }
 }
