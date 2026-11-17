@@ -8,6 +8,8 @@
   <string>iPreview</string>
   <key>CFBundleExecutable</key>
   <string>iPreview</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon.icns</string>
   <key>CFBundleIdentifier</key>
   <string>io.github.amindflow.iPreview</string>
   <key>CFBundleInfoDictionaryVersion</key>
