@@ -36,6 +36,11 @@ private struct RenameIntent: Equatable {
     let isDirectory: Bool
     let identity: String
 
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.sourceID == rhs.sourceID && lhs.isDirectory == rhs.isDirectory && lhs.identity == rhs.identity
+            && literalEqual(lhs.oldPath, rhs.oldPath) && literalEqual(lhs.newPath, rhs.newPath)
+    }
+
     var oldName: String { oldPath.components(separatedBy: "/").last! }
     var newName: String { newPath.components(separatedBy: "/").last! }
 
