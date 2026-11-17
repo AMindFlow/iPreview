@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -31,7 +32,7 @@ public sealed partial class MainWindow : Window
     private List<Media> media = [];
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
-    private List<Tile> tiles = [];
+    private ObservableCollection<Tile> tiles = [];
     private bool searching;
     private bool busy;
     private int previewIndex = -1;
@@ -305,7 +306,7 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        tiles = items.Select((item, index) => new Tile(item, index)).ToList();
+        tiles = new ObservableCollection<Tile>(items.Select((item, index) => new Tile(item, index)));
         if (selectionAlbum is long selectedAlbum)
         {
             if (current.Album != selectedAlbum || searching || tiles.Count == 0)
@@ -666,7 +667,7 @@ public sealed partial class MainWindow : Window
         if (browseMode == BrowseMode.Icons)
             Gallery.UpdateLayout();
         previewBrowser = browser;
-        OpenPreview(tiles, browser.SelectedIndex, new(browseMode, Columns));
+        OpenPreview(tiles.ToList(), browser.SelectedIndex, new(browseMode, Columns));
     }
 
     private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
@@ -726,7 +727,7 @@ public sealed partial class MainWindow : Window
             return;
         LibraryView.IsHitTestVisible = true;
         var browser = ActiveMediaBrowser;
-        browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
+        browser.SelectedItem = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         FocusSelectedMedia();
     }
 

@@ -19,13 +19,14 @@ public sealed partial class MainWindow
             Windows.UI.Color.FromArgb(10, 102, 121, 153));
         private static readonly Brush TransparentBackground = new SolidColorBrush(
             Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        private bool alternateRow = index % 2 != 0;
 
         public Media Media { get; } = media;
         public string FileName => Media.FileName;
         public string DisplayPath => Media.DisplayPath;
         public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : "";
         public Visibility BadgeVisibility => Label.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        public Brush RowBackground => index % 2 == 0 ? TransparentBackground : AlternateBackground;
+        public Brush RowBackground => alternateRow ? AlternateBackground : TransparentBackground;
         private string Extension => Path.GetExtension(Media.RelativePath).TrimStart('.').ToUpperInvariant();
         public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : "图像")}";
         public TileDetails Details { get; private set; } = TileDetails.Unavailable;
@@ -34,6 +35,15 @@ public sealed partial class MainWindow
         public Visibility AlbumRemovalTickVisibility => albumRemovalSelection ? Visibility.Visible : Visibility.Collapsed;
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void SetRowIndex(int index)
+        {
+            var alternate = index % 2 != 0;
+            if (alternateRow == alternate)
+                return;
+            alternateRow = alternate;
+            PropertyChanged?.Invoke(this, new(nameof(RowBackground)));
+        }
 
         public void SetAlbumRemovalSelection(bool marked)
         {
@@ -95,27 +105,28 @@ public sealed partial class MainWindow
             Filmstrip.ItemsSource = FilmstripPane.Visibility == Visibility.Visible ? tiles : null;
             browser.SelectionMode = SelectingAlbumMembers ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
             if (SelectingAlbumMembers)
-            {
-                browser.SelectedItems.Clear();
-                foreach (var tile in tiles)
-                {
-                    var marked = albumRemovalIds.Contains(tile.Media.Id);
-                    tile.SetAlbumRemovalSelection(marked);
-                    if (marked)
-                        browser.SelectedItems.Add(tile);
-                }
-            }
+                RestoreAlbumRemovalSelection(browser);
             else
-            {
-                browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selected) ?? tiles.FirstOrDefault();
-            }
+                browser.SelectedItem = tiles.FirstOrDefault(tile => tile.Media.Id == selected) ?? tiles.FirstOrDefault();
         }
         finally
         {
             updatingBrowser = false;
         }
         UpdateSelection();
-        UpdateFilmstripPreview(SelectingAlbumMembers ? tiles.Find(tile => tile.Media.Id == selected) : null);
+        UpdateFilmstripPreview(SelectingAlbumMembers ? tiles.FirstOrDefault(tile => tile.Media.Id == selected) : null);
+    }
+
+    private void RestoreAlbumRemovalSelection(ListViewBase browser)
+    {
+        browser.SelectedItems.Clear();
+        foreach (var tile in tiles)
+        {
+            var marked = albumRemovalIds.Contains(tile.Media.Id);
+            tile.SetAlbumRemovalSelection(marked);
+            if (marked)
+                browser.SelectedItems.Add(tile);
+        }
     }
 
     private void FocusSelectedMedia()

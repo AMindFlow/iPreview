@@ -23,7 +23,7 @@ public sealed partial class MainWindow
     {
         if (mediaId is null || previewBrowser is not { IsLoaded: true } browser)
             return null;
-        var tile = tiles.Find(item => item.Media.Id == mediaId);
+        var tile = tiles.FirstOrDefault(item => item.Media.Id == mediaId);
         if (tile is null || browser.ContainerFromItem(tile) is not UIElement container ||
             FindThumbnail(container) is not { Source: BitmapImage bitmap, ActualWidth: > 0, ActualHeight: > 0 } image ||
             bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0)

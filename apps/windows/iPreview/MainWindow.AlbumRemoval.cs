@@ -21,7 +21,7 @@ public sealed partial class MainWindow
     }
 
     private void FocusAlbumSelectionItem(long? mediaId) =>
-        FocusBrowserItem(ActiveMediaBrowser, tiles.Find(tile => tile.Media.Id == mediaId) ?? tiles.FirstOrDefault(),
+        FocusBrowserItem(ActiveMediaBrowser, tiles.FirstOrDefault(tile => tile.Media.Id == mediaId) ?? tiles.FirstOrDefault(),
             FocusState.Programmatic);
 
     private void LibraryKeyDown(object sender, KeyRoutedEventArgs args)

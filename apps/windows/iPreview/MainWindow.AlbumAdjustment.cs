@@ -90,7 +90,7 @@ public sealed partial class MainWindow
         if (press.Dragging)
         {
             if (destination >= 0 && destination != press.SourceIndex && selectionAlbum is long album)
-                SaveAlbumOrder(album, press.Tile.Media.Id, destination, press.ExpectedOrder!);
+                SaveAlbumOrder(album, press, destination);
         }
         else if (!press.Rejected && input.Timestamp - press.Time < AlbumHoldMicroseconds &&
                  !Moved(input.Position, press.Anchor) &&
@@ -231,29 +231,62 @@ public sealed partial class MainWindow
         AlbumDragImage.Source = null;
     }
 
-    private void SaveAlbumOrder(long album, long mediaId, int target, long[] expected)
+    private void SaveAlbumOrder(long album, AlbumPress press, int target)
     {
-        string? conflict = null;
+        var tile = press.Tile;
+        var source = press.SourceIndex;
         try
         {
-            Database.MoveInAlbum(album, mediaId, target, expected);
+            Database.MoveInAlbum(album, tile.Media.Id, target, press.ExpectedOrder!);
         }
-        catch (AlbumOrderChangedException error) { conflict = error.Message; }
+        catch (AlbumOrderChangedException error)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                Reload(Selection?.Media.Id);
+                ShowNotice("无法调整顺序", error.Message);
+            });
+            return;
+        }
         catch (InvalidOperationException error)
         {
             ShowNotice("无法调整顺序", error.Message);
             return;
         }
 
-        // Let WinUI finish routing the release before replacing its item containers.
+        var members = albumMembers[album];
+        members.RemoveAt(source);
+        members.Insert(target, tile.Media);
+
+        var displayedItems = tiles;
+        // Retain the ItemsSource. WinUI can process individual removals and insertions after the release.
         DispatcherQueue.TryEnqueue(() =>
         {
-            var adjustingAlbum = selectionAlbum == album;
-            Reload(adjustingAlbum ? mediaId : Selection?.Media.Id);
-            if (conflict is not null)
-                ShowNotice("无法调整顺序", conflict);
-            else if (adjustingAlbum)
-                FocusAlbumSelectionItem(mediaId);
+            if (!ReferenceEquals(tiles, displayedItems))
+                return;
+
+            var browser = ActiveMediaBrowser;
+            var selected = Selection;
+            updatingBrowser = true;
+            try
+            {
+                tiles.RemoveAt(source);
+                tiles.Insert(target, tile);
+                for (var i = Math.Min(source, target); i <= Math.Max(source, target); i++)
+                    tiles[i].SetRowIndex(i);
+                if (SelectingAlbumMembers)
+                    RestoreAlbumRemovalSelection(browser);
+                else
+                    browser.SelectedItem = selected;
+            }
+            finally
+            {
+                updatingBrowser = false;
+            }
+            UpdateSelection();
+            UpdateFilmstripPreview(SelectingAlbumMembers ? tile : null);
+            if (SelectingAlbumMembers)
+                FocusAlbumSelectionItem(tile.Media.Id);
         });
     }
 }
