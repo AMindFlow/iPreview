@@ -110,8 +110,13 @@ final class LibraryModel {
     }
 
     func add(mediaID: Int64, to albumID: Int64) async {
+        await add(mediaIDs: [mediaID], to: albumID)
+    }
+
+    @discardableResult
+    func add(mediaIDs: [Int64], to albumID: Int64) async -> Bool {
         await change(rebuildSearch: false) { catalog in
-            try await catalog.append(mediaIDs: [mediaID], to: albumID)
+            try await catalog.append(mediaIDs: mediaIDs, to: albumID)
         }
     }
 
@@ -127,15 +132,18 @@ final class LibraryModel {
         }
     }
 
-    private func change(rebuildSearch: Bool = true, _ action: (Catalog) async throws -> Void) async {
-        guard let catalog, !isWorking else { return }
+    @discardableResult
+    private func change(rebuildSearch: Bool = true, _ action: (Catalog) async throws -> Void) async -> Bool {
+        guard let catalog, !isWorking else { return false }
         isWorking = true
         defer { isWorking = false }
         do {
             try await action(catalog)
             try await refresh(catalog, rebuildSearch: rebuildSearch)
+            return true
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 
