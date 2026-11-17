@@ -14,8 +14,7 @@ public sealed partial class MainWindow
         var staged = new AlbumMediaPicker(media, (albumMembers.GetValueOrDefault(album) ?? []).Select(item => item.Id),
             ReadPickerThumbnail)
         {
-            Width = Math.Clamp(Root.ActualWidth - 96, 260, 480),
-            Height = Math.Clamp(Root.ActualHeight - 200, 220, 410)
+            Width = Math.Clamp(Root.ActualWidth - 96, 260, 480)
         };
         var dialog = new ContentDialog
         {
@@ -35,8 +34,15 @@ public sealed partial class MainWindow
         };
         var selected = Selection?.Media.Id;
         var error = new InfoBar { Title = "无法添加媒体", Severity = InfoBarSeverity.Error };
-        var content = new StackPanel { Spacing = 7 };
+        var content = new Grid
+        {
+            Height = Math.Clamp(Root.ActualHeight - 200, 220, 410),
+            RowSpacing = 7
+        };
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         content.Children.Add(error);
+        Grid.SetRow(staged, 1);
         content.Children.Add(staged);
         dialog.Content = content;
         dialog.PrimaryButtonClick += async (_, click) =>
