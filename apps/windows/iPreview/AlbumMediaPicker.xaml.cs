@@ -19,12 +19,14 @@ public sealed partial class AlbumMediaPicker : UserControl
     private readonly HashSet<long> stagedIDs = [];
     private readonly Func<Media, Task<BitmapImage?>> thumbnail;
     private bool changingSelection;
+    private CancellationTokenSource? albumCheck;
 
     internal AlbumMediaPicker(IEnumerable<Media> available, IEnumerable<long> existing,
                               Func<Media, Task<BitmapImage?>> thumbnailLoader)
     {
         thumbnail = thumbnailLoader;
         InitializeComponent();
+        Unloaded += (_, _) => albumCheck?.Cancel();
         var existingIDs = existing.ToHashSet();
         var groups = MediaSearch.ByPath(available.Where(item => item.Available))
             .GroupBy(item => (item.Source.Id, Creator: item.Source.Layout == Layout.MultiCreator
@@ -48,7 +50,7 @@ public sealed partial class AlbumMediaPicker : UserControl
             CandidateStatus.Text = "没有可用来源";
     }
 
-    internal IReadOnlyList<long> MediaIDs => staged.Select(item => item.Media.Id).ToArray();
+    internal Media[] SelectedMedia => staged.Select(item => item.Media).ToArray();
     internal event Action<bool>? CanAddChanged;
 
     private void CreatorChanged(object sender, SelectionChangedEventArgs args)
@@ -63,16 +65,59 @@ public sealed partial class AlbumMediaPicker : UserControl
     private void AlbumChanged(object sender, SelectionChangedEventArgs args) =>
         ChangeDisplayedAlbum(Folders.SelectedItem as FolderOption);
 
-    private void ChangeDisplayedAlbum(FolderOption? album)
+    internal void RecheckCurrentAlbum() => ChangeDisplayedAlbum(Folders.SelectedItem as FolderOption);
+
+    private async void ChangeDisplayedAlbum(FolderOption? album)
+    {
+        albumCheck?.Cancel();
+        albumCheck = null;
+        ShowCandidates(null);
+
+        if (album is null)
+        {
+            CandidateStatus.Text = Creators.SelectedItem is null ? "先选择来源或创作者" : "请选择一个专辑";
+            return;
+        }
+
+        using var check = new CancellationTokenSource();
+        albumCheck = check;
+        CandidateStatus.Text = "正在检查媒体…";
+        try
+        {
+            var readable = await Task.Run(() =>
+            {
+                var result = new List<Candidate>();
+                foreach (var candidate in album.Items)
+                {
+                    check.Token.ThrowIfCancellationRequested();
+                    if (CanRead(candidate.Media))
+                        result.Add(candidate);
+                }
+                return result;
+            });
+            if (check.IsCancellationRequested || !ReferenceEquals(albumCheck, check))
+                return;
+            ShowCandidates(readable);
+            CandidateStatus.Text = "此专辑没有可添加的媒体";
+        }
+        catch (OperationCanceledException) when (check.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(albumCheck, check))
+                albumCheck = null;
+        }
+    }
+
+    private void ShowCandidates(List<Candidate>? items)
     {
         changingSelection = true;
         try
         {
-            Candidates.ItemsSource = album?.Items;
+            Candidates.ItemsSource = items;
             Candidates.SelectedItems.Clear();
-            if (album is not null)
+            if (items is not null)
             {
-                foreach (var item in album.Items)
+                foreach (var item in items)
                     if (stagedIDs.Contains(item.Media.Id))
                         Candidates.SelectedItems.Add(item);
             }
@@ -81,10 +126,21 @@ public sealed partial class AlbumMediaPicker : UserControl
         {
             changingSelection = false;
         }
-        CandidateStatus.Text = album is not null ? "此专辑没有可添加的媒体" :
-            Creators.SelectedItem is null ? "先选择来源或创作者" : "请选择一个专辑";
         CandidateStatus.Visibility = Candidates.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateButtons();
+    }
+
+    internal static bool CanRead(Media media)
+    {
+        try
+        {
+            MediaFiles.OpenPath(media);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void MediaSelectionChanged(object sender, SelectionChangedEventArgs args)

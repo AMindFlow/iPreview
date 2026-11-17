@@ -11,6 +11,8 @@ struct AlbumMediaPicker: View {
     @Environment(\.dismiss) private var dismiss
     @ViewState private var creator: LibraryPage?
     @ViewState private var folder: LibraryPage?
+    @ViewState private var checkedFolder: LibraryPage?
+    @ViewState private var readableCandidates: [Media] = []
     @ViewState private var staged: [Media] = []
     @ViewState private var saving = false
     @ViewState private var error: String?
@@ -41,7 +43,9 @@ struct AlbumMediaPicker: View {
         let folders = byFolder.map { (id: $0.key, title: $0.value[0].album) }.sorted {
             $0.title.localizedStandardCompare($1.title) == .orderedAscending
         }
-        let candidates = (folder.flatMap { byFolder[$0] } ?? []).filter { !existing.contains($0.id) }
+        let requestedFolder = folder
+        let indexed = (requestedFolder.flatMap { byFolder[$0] } ?? []).filter { !existing.contains($0.id) }
+        let candidates = checkedFolder == requestedFolder ? readableCandidates : []
         let stagedIDs = Set(staged.map(\.id))
         let remaining = candidates.filter { !stagedIDs.contains($0.id) }
 
@@ -148,6 +152,17 @@ struct AlbumMediaPicker: View {
         .padding(22)
         .frame(width: 740, height: 463)
         .onChange(of: creator) { folder = nil }
+        .task(id: requestedFolder) {
+            guard !Task.isCancelled, folder == requestedFolder else { return }
+            checkedFolder = nil
+            readableCandidates = []
+            guard let requestedFolder else { return }
+
+            let readable = await Self.checkReadability(indexed)
+            guard !Task.isCancelled, folder == requestedFolder else { return }
+            readableCandidates = readable
+            checkedFolder = requestedFolder
+        }
         .interactiveDismissDisabled(saving)
     }
 
@@ -155,6 +170,7 @@ struct AlbumMediaPicker: View {
         if creators.isEmpty { return "没有可用来源" }
         if creator == nil { return "先选择来源或创作者" }
         if folder == nil { return "请选择一个专辑" }
+        if checkedFolder != folder { return "正在检查媒体…" }
         return "此专辑没有可添加的媒体"
     }
 
@@ -187,18 +203,43 @@ struct AlbumMediaPicker: View {
         .help(item.name)
     }
 
+    private static func checkReadability(_ items: [Media]) async -> [Media] {
+        let inspection = Task.detached(priority: .userInitiated) {
+            var readable: [Media] = []
+            for item in items {
+                if Task.isCancelled { break }
+                if (try? item.readableURL()) != nil { readable.append(item) }
+            }
+            return readable
+        }
+        return await withTaskCancellationHandler {
+            await inspection.value
+        } onCancel: {
+            inspection.cancel()
+        }
+    }
+
     private func confirm() {
+        guard !saving else { return }
         saving = true
         error = nil
-        let ids = staged.map(\.id)
+        let chosen = staged
         Task {
-            if await model.add(mediaIDs: ids, to: album.id) {
+            defer { saving = false }
+            let readable = await Self.checkReadability(chosen)
+            if readable.count != chosen.count {
+                let readableIDs = Set(readable.map(\.id))
+                let unavailableIDs = Set(chosen.lazy.map(\.id).filter { !readableIDs.contains($0) })
+                readableCandidates.removeAll { unavailableIDs.contains($0.id) }
+                error = "有选中的媒体已不可用。请从待添加列表移除后重试。"
+                return
+            }
+            if await model.add(mediaIDs: readable.map(\.id), to: album.id) {
                 dismiss()
             } else {
                 error = model.error ?? "无法添加媒体，请重试。"
                 model.error = nil
             }
-            saving = false
         }
     }
 }
