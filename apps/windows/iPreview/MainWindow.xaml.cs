@@ -665,6 +665,7 @@ public sealed partial class MainWindow : Window
             return;
         if (browseMode == BrowseMode.Icons)
             Gallery.UpdateLayout();
+        previewBrowser = browser;
         OpenPreview(tiles, browser.SelectedIndex, new(browseMode, Columns));
     }
 
@@ -680,8 +681,9 @@ public sealed partial class MainWindow : Window
             _ => "方向键 切换媒体"
         }) + "     Space / Esc 退出预览";
         PreviewOverlay.Visibility = Visibility.Visible;
-        LibraryView.Visibility = Visibility.Collapsed;
+        LibraryView.IsHitTestVisible = false;
         ShowPreview(selectedIndex);
+        AnimatePreview(ThumbnailOf(initialSelection), opening: true, complete: null);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -695,16 +697,33 @@ public sealed partial class MainWindow : Window
 
     private void ClosePreview(long? selectedId)
     {
+        if (previewClosing || PreviewOverlay.Visibility != Visibility.Visible)
+            return;
+        if (previewMoving)
+        {
+            afterPreviewMotion = () => ClosePreview(selectedId);
+            return;
+        }
+        previewClosing = true;
+        if (player?.PlaybackSession.CanPause == true)
+            player.Pause();
+        AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
+    }
+
+    private void FinishClosePreview(long? selectedId)
+    {
+        previewClosing = false;
+        previewBrowser = null;
         previewGeneration++;
         previewIndex = -1;
         StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         PreviewOverlay.Visibility = Visibility.Collapsed;
-        LibraryView.Visibility = Visibility.Visible;
         previewTiles = [];
         if (RestoreGlobalSearchAfterPreview(selectedId))
             return;
+        LibraryView.IsHitTestVisible = true;
         var browser = ActiveMediaBrowser;
         browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         FocusSelectedMedia();
@@ -738,7 +757,7 @@ public sealed partial class MainWindow : Window
         if (direction is not { } arrow)
             return;
         args.Handled = true;
-        if (previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
+        if (!previewMoving && !previewClosing && previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
             ShowPreview(next);
     }
 

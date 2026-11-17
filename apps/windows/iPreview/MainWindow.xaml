@@ -461,73 +461,81 @@
             </Border>
         </Grid>
 
-        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="#FF10161F" RequestedTheme="Dark" Padding="24,12"
-              RowSpacing="10" PreviewKeyDown="PreviewKeyDown">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Grid ColumnSpacing="14">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Button Click="ClosePreviewButton" AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
-                    <FontIcon Glyph="&#xE72B;" FontSize="15" />
-                </Button>
-                <TextBlock x:Name="PreviewTitle" Grid.Column="1" TextTrimming="CharacterEllipsis"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
-                <TextBlock x:Name="IndexLabel" Grid.Column="2" Foreground="#B6C4C5" VerticalAlignment="Center" />
-            </Grid>
-
-            <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
-                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                            AutomationProperties.Name="预览画布，方向键切换媒体，空格键关闭">
-                <Grid ColumnSpacing="12" RowSpacing="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="48" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="48" />
-                    </Grid.RowDefinitions>
+        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent" RequestedTheme="Dark"
+              PreviewKeyDown="PreviewKeyDown" TabFocusNavigation="Cycle">
+            <Border x:Name="PreviewBackdrop" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                    IsHitTestVisible="False" />
+            <Grid x:Name="PreviewContent" Padding="24,12" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MaxWidth="112" />
-                        <ColumnDefinition Width="8*" />
-                        <ColumnDefinition Width="*" MaxWidth="112" />
-                    </Grid.ColumnDefinitions>
-                    <Image x:Name="NeighborTop" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
-                    <Image x:Name="NeighborLeft" Grid.Row="1" Opacity=".32" Stretch="UniformToFill" />
-                    <Image x:Name="NeighborRight" Grid.Row="1" Grid.Column="2" Opacity=".32" Stretch="UniformToFill" />
-                    <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
-                    <Border Grid.Row="1" Grid.Column="1" Background="#0C1317" CornerRadius="12">
-                        <Grid>
-                            <Image x:Name="MainImage" Stretch="Uniform" />
-                            <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False" Stretch="Uniform" />
-                            <TextBlock x:Name="PreviewError" Visibility="Collapsed" Foreground="#F0CEAE"
-                                       TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       Margin="22" />
-                        </Grid>
-                    </Border>
-                </Grid>
-            </ContentControl>
-
-            <StackPanel Grid.Row="2" Spacing="9">
-                <Grid x:Name="VideoControls" Visibility="Collapsed" Background="#253034"
-                      HorizontalAlignment="Stretch" MaxWidth="640" CornerRadius="12" Padding="12,4" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="PlayPause" Content="播放" Click="TogglePlayback"
-                            AutomationProperties.Name="播放或暂停" />
-                    <TextBlock x:Name="TimeLabel" Grid.Column="1" VerticalAlignment="Center" Foreground="#D2DEDE" />
-                    <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
-                            VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
+                    <Button Click="ClosePreviewButton" AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
+                        <FontIcon Glyph="&#xE72B;" FontSize="15" />
+                    </Button>
+                    <TextBlock x:Name="PreviewTitle" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                    <TextBlock x:Name="IndexLabel" Grid.Column="2" Foreground="#B6C4C5" VerticalAlignment="Center" />
                 </Grid>
-                <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
-            </StackPanel>
+
+                <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                AutomationProperties.Name="预览画布，方向键切换媒体，空格键关闭">
+                    <Grid ColumnSpacing="12" RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="48" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="48" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MaxWidth="112" />
+                            <ColumnDefinition Width="8*" />
+                            <ColumnDefinition Width="*" MaxWidth="112" />
+                        </Grid.ColumnDefinitions>
+                        <Image x:Name="NeighborTop" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
+                        <Image x:Name="NeighborLeft" Grid.Row="1" Opacity=".32" Stretch="UniformToFill" />
+                        <Image x:Name="NeighborRight" Grid.Row="1" Grid.Column="2" Opacity=".32" Stretch="UniformToFill" />
+                        <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Opacity=".32" Stretch="UniformToFill" />
+                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1" Background="#0C1317" CornerRadius="12">
+                            <Grid>
+                                <Image x:Name="MainImage" Stretch="Uniform" />
+                                <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False" Stretch="Uniform" />
+                                <TextBlock x:Name="PreviewError" Visibility="Collapsed" Foreground="#F0CEAE"
+                                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="22" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </ContentControl>
+
+                <StackPanel Grid.Row="2" Spacing="9">
+                    <Grid x:Name="VideoControls" Visibility="Collapsed" Background="#253034"
+                          HorizontalAlignment="Stretch" MaxWidth="640" CornerRadius="12" Padding="12,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="PlayPause" Content="播放" Click="TogglePlayback"
+                                AutomationProperties.Name="播放或暂停" />
+                        <TextBlock x:Name="TimeLabel" Grid.Column="1" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                        <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
+                                VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
+                    </Grid>
+                    <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
+                </StackPanel>
+            </Grid>
+            <Canvas x:Name="PreviewMotionLayer" Visibility="Collapsed" IsHitTestVisible="False"
+                    AutomationProperties.AccessibilityView="Raw">
+                <Image x:Name="PreviewMotionImage" Stretch="Uniform" />
+            </Canvas>
         </Grid>
     </Grid>
 </Window>
