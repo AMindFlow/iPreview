@@ -13,5 +13,6 @@
 - **要求** 当前页搜索范围随所在层级变化。来源和创作者页可查找其子树，真实专辑仅查找当前专辑，虚拟专辑仅查找本专辑的成员。进入其他层级时清除当前页查询。
 - **要求** 点击侧栏「媒体库」右侧放大镜打开居中的全局搜索并将光标放入全局搜索框。结果显示目录或文件及路径，方向键选中结果。Enter 进入目录，或进入文件所在目录并定位文件。选择文件后 Space 切换预览，Esc 可返回搜索或关闭搜索面板。查询和媒体索引保存在本地。
 - **要求** 全局搜索默认涵盖文件和目录。使用 macOS 的 ⌘1／⌘2 或 Windows 的 Ctrl+1／Ctrl+2 分别切换只搜文件或目录，重复按当前范围恢复搜索两者。以 @ 开头按规范化的完整名称精确匹配，面板显示范围和匹配用法。页内模式与全局独立。
-- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，用户提供的 Spotlight 参考、[图库交互复验 #32](https://github.com/AMindFlow/iPreview/issues/32)和 [Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)。
-- **验收** 在两个来源中放入同名文件和同名专辑。分别从来源、创作者、真实专辑和虚拟专辑搜索，核对范围边界。全局分别打开目录、定位文件、预览和回到结果。从已聚焦的页内搜索框打开全局搜索，覆盖立即输入、范围切换、@ 精确匹配、拼音、空格和 Escape。
+- **要求** macOS 的 ⌘F 和 Windows 的 Ctrl+F 聚焦当前范围输入框。媒体库总览使用全局搜索入口。⇧⌘F 或 Ctrl+Shift+F 打开居中的全局搜索，已打开时聚焦全局输入框。预览或名称编辑期间保留当前操作焦点。
+- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，用户提供的 Spotlight 参考、[图库交互复验 #32](https://github.com/AMindFlow/iPreview/issues/32)、[Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)及[搜索快捷键 #35](https://github.com/AMindFlow/iPreview/issues/35)。
+- **验收** 分别从来源、创作者、真实专辑和虚拟专辑搜索，核对范围边界。全局分别打开目录、定位文件、预览和回到结果。分别用快捷键进入页内和全局搜索并直接输入，打开全局后再次按快捷键确认焦点回到输入框。回归范围切换、@ 精确匹配、拼音、空格和 Escape。

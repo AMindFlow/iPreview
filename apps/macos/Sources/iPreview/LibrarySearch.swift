@@ -2,6 +2,37 @@ import AppKit
 import SwiftUI
 import iPreviewCore
 
+struct LibrarySearchActions {
+    let focusCurrent: (@MainActor () -> Void)?
+    let focusGlobal: (@MainActor () -> Void)?
+}
+
+private struct LibrarySearchActionsKey: FocusedValueKey {
+    typealias Value = LibrarySearchActions
+}
+
+extension FocusedValues {
+    var librarySearchActions: LibrarySearchActions? {
+        get { self[LibrarySearchActionsKey.self] }
+        set { self[LibrarySearchActionsKey.self] = newValue }
+    }
+}
+
+struct LibrarySearchCommands: Commands {
+    @FocusedValue(\.librarySearchActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Button("搜索当前范围") { actions?.focusCurrent?() }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(actions?.focusCurrent == nil)
+            Button("全局搜索") { actions?.focusGlobal?() }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(actions?.focusGlobal == nil)
+        }
+    }
+}
+
 struct LibrarySearchFilters: View {
     @Binding var mode: MatchMode
     @Binding var directories: Bool

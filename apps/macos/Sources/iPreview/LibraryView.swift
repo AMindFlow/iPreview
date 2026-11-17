@@ -32,6 +32,13 @@ struct LibraryView: View {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     private var libraryOverlayShown: Bool { preview != nil || globalSearchShown }
+    private var searchActions: LibrarySearchActions {
+        let canSearch = preview == nil && titleEdit == nil && editSourceName == nil && !creatingAlbum
+            && addAlbumMedia == nil && model.inspection == nil && model.error == nil
+        let canSearchCurrent = canSearch && page != .library && !globalSearchShown
+        return LibrarySearchActions(focusCurrent: canSearchCurrent ? focusCurrentSearch : nil,
+                                    focusGlobal: canSearch ? showGlobalSearch : nil)
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -65,6 +72,7 @@ struct LibraryView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(\.librarySearchActions, searchActions)
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
@@ -155,10 +163,7 @@ struct LibraryView: View {
                     sidebarRow("媒体库", icon: "photo.on.rectangle.angled", active: page == .library) {
                         navigate(.library)
                     }
-                    Button {
-                        focus = nil
-                        globalSearchShown = true
-                    } label: {
+                    Button(action: showGlobalSearch) {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 27, height: 27)
                     }
@@ -166,7 +171,7 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("全局搜索")
                     .accessibilityIdentifier("show-global-search")
-                    .help("搜索所有来源")
+                    .help("搜索所有来源（⇧⌘F）")
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
@@ -869,6 +874,19 @@ struct LibraryView: View {
         mediaToReveal = mediaID
         selectedFolder = folder
         focusBrowser()
+    }
+
+    private func focusCurrentSearch() {
+        focus = .search
+    }
+
+    private func showGlobalSearch() {
+        if globalSearchShown {
+            focus = .globalSearchQuery
+        } else {
+            focus = nil
+            globalSearchShown = true
+        }
     }
 
     private func dismissGlobalSearch() {
