@@ -22,8 +22,8 @@
 
 - macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement。实际媒体暴露格式缺口时，优先用对应样例验证 LibVLC 双端嵌入、打包和许可证。libmpv 是备选，FFprobe 可用于元信息读取。新增随包分发的生产依赖需要批准，按具体二进制及组件核对许可与 codec 专利。
 
-## PRE-009 macOS Quick Look 式过渡
+## PRE-009 Quick Look 式过渡
 
-- **要求** Space 打开媒体预览时，从浏览位置展开到预览画布。Space 关闭缩回当前媒体所在的位置，Esc 缩回原选中项的位置，遵从 [PRE-007](#pre-007-space-打开和关闭预览) 的选中规则。系统启用「减少动态效果」时改用淡入淡出。
-- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，Finder 快速查看参考。
-- **验收** 从图标、列表、画廊各打开一次，核对放大与缩回的位置。在预览中切换媒体后分别用 Space 和 Esc 退出，核对焦点和选中项。复验视频方向键和进度条焦点。
+- **要求** Space 打开媒体预览时，以实测的缩略图位置和尺寸为起点，沿连续过渡展开到预览画布。预览使用系统毛玻璃遮挡底层，进退期间侧栏、工具栏与内容视口位置保持固定。Space 关闭缩回当前媒体所在的位置，Esc 缩回原选中项的位置，遵从 [PRE-007](#pre-007-space-打开和关闭预览) 的选中规则。尊重系统的动画设置。macOS 打开「减少动态效果」时只使用淡入淡出，Windows 关闭动画时直接显示或关闭预览。
+- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，Finder 快速查看参考、[图库交互复验 #32](https://github.com/AMindFlow/iPreview/issues/32)和 [Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)。
+- **验收** 从图标、列表、画廊各打开一次，对比起点和终点、缩放路径，以及打开前和打开后的工具栏与内容位置。在预览中切换媒体后分别用 Space 和 Esc 退出，核对焦点和选中项。复验视频方向键和进度条焦点。
