@@ -9,7 +9,7 @@ struct PreviewRequest {
 
 struct MediaPreview: View {
     let request: PreviewRequest
-    let close: () -> Void
+    let close: (Int64) -> Void
 
     @ViewState private var index: Int
     @ViewState private var video = VideoPlayback()
@@ -24,7 +24,7 @@ struct MediaPreview: View {
 
     private var media: Media { request.items[index] }
 
-    init(request: PreviewRequest, close: @escaping () -> Void) {
+    init(request: PreviewRequest, close: @escaping (Int64) -> Void) {
         self.request = request
         self.close = close
         _index = ViewState(initialValue: request.items.firstIndex(where: { $0.id == request.selection })!)
@@ -84,9 +84,10 @@ struct MediaPreview: View {
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         switch press.key {
         case .escape:
-            if press.phase == .down { close() }
+            if press.phase == .down { close(request.selection) }
         case .space:
-            if press.phase == .down, media.kind == .video { video.toggle() }
+            guard focus == .canvas else { return .ignored }
+            if press.phase == .down { close(media.id) }
         case .tab:
             guard media.kind == .video, video.message == nil, video.duration > 0 else { return .ignored }
             if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
@@ -103,7 +104,9 @@ struct MediaPreview: View {
 
     private var topControls: some View {
         HStack {
-            Button(action: close) {
+            Button {
+                close(request.selection)
+            } label: {
                 Image(systemName: "xmark")
                     .font(.callout.weight(.semibold))
                     .frame(width: 35, height: 35)

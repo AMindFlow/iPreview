@@ -153,7 +153,7 @@
 
             <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                            AutomationProperties.Name="预览画布，方向键切换媒体">
+                            AutomationProperties.Name="预览画布，方向键切换媒体，空格键关闭">
                 <Grid ColumnSpacing="12" RowSpacing="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="48" />
@@ -195,7 +195,7 @@
                     <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
                             VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
                 </Grid>
-                <TextBlock Text="方向键 切换媒体     Esc 退出预览" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
+                <TextBlock Text="方向键 切换媒体     Space / Esc 退出预览" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
             </StackPanel>
         </Grid>
     </Grid>

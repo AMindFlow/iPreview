@@ -548,7 +548,8 @@ public sealed partial class MainWindow : Window
         if (args.Key != VirtualKey.Space)
             return;
         args.Handled = true;
-        OpenPreview();
+        if (!args.KeyStatus.WasKeyDown)
+            OpenPreview();
     }
 
     private void OpenPreview()
@@ -570,9 +571,9 @@ public sealed partial class MainWindow : Window
         : 1;
     private int previewColumns = 1;
 
-    private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview();
+    private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview(initialSelection);
 
-    private void ClosePreview()
+    private void ClosePreview(long? selectedId)
     {
         previewGeneration++;
         previewIndex = -1;
@@ -582,10 +583,11 @@ public sealed partial class MainWindow : Window
         PreviewOverlay.Visibility = Visibility.Collapsed;
         LibraryView.Visibility = Visibility.Visible;
         previewTiles = [];
-        Gallery.SelectedItem = tiles.Find(tile => tile.Media.Id == initialSelection) ?? tiles.FirstOrDefault();
+        Gallery.SelectedItem = tiles.Find(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         if (Gallery.SelectedItem is { } selected)
         {
             Gallery.ScrollIntoView(selected);
+            Gallery.UpdateLayout();
             if (Gallery.ContainerFromItem(selected) is Control item && item.Focus(FocusState.Programmatic))
                 return;
         }
@@ -597,7 +599,7 @@ public sealed partial class MainWindow : Window
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
-            ClosePreview();
+            ClosePreview(initialSelection);
             return;
         }
         if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCanvas))
@@ -605,10 +607,8 @@ public sealed partial class MainWindow : Window
         if (args.Key == VirtualKey.Space)
         {
             args.Handled = true;
-            if (player is not null)
-                ToggleVideo();
-            else if (previewIndex >= 0 && !previewTiles[previewIndex].Media.IsVideo)
-                ClosePreview();
+            if (!args.KeyStatus.WasKeyDown)
+                ClosePreview(previewTiles[previewIndex].Media.Id);
             return;
         }
         var delta = args.Key switch
@@ -746,6 +746,7 @@ public sealed partial class MainWindow : Window
         VideoControls.Visibility = Visibility.Collapsed;
         PreviewError.Text = string.IsNullOrWhiteSpace(detail) ? title : $"{title}\n{detail}";
         PreviewError.Visibility = Visibility.Visible;
+        PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
     private void UpdateTime()
