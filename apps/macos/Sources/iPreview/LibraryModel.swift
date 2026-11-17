@@ -14,6 +14,7 @@ final class LibraryModel {
     var inspection: SourceInspection?
 
     @ObservationIgnored private var cachedScope: (page: LibraryPage, value: ContentScope)?
+    @ObservationIgnored private var inspectionVersion: Int64?
     private let dataDirectory: URL
 
     init() {
@@ -54,6 +55,9 @@ final class LibraryModel {
                 }
             }
             try await refresh(opened, rebuildSearch: true)
+            if opened.renameRecoveryRequired {
+                error = SourceRenameError.pending.localizedDescription
+            }
         } catch {
             catalog = nil
             self.error = error.localizedDescription
@@ -61,14 +65,17 @@ final class LibraryModel {
     }
 
     func inspect(_ directory: URL) async {
-        guard !isWorking else { return }
+        guard let catalog, !isWorking else { return }
         isWorking = true
         defer { isWorking = false }
         do {
             let dataDirectory = dataDirectory
-            inspection = try await Task.detached(priority: .userInitiated) {
+            let version = try await catalog.scanVersion()
+            let inspected = try await Task.detached(priority: .userInitiated) {
                 try SourceScanner.inspect(directory, dataDirectory: dataDirectory)
             }.value
+            inspectionVersion = version
+            inspection = inspected
         } catch {
             self.error = error.localizedDescription
         }
@@ -76,20 +83,23 @@ final class LibraryModel {
 
     func register(_ inspection: SourceInspection, candidate: ImportCandidate) async {
         self.inspection = nil
+        let version = inspectionVersion!
+        inspectionVersion = nil
         await change { catalog in
-            try await catalog.importSource(root: inspection.root, candidate: candidate)
+            try await catalog.importSource(root: inspection.root, candidate: candidate, expectedVersion: version)
         }
     }
 
     func rescan(_ source: Source) async {
         await change { catalog in
+            let version = try await catalog.scanVersion(for: source.id)
             do {
                 let entries = try await Task.detached(priority: .userInitiated) {
                     try SourceScanner.rescan(source)
                 }.value
-                try await catalog.update(source: source, entries: entries)
+                try await catalog.update(source: source, entries: entries, expectedVersion: version)
             } catch ScanError.inaccessibleRoot {
-                try await catalog.markUnavailable(source: source)
+                try await catalog.markUnavailable(source: source, expectedVersion: version)
             }
         }
     }
@@ -107,6 +117,16 @@ final class LibraryModel {
         await change(rebuildSearch: false) { catalog in
             try await catalog.rename(albumID: albumID, to: name)
         }
+    }
+
+    func renameSourceItem(_ edit: SourceNameEdit, to name: String) async throws -> String {
+        guard let catalog, !isWorking else { throw SourceRenameError.unavailable }
+        isWorking = true
+        defer { isWorking = false }
+        let path = try await catalog.renameSourceItem(sourceID: edit.source.id, path: edit.path,
+                                                      mediaID: edit.mediaID, to: name)
+        try await refresh(catalog, rebuildSearch: true)
+        return path
     }
 
     func add(mediaID: Int64, to albumID: Int64) async {
