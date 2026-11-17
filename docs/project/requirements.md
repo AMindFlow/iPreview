@@ -12,7 +12,7 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 | 搜索 | [SRCH-001](../specs/official/search.md) | [旧版分类结果及标签搜索](../specs/spike/search.md) |
 | 专辑组织 | [ALB-001](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、批量组织与删除](../specs/spike/virtual-albums.md) |
 | 媒体元信息 | | [从文件提取及修改后写回](../specs/spike/metadata.md) |
-| 应用视觉标识 | [UI-001 眼睛主题应用图标](../specs/official/appearance.md) | |
+| 应用视觉标识 | [UI-001 应用图标](../specs/official/appearance.md) | |
 | 平台与分发 | [平台与技术栈](overview.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
 
 ## 设计要求
