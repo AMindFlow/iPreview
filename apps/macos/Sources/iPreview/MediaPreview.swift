@@ -15,7 +15,12 @@ struct MediaPreview: View {
     @ViewState private var video = VideoPlayback()
     @ViewState private var scrubPosition: Double?
     @ViewState private var scrubbing = false
-    @FocusState private var canvasFocused: Bool
+    @FocusState private var focus: Focus?
+
+    private enum Focus: Hashable { case canvas, timeline }
+    private static let previewKeys: Set<KeyEquivalent> = [
+        .escape, .space, .tab, .leftArrow, .rightArrow, .upArrow, .downArrow,
+    ]
 
     private var media: Media { request.items[index] }
 
@@ -30,15 +35,21 @@ struct MediaPreview: View {
             let size = geometry.size
             ZStack {
                 Color(red: 0.050, green: 0.058, blue: 0.074)
+                    .onTapGesture { focus = .canvas }
                 neighbors(in: size)
                 stage
                     .frame(width: size.width * 0.76, height: size.height * 0.72)
                     .clipShape(.rect(cornerRadius: 12))
                     .id(media.id)
                     .accessibilityLabel(media.name)
+                    .onTapGesture { focus = .canvas }
                 navigation
                     .padding(.horizontal, 16)
             }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focus, equals: .canvas)
+            .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
             .overlay(alignment: .top) { topControls }
             .overlay(alignment: .bottom) {
                 if media.kind == .video, video.message == nil {
@@ -50,23 +61,9 @@ struct MediaPreview: View {
         }
         .environment(\.colorScheme, .dark)
         .foregroundStyle(.white)
-        .focusable()
-        .focusEffectDisabled()
-        .focused($canvasFocused)
-        .onKeyPress(keys: [.escape, .space, .leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
-            switch press.key {
-            case .escape:
-                if press.phase == .down { close() }
-            case .space:
-                if press.phase == .down, media.kind == .video { video.toggle() }
-            default:
-                index = moveIndex(index, key: press.key, columns: request.columns, count: request.items.count)
-            }
-            return .handled
-        }
         .task {
             await Task.yield()
-            canvasFocused = true
+            focus = .canvas
         }
         .task(id: media.id) {
             scrubPosition = nil
@@ -77,8 +74,31 @@ struct MediaPreview: View {
                 video.stop()
             }
         }
+        .onChange(of: video.message) { _, message in
+            if message != nil { focus = .canvas }
+        }
         .onDisappear { video.stop() }
         .accessibilityIdentifier("media-preview")
+    }
+
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        switch press.key {
+        case .escape:
+            if press.phase == .down { close() }
+        case .space:
+            if press.phase == .down, media.kind == .video { video.toggle() }
+        case .tab:
+            guard media.kind == .video, video.message == nil, video.duration > 0 else { return .ignored }
+            if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
+        default:
+            if focus == .timeline {
+                let backward = press.key == .leftArrow || press.key == .downArrow
+                video.seek(video.elapsed + (backward ? -0.25 : 0.25))
+            } else {
+                index = moveIndex(index, key: press.key, columns: request.columns, count: request.items.count)
+            }
+        }
+        return .handled
     }
 
     private var topControls: some View {
@@ -136,7 +156,7 @@ struct MediaPreview: View {
     private func navigate(_ icon: String, label: String, step: Int) -> some View {
         Button {
             index += step
-            canvasFocused = true
+            focus = .canvas
         } label: {
             Image(systemName: icon)
                 .font(.body.weight(.medium))
@@ -182,7 +202,7 @@ struct MediaPreview: View {
         HStack(spacing: 12) {
             Button {
                 video.toggle()
-                canvasFocused = true
+                focus = .canvas
             } label: {
                 Image(systemName: video.isPlaying ? "pause.fill" : "play.fill")
                     .font(.callout.weight(.semibold))
@@ -206,15 +226,21 @@ struct MediaPreview: View {
                 }
             ), in: 0...max(video.duration, 1), onEditingChanged: { editing in
                 scrubbing = editing
-                if !editing, let scrubPosition {
-                    video.seek(scrubPosition)
-                    self.scrubPosition = nil
+                if !editing {
+                    focus = .timeline
+                    if let scrubPosition {
+                        video.seek(scrubPosition)
+                        self.scrubPosition = nil
+                    }
                 }
             })
             .labelsHidden()
             .controlSize(.small)
             .accessibilityLabel("视频进度")
             .disabled(video.duration <= 0)
+            .focusable(video.duration > 0, interactions: .edit)
+            .focused($focus, equals: .timeline)
+            .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
 
             Text(time(video.duration))
                 .monospacedDigit()
