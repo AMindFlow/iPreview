@@ -31,23 +31,13 @@ public sealed partial class MainWindow
                 closing.Cancel = true;
         };
         var selected = Selection?.Media.Id;
-        var error = new InfoBar { Title = "无法添加媒体", Severity = InfoBarSeverity.Error };
-        var content = new Grid
-        {
-            RowSpacing = 8
-        };
         void FitPicker()
         {
-            content.Width = Math.Clamp(Root.ActualWidth - 76, 234, 1050);
-            content.Height = Math.Clamp(Root.ActualHeight - 157, 170, 620);
+            staged.Width = Math.Clamp(Root.ActualWidth - 76, 234, 1050);
+            staged.Height = Math.Clamp(Root.ActualHeight - 157, 180, 620);
         }
         FitPicker();
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        content.Children.Add(error);
-        Grid.SetRow(staged, 1);
-        content.Children.Add(staged);
-        dialog.Content = content;
+        dialog.Content = staged;
         dialog.PrimaryButtonClick += async (_, click) =>
         {
             if (saving)
@@ -60,7 +50,7 @@ public sealed partial class MainWindow
             saving = true;
             staged.IsEnabled = false;
             dialog.IsPrimaryButtonEnabled = false;
-            error.IsOpen = false;
+            staged.ShowAddError(null);
             var chosen = staged.SelectedMedia;
             try
             {
@@ -68,8 +58,7 @@ public sealed partial class MainWindow
                 if (unavailable is not null)
                 {
                     click.Cancel = true;
-                    error.Message = $"「{unavailable.FileName}」已不可用。请从待添加列表移除后重试。";
-                    error.IsOpen = true;
+                    staged.ShowAddError($"「{unavailable.FileName}」已不可用。请移除该项后重试。");
                     staged.RecheckCurrentAlbum();
                     return;
                 }
@@ -78,8 +67,7 @@ public sealed partial class MainWindow
             catch (InvalidOperationException failure)
             {
                 click.Cancel = true;
-                error.Message = failure.Message;
-                error.IsOpen = true;
+                staged.ShowAddError(failure.Message);
             }
             finally
             {
