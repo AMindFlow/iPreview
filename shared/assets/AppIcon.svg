@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">iPreview</title>
+  <desc id="description">A blue nebula with white starlight, framed by blue and cyan orbits carrying images, video, and a disc.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" x2="0" y1="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#f7fafd"/>
+    </linearGradient>
+    <linearGradient id="tile-rim" x1="0" x2="0" y1="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#fff"/>
+      <stop offset=".64" stop-color="#edf4f9"/>
+      <stop offset="1" stop-color="#dfebf6"/>
+    </linearGradient>
+    <radialGradient id="orbit-reflection">
+      <stop stop-color="#24c9f1" stop-opacity=".45"/>
+      <stop offset=".52" stop-color="#6cdef9" stop-opacity=".29"/>
+      <stop offset="1" stop-color="#c8f5ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="outer-orbit" x1="172" y1="498" x2="842" y2="365" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60b7ee"/>
+      <stop offset=".31" stop-color="#a8e0f8"/>
+      <stop offset=".58" stop-color="#a4edfc"/>
+      <stop offset="1" stop-color="#5dd9f2"/>
+    </linearGradient>
+    <linearGradient id="front-orbit" x1="235" y1="653" x2="804" y2="541" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#69b8f1"/>
+      <stop offset=".36" stop-color="#83d4f8"/>
+      <stop offset=".7" stop-color="#baf3ff"/>
+      <stop offset="1" stop-color="#5bd8f0"/>
+    </linearGradient>
+    <linearGradient id="orbit-glint" x1="215" y1="603" x2="822" y2="543" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#effbff" stop-opacity=".22"/>
+      <stop offset=".55" stop-color="#f0ffff" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#e8fbff" stop-opacity=".46"/>
+    </linearGradient>
+    <radialGradient id="nebula" cx=".64" cy=".43" r=".72" fx=".62" fy=".43">
+      <stop stop-color="#121e6e"/>
+      <stop offset=".35" stop-color="#1736ab"/>
+      <stop offset=".62" stop-color="#2165e3"/>
+      <stop offset=".8" stop-color="#32b1f0"/>
+      <stop offset=".95" stop-color="#7fe7f7"/>
+      <stop offset="1" stop-color="#caf8ff"/>
+    </radialGradient>
+    <radialGradient id="violet-cloud">
+      <stop stop-color="#eeafff"/>
+      <stop offset=".27" stop-color="#b97afc"/>
+      <stop offset=".67" stop-color="#6940e9" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#6146d5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cyan-cloud">
+      <stop stop-color="#9dfffb"/>
+      <stop offset=".29" stop-color="#32f2f5" stop-opacity=".92"/>
+      <stop offset=".59" stop-color="#0acabf" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#0abfeb" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="spiral-light" x1="391" y1="455" x2="626" y2="585" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43c4ff" stop-opacity=".12"/>
+      <stop offset=".29" stop-color="#78fcff" stop-opacity=".91"/>
+      <stop offset=".64" stop-color="#28ddfc" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#84a7fb" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="spiral-violet" x1="445" y1="390" x2="665" y2="535" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e5c1ff" stop-opacity=".17"/>
+      <stop offset=".3" stop-color="#f0b7ff" stop-opacity=".79"/>
+      <stop offset=".64" stop-color="#9573ff" stop-opacity=".27"/>
+      <stop offset="1" stop-color="#b98cf9" stop-opacity=".75"/>
+    </linearGradient>
+    <linearGradient id="sphere-rim" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#ddf9ff" stop-opacity=".6"/>
+      <stop offset=".32" stop-color="#fad0ff" stop-opacity=".53"/>
+      <stop offset=".65" stop-color="#bcabff" stop-opacity=".17"/>
+      <stop offset="1" stop-color="#b4f8ff" stop-opacity=".75"/>
+    </linearGradient>
+    <radialGradient id="star-aura">
+      <stop stop-color="#e2f7ff" stop-opacity=".83"/>
+      <stop offset=".4" stop-color="#99bdff" stop-opacity=".37"/>
+      <stop offset="1" stop-color="#87a8ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="satellite" cx=".41" cy=".36" r=".68" fx=".28" fy=".24">
+      <stop stop-color="#f1ffff"/>
+      <stop offset=".25" stop-color="#baf5ff"/>
+      <stop offset=".58" stop-color="#69d9f7"/>
+      <stop offset=".84" stop-color="#3faee9"/>
+      <stop offset="1" stop-color="#8de4ff"/>
+    </radialGradient>
+    <linearGradient id="glass-edge" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#d3f9ff"/>
+      <stop offset=".31" stop-color="#6dcdf6"/>
+      <stop offset=".65" stop-color="#369fda"/>
+      <stop offset="1" stop-color="#76dff4"/>
+    </linearGradient>
+    <linearGradient id="glass-face" x1="0" y1="1" x2="1" y2="0" gradientUnits="objectBoundingBox">
+      <stop stop-color="#159ed9"/>
+      <stop offset=".42" stop-color="#55bfec"/>
+      <stop offset=".76" stop-color="#7cddf7"/>
+      <stop offset="1" stop-color="#d8fbff"/>
+    </linearGradient>
+    <linearGradient id="glass-glyph" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#b0e9fc"/>
+    </linearGradient>
+    <linearGradient id="disc" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#effbff"/>
+      <stop offset=".25" stop-color="#9ce8ff"/>
+      <stop offset=".44" stop-color="#69b7f1"/>
+      <stop offset=".7" stop-color="#c9f8ff"/>
+      <stop offset="1" stop-color="#6dccf6"/>
+    </linearGradient>
+    <filter id="soft-cloud" x="-.5" y="-.5" width="2" height="2">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="soft-glint" x="-.5" y="-.5" width="2" height="2">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <clipPath id="sphere-clip">
+      <circle cx="510" cy="493" r="170"/>
+    </clipPath>
+    <path id="foreground-track" d="M 813 476 C 788 548 715 610 609 652 C 489 700 310 727 215 688 C 151 661 204 599 369 529"/>
+  </defs>
+
+  <rect x="89" y="92" width="846" height="846" rx="216" fill="#6d8aa8" opacity=".11" filter="url(#soft-glint)"/>
+  <rect x="91" y="91" width="842" height="842" rx="213" fill="url(#tile)" stroke="url(#tile-rim)" stroke-width="2"/>
+  <ellipse cx="510" cy="715" rx="303" ry="110" transform="rotate(5 510 715)" fill="url(#orbit-reflection)"/>
+
+  <g id="back-orbit" fill="none" stroke-linecap="round">
+    <path d="M 382 556 C 248 582 151 529 165 471 C 188 367 425 270 602 273 C 751 268 847 317 845 398 C 845 436 827 466 813 485"
+          stroke="url(#outer-orbit)" stroke-width="19"/>
+    <path d="M 380 551 C 246 572 163 521 172 475 C 191 373 429 275 602 277 C 749 272 843 320 840 398 C 840 438 827 462 813 480"
+          stroke="#f3fdff" stroke-opacity=".62" stroke-width="3"/>
+  </g>
+
+  <g id="front-orbit" fill="none" stroke-linecap="round">
+    <use href="#foreground-track" stroke="url(#front-orbit)" stroke-width="21"/>
+    <use href="#foreground-track" transform="translate(0 -3)" stroke="url(#orbit-glint)" stroke-width="4"/>
+  </g>
+
+  <g id="nebula-sphere">
+    <circle cx="510" cy="493" r="170" fill="url(#nebula)"/>
+    <g clip-path="url(#sphere-clip)">
+      <ellipse cx="525" cy="373" rx="172" ry="108" transform="rotate(-12 525 373)" fill="url(#violet-cloud)"/>
+      <ellipse cx="672" cy="519" rx="98" ry="143" transform="rotate(16 672 519)" fill="url(#violet-cloud)" opacity=".79"/>
+      <ellipse cx="426" cy="575" rx="185" ry="147" transform="rotate(29 426 575)" fill="url(#cyan-cloud)" opacity=".77"/>
+      <path d="M 383 454 C 366 498 392 526 431 531 C 478 537 484 561 508 578 C 550 611 591 555 633 587"
+            fill="none" stroke="url(#spiral-light)" stroke-width="31" stroke-linecap="round" filter="url(#soft-cloud)"/>
+      <path d="M 407 448 C 395 488 408 513 438 521 C 463 528 469 529 486 547 C 526 592 566 576 581 574 C 607 571 622 575 638 588"
+            fill="none" stroke="url(#spiral-light)" stroke-width="10" stroke-linecap="round" filter="url(#soft-glint)" opacity=".88"/>
+      <path d="M 406 417 C 467 417 454 365 525 359 C 598 348 617 411 645 453 C 678 502 622 545 566 552"
+            fill="none" stroke="url(#spiral-violet)" stroke-width="18" stroke-linecap="round" filter="url(#soft-cloud)"/>
+      <path d="M 450 392 C 487 372 500 357 534 362 C 593 371 598 400 625 427"
+            fill="none" stroke="url(#spiral-violet)" stroke-width="6" stroke-linecap="round" filter="url(#soft-glint)" opacity=".76"/>
+      <circle cx="583" cy="431" r="52" fill="url(#star-aura)"/>
+      <circle cx="534" cy="483" r="24" fill="url(#star-aura)" opacity=".74"/>
+      <path d="M 583 396 C 588 421 593 426 619 431 C 593 436 588 441 583 466 C 578 441 573 436 547 431 C 573 426 578 421 583 396 Z"
+            fill="#f7fcff"/>
+      <path d="M 534 473 Q 536 481 544 483 Q 536 485 534 493 Q 532 485 524 483 Q 532 481 534 473 Z" fill="#f4fcff"/>
+      <g fill="#c9ebff" opacity=".64">
+        <circle cx="459" cy="435" r="2"/>
+        <circle cx="610" cy="472" r="1.8"/>
+        <circle cx="551" cy="517" r="2.4"/>
+        <circle cx="633" cy="403" r="1.6"/>
+        <circle cx="498" cy="466" r="1.5"/>
+      </g>
+    </g>
+    <circle cx="510" cy="493" r="169" fill="none" stroke="url(#sphere-rim)" stroke-width="2"/>
+  </g>
+
+  <g id="orbiting-planets" fill="url(#satellite)" stroke="#d9faff" stroke-width="1.4">
+    <circle cx="201" cy="522" r="12"/>
+    <circle cx="683" cy="279" r="16"/>
+    <circle cx="585" cy="661" r="20"/>
+  </g>
+
+  <g id="photo-stack" transform="translate(285 321) rotate(-20)">
+    <rect x="-59" y="-39" width="116" height="97" rx="17" fill="#25b8ec" opacity=".37" filter="url(#soft-cloud)"/>
+    <rect x="-63" y="-49" width="106" height="94" rx="14" fill="#75d3f2" stroke="#d4f8ff" stroke-width="1.5" transform="rotate(-9)"/>
+    <rect x="-54" y="-43" width="108" height="94" rx="14" fill="url(#glass-edge)" stroke="#d4f8ff" stroke-width="1.5" transform="rotate(-4)"/>
+    <rect x="-44" y="-35" width="109" height="94" rx="14" fill="url(#glass-face)" stroke="#bff2ff" stroke-width="2"/>
+    <rect x="-35" y="-26" width="91" height="76" rx="9" fill="#168cca" fill-opacity=".28" stroke="#e7fdff" stroke-opacity=".51"/>
+    <circle cx="30" cy="-10" r="8" fill="url(#glass-glyph)"/>
+    <path d="M -28 31 L -7 9 Q -2 4 3 9 L 18 22 L 31 10 Q 36 6 41 11 L 49 19 V 33 Q 49 38 44 38 H -23 Q -30 38 -28 31 Z" fill="url(#glass-glyph)"/>
+  </g>
+
+  <g id="video-cassette" transform="translate(302 670) rotate(17) skewX(-9)">
+    <rect x="-63" y="-34" width="128" height="74" rx="13" fill="#209ddb" opacity=".27" filter="url(#soft-glint)"/>
+    <rect x="-61" y="-33" width="123" height="72" rx="12" fill="#177fb5" stroke="#83ddfb" stroke-width="1.8"/>
+    <rect x="-61" y="-39" width="123" height="73" rx="11" fill="url(#glass-edge)" stroke="#ddfaff" stroke-width="1.4"/>
+    <rect x="-53" y="-30" width="107" height="53" rx="8" fill="#238bad" stroke="#a3e6f8" stroke-width="1.4"/>
+    <g fill="#c0f2ff" stroke="#71c5e8" stroke-width="2">
+      <circle cx="-34" cy="-3" r="17"/>
+      <circle cx="34" cy="-3" r="17"/>
+    </g>
+    <g fill="#43a0c6">
+      <circle cx="-34" cy="-3" r="7"/>
+      <circle cx="34" cy="-3" r="7"/>
+    </g>
+    <rect x="-23" y="-24" width="46" height="42" rx="4" fill="url(#glass-glyph)"/>
+    <path d="M -6 -16 L 10 -7 L -6 2 Z" fill="#188bbc"/>
+    <path d="M -14 9 H 15 M -14 13 H 8" stroke="#54b1d0" stroke-width="1.4" stroke-linecap="round"/>
+  </g>
+
+  <g id="optical-disc" transform="translate(786 517) rotate(-8) skewX(-12)">
+    <rect x="-52" y="-42" width="103" height="88" rx="12" fill="#259ddb" opacity=".26" filter="url(#soft-glint)"/>
+    <rect x="-51" y="-44" width="102" height="87" rx="11" fill="url(#glass-edge)" stroke="#c8f6ff" stroke-width="1.6"/>
+    <rect x="-43" y="-46" width="94" height="87" rx="10" fill="url(#glass-face)" stroke="#e2fcff" stroke-width="2"/>
+    <rect x="-35" y="-38" width="78" height="71" rx="7" fill="#248cbd" stroke="#b7edff" stroke-opacity=".7"/>
+    <circle cx="4" cy="-2" r="32" fill="url(#disc)" stroke="#d8f8ff" stroke-width="1.5"/>
+    <path d="M 2 -2 L -1 -34 A 32 32 0 0 1 26 -26 Z M 7 1 L 16 28 A 32 32 0 0 1 -7 28 Z" fill="#e7fcff" opacity=".55"/>
+    <circle cx="4" cy="-2" r="10.5" fill="#9ae1f3" stroke="#e1f9ff" stroke-width="1.2"/>
+    <circle cx="4" cy="-2" r="5" fill="#3e9fc4"/>
+  </g>
+</svg>
