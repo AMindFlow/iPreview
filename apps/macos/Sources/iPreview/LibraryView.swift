@@ -427,13 +427,13 @@ struct LibraryView: View {
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
                 .disabled(model.isWorking)
-                Button("选择") {
+                Button("调整") {
                     removalSelection = []
                     focusBrowser()
                 }
                 .libraryGlassButton()
                 .disabled(model.isWorking)
-                .help("选择多个媒体引用")
+                .help("勾选媒体或按住媒体拖动排序")
             }
         }
     }
@@ -682,7 +682,7 @@ struct LibraryView: View {
                     ForEach(items) { item in
                         browseItem(item, among: items, album: album, layout: layout) {
                             MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                      showPath: searching, checked: removalSelection?.contains(item.id))
+                                      showPath: searching, checked: removalSelection?.contains(item.id) == true)
                         }
                     }
                 }
@@ -693,7 +693,7 @@ struct LibraryView: View {
         case .list:
             VStack(spacing: 0) {
                 MediaListColumns {
-                    Text("名称").padding(.leading, removalSelection == nil ? 33 : 58)
+                    Text("名称").padding(.leading, 33)
                 } modified: {
                     Text("修改日期")
                 } size: {
@@ -712,7 +712,7 @@ struct LibraryView: View {
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaListRow(media: item, revision: model.revision, selected: isMediaSelected(item.id),
                                              shaded: !index.isMultiple(of: 2), showPath: searching,
-                                             checked: removalSelection?.contains(item.id))
+                                             checked: removalSelection?.contains(item.id) == true)
                             }
                         }
                     }
@@ -732,7 +732,7 @@ struct LibraryView: View {
                         ForEach(items) { item in
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                          showPath: searching, checked: removalSelection?.contains(item.id))
+                                          showPath: searching, checked: removalSelection?.contains(item.id) == true)
                                     .frame(width: 94)
                             }
                         }
@@ -750,6 +750,16 @@ struct LibraryView: View {
     @ViewBuilder
     private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, layout: BrowseLayout,
                                         @ViewBuilder label: () -> Label) -> some View {
+        let adjusting = removalSelection != nil
+        let click: (Int) -> Void = { count in
+            selected = item.id
+            focus = .browser
+            if adjusting {
+                toggleRemoval(item.id)
+            } else if count == 2 {
+                open(item, among: items, layout: layout)
+            }
+        }
         let avatar = label()
         let cell = avatar
             .overlay {
@@ -759,18 +769,6 @@ struct LibraryView: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
-            }
-            .overlay {
-                MediaTileClick { clickCount in
-                    selected = item.id
-                    focus = .browser
-                    if removalSelection != nil {
-                        if clickCount == 1 { toggleRemoval(item.id) }
-                    } else if clickCount == 2 {
-                        open(item, among: items, layout: layout)
-                    }
-                }
-                .accessibilityHidden(true)
             }
             .contextMenu {
                 if let album, removalSelection == nil {
@@ -795,16 +793,16 @@ struct LibraryView: View {
             }
             .id(item.id)
         if let album, album.mediaIDs.count > 1 {
-            let enabled = removalSelection == nil && !model.isWorking && !searching
-            AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, enabled: enabled,
-                           content: cell, avatar: avatar) {
+            let canReorder = adjusting && !model.isWorking && !searching
+            AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, adjusting: adjusting,
+                           canReorder: canReorder, content: cell, avatar: avatar, click: click) {
                 selected = item.id
                 focus = .browser
             } commit: { expected, position in
                 Task { await model.move(mediaID: item.id, in: expected, to: position) }
             }
             .accessibilityActions {
-                if enabled {
+                if canReorder {
                     if item.id != album.mediaIDs.first {
                         Button("上移") {
                             Task { await model.move(mediaID: item.id, in: album.id, by: -1) }
@@ -819,6 +817,10 @@ struct LibraryView: View {
             }
         } else {
             cell
+                .overlay {
+                    MediaTileClick(adjusting: adjusting, onClick: click)
+                        .accessibilityHidden(true)
+                }
         }
     }
 
@@ -1125,7 +1127,7 @@ private struct MediaTile: View {
     let revision: Int
     let selected: Bool
     let showPath: Bool
-    let checked: Bool?
+    let checked: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1137,10 +1139,10 @@ private struct MediaTile: View {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(selected ? Color.ipreviewAccent : .clear, lineWidth: 2)
                 }
-                .overlay(alignment: .topTrailing) {
-                    if let checked {
-                        MediaSelectionMark(isChecked: checked)
-                            .padding(7)
+                .overlay(alignment: .bottomTrailing) {
+                    if checked {
+                        MediaSelectionMark()
+                            .padding(6)
                     }
                 }
                 .overlay(alignment: .bottomLeading) {

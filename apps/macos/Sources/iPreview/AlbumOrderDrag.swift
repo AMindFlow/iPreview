@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import iPreviewCore
 
@@ -8,7 +7,6 @@ private let albumOrderSpace = "album-order"
 final class AlbumOrderDrag {
     struct Drag {
         let album: VirtualAlbum
-        let item: Media
         let indices: [Int64: Int]
         let sourceIndex: Int
         let sourceSize: CGSize
@@ -45,12 +43,7 @@ final class AlbumOrderDrag {
 
     func pointInBrowser(_ point: CGPoint, from item: Media, mode: MediaBrowseMode, owner: UUID) -> CGPoint? {
         guard let slot = slots[mode]?[item.id], slot.owner == owner else { return nil }
-        let frame = slot.frame
-        let x = frame.maxX - AlbumOrderHandle.trailingInset(mode) - AlbumOrderHandle.size.width
-        let y = mode == .list
-            ? frame.midY - AlbumOrderHandle.size.height / 2
-            : frame.maxY - AlbumOrderHandle.bottomInset(mode) - AlbumOrderHandle.size.height
-        return CGPoint(x: x + point.x, y: y + point.y)
+        return CGPoint(x: slot.frame.minX + point.x, y: slot.frame.minY + point.y)
     }
 
     func begin(_ item: Media, album: VirtualAlbum, mode: MediaBrowseMode, owner: UUID,
@@ -60,7 +53,7 @@ final class AlbumOrderDrag {
         let indices = Dictionary(uniqueKeysWithValues: album.mediaIDs.enumerated().map { ($1, $0) })
         let frame = slot.frame
         let offset = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
-        drag = Drag(album: album, item: item, indices: indices, sourceIndex: index,
+        drag = Drag(album: album, indices: indices, sourceIndex: index,
                     sourceSize: frame.size, grabOffset: offset, avatar: avatar, mode: mode, owner: owner)
         return true
     }
@@ -155,9 +148,11 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
     let album: VirtualAlbum
     let item: Media
     let mode: MediaBrowseMode
-    let enabled: Bool
+    let adjusting: Bool
+    let canReorder: Bool
     let content: Content
     let avatar: Avatar
+    let click: (Int) -> Void
     let start: () -> Void
     let commit: (VirtualAlbum, Int) -> Void
 
@@ -165,8 +160,7 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let placeholder = order.drag?.item.id == item.id && order.destination != nil
-        let alignment: Alignment = mode == .list ? .trailing : .bottomTrailing
+        let placeholder = order.drag?.owner == owner && order.destination != nil
 
         ZStack {
             content
@@ -181,22 +175,11 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
                 }
                 .offset(order.displacement(for: item.id))
         }
-        .overlay(alignment: alignment) {
-            if enabled {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: AlbumOrderHandle.size.width, height: AlbumOrderHandle.size.height)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.primary.opacity(0.15)))
-                    .overlay {
-                        AlbumOrderHandle(update: updateDrag, finish: finishDrag)
-                    }
-                    .accessibilityHidden(true)
-                    .help("拖动排序")
-                    .padding(.trailing, AlbumOrderHandle.trailingInset(mode))
-                    .padding(.bottom, AlbumOrderHandle.bottomInset(mode))
-            }
+        .overlay {
+            MediaTileClick(adjusting: adjusting,
+                           reorder: canReorder ? .init(update: updateDrag, finish: finishDrag) : nil,
+                           onClick: click)
+                .accessibilityHidden(true)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: order.destination)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(albumOrderSpace)) } action: {
@@ -225,75 +208,6 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
         order.update(point, owner: owner)
         if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
             commit(drag.album, target)
-        }
-    }
-}
-
-private struct AlbumOrderHandle: NSViewRepresentable {
-    static let size = CGSize(width: 23, height: 22)
-    static func trailingInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 2 : 5 }
-    static func bottomInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 0 : 18 }
-
-    let update: (CGPoint, CGPoint) -> Void
-    let finish: (CGPoint?) -> Void
-
-    func makeNSView(context: Context) -> Surface { Surface() }
-
-    func updateNSView(_ view: Surface, context: Context) {
-        view.updateDrag = update
-        view.finishDrag = finish
-    }
-
-    // Claim mouse-down just on the grip so the surrounding scroll view cannot take the drag.
-    final class Surface: NSView {
-        var updateDrag: ((CGPoint, CGPoint) -> Void)?
-        var finishDrag: ((CGPoint?) -> Void)?
-        private var anchor: CGPoint?
-        private var dragging = false
-
-        override var isFlipped: Bool { true }
-
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .openHand)
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            guard let event = NSApp.currentEvent, event.type == .leftMouseDown,
-                  !event.modifierFlags.contains(.control) else { return nil }
-            return super.hitTest(point)
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            anchor = event.locationInWindow
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            guard let anchor else { return }
-            let point = event.locationInWindow
-            if !dragging {
-                guard hypot(point.x - anchor.x, point.y - anchor.y) >= 4 else { return }
-                dragging = true
-                NSCursor.closedHand.set()
-            }
-            updateDrag?(convert(point, from: nil), convert(anchor, from: nil))
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            let point = window?.isKeyWindow == true ? convert(event.locationInWindow, from: nil) : nil
-            endDrag(at: point)
-        }
-
-        override func viewWillMove(toWindow newWindow: NSWindow?) {
-            if newWindow == nil { endDrag(at: nil) }
-            super.viewWillMove(toWindow: newWindow)
-        }
-
-        private func endDrag(at point: CGPoint?) {
-            anchor = nil
-            guard dragging else { return }
-            dragging = false
-            NSCursor.openHand.set()
-            finishDrag?(point)
         }
     }
 }
