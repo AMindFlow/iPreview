@@ -179,8 +179,12 @@ internal sealed partial class Catalog : IDisposable
             INSERT OR IGNORE INTO album_media (album_id, media_id, position) VALUES (?, ?, ?);
             """, album, media, position);
 
-    public void RemoveFromAlbum(long album, long media) =>
-        database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, media);
+    public void RemoveFromAlbum(long album, IReadOnlyCollection<long> media) =>
+        database.InTransaction(() =>
+        {
+            foreach (var member in media)
+                database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, member);
+        });
 
     public void MoveInAlbum(long album, long media, int offset) =>
         database.InTransaction(() =>

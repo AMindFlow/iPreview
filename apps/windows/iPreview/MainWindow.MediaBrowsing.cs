@@ -57,10 +57,13 @@ public sealed partial class MainWindow
         if (catalog is null || sender is not ComboBox { SelectedIndex: >= 0 } picker)
             return;
 
-        var selected = Selection?.Media.Id;
+        var selected = Selection?.Media.Id ?? selectionBeforeAlbumRemoval;
         browseMode = (BrowseMode)picker.SelectedIndex;
         RefreshMediaBrowser(selected);
-        FocusSelectedMedia();
+        if (SelectingAlbumMembers)
+            FocusAlbumSelectionItem(selected);
+        else
+            FocusSelectedMedia();
     }
 
     private void RefreshMediaBrowser(long? selected)
@@ -77,14 +80,24 @@ public sealed partial class MainWindow
             Gallery.ItemsSource = Gallery.Visibility == Visibility.Visible ? tiles : null;
             DetailsList.ItemsSource = DetailsPane.Visibility == Visibility.Visible ? tiles : null;
             Filmstrip.ItemsSource = FilmstripPane.Visibility == Visibility.Visible ? tiles : null;
-            browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selected) ?? tiles.FirstOrDefault();
+            browser.SelectionMode = SelectingAlbumMembers ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+            if (SelectingAlbumMembers)
+            {
+                browser.SelectedItems.Clear();
+                foreach (var tile in tiles.Where(tile => albumRemovalIds.Contains(tile.Media.Id)))
+                    browser.SelectedItems.Add(tile);
+            }
+            else
+            {
+                browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selected) ?? tiles.FirstOrDefault();
+            }
         }
         finally
         {
             updatingBrowser = false;
         }
         UpdateSelection();
-        UpdateFilmstripPreview();
+        UpdateFilmstripPreview(SelectingAlbumMembers ? tiles.Find(tile => tile.Media.Id == selected) : null);
     }
 
     private void FocusSelectedMedia()
@@ -142,12 +155,13 @@ public sealed partial class MainWindow
         _ => $"{length / (1024d * 1024 * 1024):0.#} GB"
     };
 
-    private async void UpdateFilmstripPreview()
+    private async void UpdateFilmstripPreview(Tile? focused = null)
     {
         var generation = ++filmstripGeneration;
         FilmstripImage.Source = null;
         FilmstripMessage.Visibility = Visibility.Collapsed;
-        if (FilmstripPane.Visibility == Visibility.Collapsed || Selection is not { } tile)
+        var tile = focused ?? Selection;
+        if (FilmstripPane.Visibility == Visibility.Collapsed || tile is null)
             return;
 
         try
