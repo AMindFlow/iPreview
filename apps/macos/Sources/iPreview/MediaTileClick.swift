@@ -58,7 +58,7 @@ struct MediaTileClick: NSViewRepresentable {
             let point = event.locationInWindow
             if !press.dragging {
                 guard moved(point, from: press.anchor) else { return }
-                guard event.timestamp - press.timestamp >= Self.holdDuration, reorder != nil else {
+                guard reorder != nil else {
                     cancelPress()
                     return
                 }
