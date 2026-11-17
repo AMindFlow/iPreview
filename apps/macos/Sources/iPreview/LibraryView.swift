@@ -382,9 +382,10 @@ struct LibraryView: View {
                     addAlbumMedia = album
                 } label: {
                     Image(systemName: "rectangle.stack")
-                        .font(.system(size: 45, weight: .light))
-                        .foregroundStyle(.secondary)
-                        .padding(13)
+                        .font(.system(size: 35, weight: .light))
+                        .foregroundStyle(Color.libraryInk.opacity(0.64))
+                        .frame(width: 74, height: 70)
+                        .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
                         .overlay(alignment: .bottomTrailing) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 24, weight: .semibold))
