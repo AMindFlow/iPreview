@@ -255,11 +255,16 @@ public sealed partial class MainWindow : Window
 
     private bool ShowSourceFolders()
     {
-        var isMultiCreator = VisibleSource?.Layout == Layout.MultiCreator;
+        var source = VisibleSource;
         var path = current.Folder;
         var atAlbum = path is not null && path.IndexOf('/') != path.Length - 1;
-        var browseFolders = isMultiCreator && !atAlbum;
-        BackToSourceFolder.Visibility = VisibleSource is not null && path is not null ? Visibility.Visible : Visibility.Collapsed;
+        var browseFolders = source?.Layout switch
+        {
+            Layout.MultiCreator => !atAlbum,
+            Layout.Creator => path is null,
+            _ => false
+        };
+        BackToSourceFolder.Visibility = source is not null && path is not null ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.Visibility = browseFolders ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.ItemsSource = browseFolders
             ? FindNavigationNode(NavTree.RootNodes, current)?.Children.Select(node => (Navigation)node.Content).ToList()
@@ -296,8 +301,9 @@ public sealed partial class MainWindow : Window
         tiles = items.Select((item, index) => new Tile(item, index)).ToList();
         RefreshMediaBrowser(selected);
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
-            ? $"{SourceFolders.Items.Count}{(current.Folder is null ? " 位创作者" : " 个专辑")}"
+            ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
             : $"{tiles.Count} 项" + (current.Source is null && current.Album is null && !searching
                 ? $" · {sources.Count} 个来源" : "");
         if (!searching && current.Source is long source && !sources[source].Available)
@@ -307,7 +313,7 @@ public sealed partial class MainWindow : Window
             ? "从媒体库选取图片或视频，加入此专辑。" : sources.Count == 0
                 ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
         if (browsingFolders)
-            EmptyLabel.Text = current.Folder is null ? "没有已索引的创作者。" : "没有已索引的专辑。";
+            EmptyLabel.Text = choosingCreator ? "没有已索引的创作者。" : "没有已索引的专辑。";
         var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
         EmptyLabel.Visibility = visibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
