@@ -248,6 +248,7 @@
                     </Grid>
                     <ListView x:Name="SourceFolders" Visibility="Collapsed"
                               SelectionMode="None" IsItemClickEnabled="True" ItemClick="OpenSourceFolder"
+                              PreviewKeyDown="SourceFoldersKeyDown"
                               AutomationProperties.Name="创作者与专辑">
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -344,7 +345,7 @@
                     <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
                             VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
                 </Grid>
-                <TextBlock Text="方向键 切换媒体     Space / Esc 退出预览" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
+                <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
             </StackPanel>
         </Grid>
     </Grid>

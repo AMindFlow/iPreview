@@ -8,8 +8,6 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
-    private enum BrowseMode { Icons, List, Gallery }
-
     private sealed record TileDetails(string Modified, string Size)
     {
         public static readonly TileDetails Unavailable = new("—", "—");
@@ -92,15 +90,20 @@ public sealed partial class MainWindow
     private void FocusSelectedMedia()
     {
         var browser = ActiveMediaBrowser;
-        if (browser.SelectedItem is { } selected)
+        FocusBrowserItem(browser, browser.SelectedItem, FocusState.Programmatic);
+    }
+
+    private static void FocusBrowserItem(ListViewBase browser, object? item, FocusState focusState)
+    {
+        if (item is not null)
         {
             browser.UpdateLayout();
-            browser.ScrollIntoView(selected);
+            browser.ScrollIntoView(item);
             browser.UpdateLayout();
-            if (browser.ContainerFromItem(selected) is Control item && item.Focus(FocusState.Programmatic))
+            if (browser.ContainerFromItem(item) is Control container && container.Focus(focusState))
                 return;
         }
-        browser.Focus(FocusState.Programmatic);
+        browser.Focus(focusState);
     }
 
     private void LoadListDetails(object sender, RoutedEventArgs args) => LoadListDetails((FrameworkElement)sender);

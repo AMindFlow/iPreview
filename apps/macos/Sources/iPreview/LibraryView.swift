@@ -6,6 +6,7 @@ struct LibraryView: View {
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
     @ViewState private var selected: Int64?
+    @ViewState private var selectedFolder: LibraryPage?
     @ViewState private var browseMode = MediaBrowseMode.icons
     @ViewState private var query = ""
     @ViewState private var mode = MatchMode.fuzzy
@@ -17,7 +18,7 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    private enum Focus: Hashable { case gallery, search }
+    private enum Focus: Hashable { case browser, search }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -46,7 +47,7 @@ struct LibraryView: View {
                 MediaPreview(request: preview) { selection in
                     self.selected = selection
                     self.preview = nil
-                    focusGallery()
+                    focusBrowser()
                 }
                 .id(preview.selection)
                 .transition(.opacity)
@@ -198,7 +199,7 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
                 if !searching, let parent = page.parent(in: scope.source?.layout) {
-                    Button { navigate(parent.page) } label: {
+                    Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(.borderless)
@@ -300,7 +301,7 @@ struct LibraryView: View {
                 .textFieldStyle(.plain)
                 .focused($focus, equals: .search)
                 .accessibilityIdentifier("library-search")
-                .onSubmit { focusGallery() }
+                .onSubmit { focusBrowser() }
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -352,9 +353,9 @@ struct LibraryView: View {
     @ViewBuilder
     private func content(_ scope: ContentScope) -> some View {
         if !scope.folders.isEmpty {
-            folderGallery(scope.folders)
+            folderGallery(scope.folders, sourceLayout: scope.source?.layout)
         } else if !scope.items.isEmpty {
-            mediaGallery(scope.items, in: scope.virtualAlbum)
+            mediaGallery(scope.items, in: scope.virtualAlbum, sourceLayout: scope.source?.layout)
         } else if model.isWorking {
             ProgressView()
                 .accessibilityLabel("正在读取媒体库")
@@ -365,6 +366,12 @@ struct LibraryView: View {
                                    description: Text("在媒体库选中媒体，再用「加入虚拟专辑」添加。"))
         } else if scope.source != nil {
             ContentUnavailableView("没有可显示的媒体", systemImage: "photo.on.rectangle")
+                .focusable(page.parent(in: scope.source?.layout) != nil)
+                .focusEffectDisabled()
+                .focused($focus, equals: .browser)
+                .onKeyPress(keys: [.escape], phases: [.down, .repeat]) { press in
+                    backKey(press, sourceLayout: scope.source?.layout)
+                }
         } else {
             ContentUnavailableView {
                 Label("媒体库为空", systemImage: "photo.on.rectangle")
@@ -378,56 +385,94 @@ struct LibraryView: View {
         }
     }
 
-    private func folderGallery(_ folders: [LibraryFolder]) -> some View {
+    private func folderGallery(_ folders: [LibraryFolder], sourceLayout: iPreviewCore.Layout?) -> some View {
         GeometryReader { geometry in
-            ScrollView {
-                LazyVGrid(columns: columns(for: geometry.size.width), alignment: .leading, spacing: 18) {
-                    ForEach(folders) { folder in
-                        Button {
-                            navigate(folder.page)
-                            focusGallery()
-                        } label: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                MediaThumbnail(media: folder.cover, revision: model.revision)
-                                    .aspectRatio(1.47, contentMode: .fit)
-                                    .clipShape(.rect(cornerRadius: 12))
-                                Text(folder.name)
-                                    .font(.callout.weight(.semibold))
-                                    .lineLimit(1)
-                                Text(folder.caption)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Color.libraryInk)
-                            .contentShape(Rectangle())
+            let grid = columns(for: geometry.size.width)
+            let layout = BrowseLayout.grid(columns: grid.count)
+            ScrollViewReader { reader in
+                ScrollView {
+                    LazyVGrid(columns: grid, alignment: .leading, spacing: 18) {
+                        ForEach(folders) { folder in
+                            folderCard(folder)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                }
+                .focusable()
+                .focusEffectDisabled()
+                .focused($focus, equals: .browser)
+                .onKeyPress(keys: [.return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
+                            phases: [.down, .repeat]) { press in
+                    if press.key == .escape { return backKey(press, sourceLayout: sourceLayout) }
+
+                    let index = folders.firstIndex(where: { $0.page == selectedFolder }) ?? 0
+                    if press.key == .return {
+                        if press.phase == .down { navigate(folders[index].page) }
+                    } else if let destination = layout.neighbor(of: index, toward: press.key, count: folders.count) {
+                        let folder = folders[destination].page
+                        selectedFolder = folder
+                        reader.scrollTo(folder, anchor: .center)
+                    }
+                    return .handled
+                }
+                .onChange(of: folders.map(\.page), initial: true) { _, visibleFolders in
+                    if let selectedFolder, visibleFolders.contains(selectedFolder) {
+                        reader.scrollTo(selectedFolder, anchor: .center)
+                    } else {
+                        selectedFolder = visibleFolders.first
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
             }
         }
     }
 
-    private func mediaGallery(_ items: [Media], in album: VirtualAlbum?) -> some View {
+    private func folderCard(_ folder: LibraryFolder) -> some View {
+        let isSelected = selectedFolder == folder.page
+        return Button { navigate(folder.page) } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                MediaThumbnail(media: folder.cover, revision: model.revision)
+                    .aspectRatio(1.47, contentMode: .fit)
+                    .clipShape(.rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(isSelected ? Color.ipreviewAccent : .clear, lineWidth: 2)
+                    }
+                Text(folder.name)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                Text(folder.caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color.libraryInk)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .id(folder.page)
+    }
+
+    private func mediaGallery(_ items: [Media], in album: VirtualAlbum?, sourceLayout: iPreviewCore.Layout?) -> some View {
         GeometryReader { geometry in
             let grid = columns(for: geometry.size.width)
-            let columnCount = browseMode == .icons ? grid.count : 1
+            let layout = browseMode.layout(gridColumns: grid.count)
             ScrollViewReader { reader in
-                mediaBrowser(items, album: album, grid: grid, columnCount: columnCount)
+                mediaBrowser(items, album: album, grid: grid, layout: layout)
                     .focusable()
                     .focusEffectDisabled()
-                    .focused($focus, equals: .gallery)
-                    .onKeyPress(keys: [.space, .leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                    .focused($focus, equals: .browser)
+                    .onKeyPress(keys: [.space, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
+                                phases: [.down, .repeat]) { press in
+                        if press.key == .escape { return backKey(press, sourceLayout: sourceLayout) }
+
                         let index = items.firstIndex(where: { $0.id == selected }) ?? 0
                         if press.key == .space {
-                            if press.phase == .down { open(items[index], among: items, columns: columnCount) }
-                        } else {
-                            let next = moveIndex(index, key: press.key, columns: columnCount, count: items.count)
-                            selected = items[next].id
-                            reader.scrollTo(items[next].id, anchor: .center)
+                            if press.phase == .down { open(items[index], among: items, layout: layout) }
+                        } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
+                            selected = items[destination].id
+                            reader.scrollTo(items[destination].id, anchor: .center)
                         }
                         return .handled
                     }
@@ -447,20 +492,20 @@ struct LibraryView: View {
                                 reader.scrollTo(selected, anchor: .center)
                             }
                         }
-                        focusGallery()
+                        focusBrowser()
                     }
             }
         }
     }
 
     @ViewBuilder
-    private func mediaBrowser(_ items: [Media], album: VirtualAlbum?, grid: [GridItem], columnCount: Int) -> some View {
+    private func mediaBrowser(_ items: [Media], album: VirtualAlbum?, grid: [GridItem], layout: BrowseLayout) -> some View {
         switch browseMode {
         case .icons:
             ScrollView {
                 LazyVGrid(columns: grid, alignment: .leading, spacing: 16) {
                     ForEach(items) { item in
-                        browseItem(item, among: items, album: album, columns: columnCount) {
+                        browseItem(item, among: items, album: album, layout: layout) {
                             MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
                         }
                     }
@@ -488,7 +533,7 @@ struct LibraryView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(items.indices, id: \.self) { index in
                             let item = items[index]
-                            browseItem(item, among: items, album: album, columns: columnCount) {
+                            browseItem(item, among: items, album: album, layout: layout) {
                                 MediaListRow(media: item, revision: model.revision, selected: selected == item.id,
                                              shaded: !index.isMultiple(of: 2), showPath: searching)
                             }
@@ -507,7 +552,7 @@ struct LibraryView: View {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 9) {
                         ForEach(items) { item in
-                            browseItem(item, among: items, album: album, columns: columnCount) {
+                            browseItem(item, among: items, album: album, layout: layout) {
                                 MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
                                     .frame(width: 94)
                             }
@@ -522,15 +567,15 @@ struct LibraryView: View {
         }
     }
 
-    private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, columns: Int,
+    private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, layout: BrowseLayout,
                                         @ViewBuilder label: () -> Label) -> some View {
         label()
             .overlay {
                 MediaTileClick { clickCount in
                     selected = item.id
-                    focus = .gallery
+                    focus = .browser
                     if clickCount == 2 {
-                        open(item, among: items, columns: columns)
+                        open(item, among: items, layout: layout)
                     }
                 }
                 .accessibilityHidden(true)
@@ -541,7 +586,7 @@ struct LibraryView: View {
             .accessibilityLabel(item.name)
             .accessibilityValue(item.isAvailable ? item.directories.joined(separator: "，") : "不可用")
             .accessibilityAddTraits(selected == item.id ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { open(item, among: items, columns: columns) }
+            .accessibilityAction { open(item, among: items, layout: layout) }
             .id(item.id)
     }
 
@@ -597,22 +642,30 @@ struct LibraryView: View {
         }
     }
 
-    private func navigate(_ page: LibraryPage) {
+    private func navigate(_ page: LibraryPage, selecting folder: LibraryPage? = nil) {
         self.page = page
         query = ""
         selected = nil
+        selectedFolder = folder
+        focusBrowser()
     }
 
-    private func open(_ item: Media, among items: [Media], columns: Int) {
+    private func backKey(_ press: KeyPress, sourceLayout: iPreviewCore.Layout?) -> KeyPress.Result {
+        guard preview == nil, !searching, let parent = page.parent(in: sourceLayout) else { return .ignored }
+        if press.phase == .down { navigate(parent.page, selecting: page) }
+        return .handled
+    }
+
+    private func open(_ item: Media, among items: [Media], layout: BrowseLayout) {
         guard !model.isWorking else { return }
         selected = item.id
-        preview = PreviewRequest(items: items, selection: item.id, columns: columns)
+        preview = PreviewRequest(items: items, selection: item.id, layout: layout)
     }
 
-    private func focusGallery() {
+    private func focusBrowser() {
         Task { @MainActor in
             await Task.yield()
-            focus = .gallery
+            focus = .browser
         }
     }
 }

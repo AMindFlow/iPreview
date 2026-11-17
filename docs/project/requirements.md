@@ -6,8 +6,8 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 
 | 维度 | 生效规格 | 已登记的后续需求 |
 | --- | --- | --- |
-| 本地媒体库 | [LIB-001、LIB-002、LIB-009](../specs/official/library.md) | [旧版图库管理、多工作区、旧库迁移、两种视频作品、音频组织与旧版文件操作](../specs/spike/library.md) |
-| 键盘预览 | [PRE-001、PRE-007](../specs/official/preview.md) | [普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
+| 本地媒体库 | [LIB-001、LIB-002、LIB-009、LIB-010](../specs/official/library.md) | [旧版图库管理、多工作区、旧库迁移、两种视频作品、音频组织与旧版文件操作](../specs/spike/library.md) |
+| 键盘预览 | [PRE-001、PRE-007、PRE-008](../specs/official/preview.md) | [普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
 | 专辑浏览 | [图片点击响应](../specs/official/browsing.md#brw-001-图片选中响应)、[图标、列表与画廊](../specs/official/browsing.md#brw-002-图标列表和画廊视图) | |
 | 搜索 | [SRCH-001](../specs/official/search.md) | [旧版分类结果及标签搜索](../specs/spike/search.md) |
 | 专辑组织 | [ALB-001](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、批量组织与删除](../specs/spike/virtual-albums.md) |
