@@ -749,7 +749,7 @@ public sealed partial class MainWindow : Window
         }
         if (previewIndex < 0 || previewClosing)
             return;
-        if (args.Key == VirtualKey.Enter && previewTiles[previewIndex].Media.IsVideo)
+        if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
             if (ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCloseAction))
                 return;
@@ -916,6 +916,8 @@ public sealed partial class MainWindow : Window
         SetPreviewSeekEnabled(false);
         PreviewError.Text = string.IsNullOrWhiteSpace(detail) ? title : $"{title}\n{detail}";
         PreviewError.Visibility = Visibility.Visible;
+        VideoControls.Visibility = Visibility.Collapsed;
+        SetPreviewVideoLock(false);
         PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
@@ -985,7 +987,7 @@ public sealed partial class MainWindow : Window
             BrowseMode.Gallery => "← / → 切换媒体",
             _ => "方向键 切换媒体"
         };
-        var lockHint = previewTiles[previewIndex].Media.IsVideo ? "    Enter 锁定" : "";
+        var lockHint = VideoControls.Visibility == Visibility.Visible ? "    Enter 锁定" : "";
         PreviewHint.Text = $"{navigation}    Space / Esc 退出{lockHint}";
 
         void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
