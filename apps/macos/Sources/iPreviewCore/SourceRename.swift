@@ -216,7 +216,7 @@ struct SourceRename {
         if rows.contains(where: { row in
             guard !affectedIDs.contains(row.id) else { return false }
             let key = collisionKey(row.path)
-            return key == newKey || (intent.isDirectory && key.hasPrefix(newKey + "/"))
+            return key == newKey || key.hasPrefix(newKey + "/")
         }) {
             throw SourceRenameError.collision
         }

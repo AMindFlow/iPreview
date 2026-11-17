@@ -35,6 +35,7 @@ struct CatalogChecks {
         try await checkPersistence()
         try await checkSearch()
         try await checkSourceRename()
+        try await checkReservedDirectoryName()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
     }
@@ -229,6 +230,26 @@ struct CatalogChecks {
         }
         try verify(FileManager.default.fileExists(atPath: movedFolder.appendingPathComponent(decomposedName + ".PNG").path))
         try verify(!FileManager.default.fileExists(atPath: movedFolder.appendingPathComponent("Blocked.PNG").path))
+    }
+
+    static func checkReservedDirectoryName() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("Source/Future.PNG/Archived.jpg")
+        try fixtures.file("Source/Direct.PNG")
+        let root = fixtures.directory("Source")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let withAlbum = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: withAlbum.root, candidate: try required(withAlbum.candidates.first))
+        try FileManager.default.moveItem(at: root.appendingPathComponent("Future.PNG"), to: fixtures.directory("Outside"))
+        let flat = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: flat.root, candidate: try required(flat.candidates.first))
+        let snapshot = try await catalog.snapshot()
+        let media = try required(snapshot.media.first { $0.relativePath == "Direct.PNG" })
+        try await expectAsyncError(SourceRenameError.self) {
+            try await catalog.renameSourceItem(sourceID: media.source.id, path: media.relativePath,
+                                               mediaID: media.id, to: "Future")
+        }
+        try verify(FileManager.default.fileExists(atPath: root.appendingPathComponent("Direct.PNG").path))
     }
 
     static func checkRenameRecovery() async throws {
