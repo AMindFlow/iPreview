@@ -43,11 +43,22 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
-                        <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
-                                   Foreground="#18202D" TextTrimming="CharacterEllipsis" />
-                        <TextBlock x:Name="CountLabel" Foreground="#576375" FontSize="12" />
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
+                                VerticalAlignment="Center" Margin="0,0,9,0"
+                                AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
+                            <FontIcon Glyph="&#xE72B;" FontSize="14" />
+                        </Button>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
+                                       Foreground="#18202D" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="CountLabel" Foreground="#576375" FontSize="12" />
+                        </StackPanel>
+                    </Grid>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <AutoSuggestBox x:Name="Query" Width="236" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
                                         QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索媒体库" />
@@ -110,6 +121,19 @@
                             </DataTemplate>
                         </GridView.ItemTemplate>
                     </GridView>
+                    <ListView x:Name="SourceFolders" Visibility="Collapsed"
+                              SelectionMode="None" IsItemClickEnabled="True" ItemClick="OpenSourceFolder"
+                              AutomationProperties.Name="创作者与专辑">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="12" Padding="2,9">
+                                    <FontIcon Glyph="&#xE8B7;" FontSize="16" Foreground="#4C5B74"
+                                              AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock Text="{Binding Label}" FontSize="15" Foreground="#18202D" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                     <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
                                Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#576375" TextWrapping="Wrap" />

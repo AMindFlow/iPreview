@@ -123,22 +123,21 @@ public sealed partial class MainWindow : Window
 
         if (current.Album is long albumId)
             current = new(albums.Single(album => album.Id == albumId).Name, Album: albumId);
-        SelectCurrentNode(NavTree.RootNodes);
+        NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
         ShowItems(selected);
     }
 
-    private void SelectCurrentNode(IEnumerable<TreeViewNode> children)
+    private static TreeViewNode? FindNavigationNode(IEnumerable<TreeViewNode> nodes, Navigation target)
     {
-        foreach (var node in children)
+        foreach (var node in nodes)
         {
-            if (node.Content is Navigation entry && entry.Source == current.Source &&
-                entry.Folder == current.Folder && entry.Album == current.Album)
-            {
-                NavTree.SelectedNode = node;
-                return;
-            }
-            SelectCurrentNode(node.Children);
+            if (node.Content is Navigation entry && entry.Source == target.Source &&
+                entry.Folder == target.Folder && entry.Album == target.Album)
+                return node;
+            if (FindNavigationNode(node.Children, target) is { } match)
+                return match;
         }
+        return null;
     }
 
     private static HashSet<long> ExpandedSources(IEnumerable<TreeViewNode> roots) =>
@@ -172,20 +171,66 @@ public sealed partial class MainWindow : Window
     {
         var content = args.InvokedItem is TreeViewNode node ? node.Content : args.InvokedItem;
         if (content is Navigation target)
-        {
-            current = target;
-            searching = false;
-            Query.Text = "";
-            Notice.IsOpen = false;
-            ShowItems();
-        }
+            NavigateTo(target);
+    }
+
+    private void NavigateTo(Navigation target)
+    {
+        current = target;
+        searching = false;
+        Query.Text = "";
+        Notice.IsOpen = false;
+        NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
+        ShowItems();
+    }
+
+    private void OpenSourceFolder(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is Navigation target)
+            NavigateFromContent(target);
+    }
+
+    private void GoBackToSourceFolder(object sender, RoutedEventArgs args)
+    {
+        if (current.Source is not long sourceID || current.Folder is not { } path)
+            return;
+        var separator = path.IndexOf('/');
+        var creator = path[..separator];
+        var target = separator == path.Length - 1
+            ? new Navigation(sources[sourceID].Name, Source: sourceID)
+            : new Navigation(creator, Source: sourceID, Folder: path[..(separator + 1)]);
+        NavigateFromContent(target);
+    }
+
+    private void NavigateFromContent(Navigation target)
+    {
+        NavigateTo(target);
+        var browser = SourceFolders.Visibility == Visibility.Visible ? (Control)SourceFolders : Gallery;
+        browser.Focus(FocusState.Programmatic);
+    }
+
+    private bool ShowSourceFolders()
+    {
+        var isMultiCreator = !searching && current.Source is long id && sources[id].Layout == Layout.MultiCreator;
+        var path = current.Folder;
+        var atAlbum = path is not null && path.IndexOf('/') != path.Length - 1;
+        var browseFolders = isMultiCreator && !atAlbum;
+        BackToSourceFolder.Visibility = isMultiCreator && path is not null ? Visibility.Visible : Visibility.Collapsed;
+        SourceFolders.Visibility = browseFolders ? Visibility.Visible : Visibility.Collapsed;
+        Gallery.Visibility = browseFolders ? Visibility.Collapsed : Visibility.Visible;
+        SourceFolders.ItemsSource = browseFolders
+            ? FindNavigationNode(NavTree.RootNodes, current)?.Children.Select(node => (Navigation)node.Content).ToList()
+            : null;
+        return browseFolders;
     }
 
     private void ShowItems(long? selected = null)
     {
         if (catalog is null)
             return;
-        IEnumerable<Media> items = current.Album is long album
+        var browsingFolders = ShowSourceFolders();
+        IEnumerable<Media> items = browsingFolders ? []
+            : current.Album is long album
             ? albumMembers.GetValueOrDefault(album) ?? []
             : MediaSearch.ByPath(media.Where(item => item.Present
                 && (current.Source is null || item.Source.Id == current.Source)
@@ -209,15 +254,20 @@ public sealed partial class MainWindow : Window
         Gallery.ItemsSource = tiles;
         Gallery.SelectedItem = tiles.Find(tile => tile.Media.Id == selected) ?? tiles.FirstOrDefault();
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
-        CountLabel.Text = $"{tiles.Count} 项" + (current.Source is null && current.Album is null && !searching
-            ? $" · {sources.Count} 个来源" : "");
+        CountLabel.Text = browsingFolders
+            ? $"{SourceFolders.Items.Count}{(current.Folder is null ? " 位创作者" : " 个专辑")}"
+            : $"{tiles.Count} 项" + (current.Source is null && current.Album is null && !searching
+                ? $" · {sources.Count} 个来源" : "");
         if (!searching && current.Source is long source && !sources[source].Available)
             CountLabel.Text += " · 来源离线";
         AlbumTools.Visibility = current.Album is not null && !searching ? Visibility.Visible : Visibility.Collapsed;
         EmptyLabel.Text = searching ? "没有匹配项。" : current.Album is not null
             ? "从媒体库选取图片或视频，加入此专辑。" : sources.Count == 0
                 ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
-        EmptyLabel.Visibility = tiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (browsingFolders)
+            EmptyLabel.Text = current.Folder is null ? "没有已索引的创作者。" : "没有已索引的专辑。";
+        var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
+        EmptyLabel.Visibility = visibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
         UpdateSelection();
     }
