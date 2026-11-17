@@ -16,6 +16,7 @@ struct LibraryView: View {
     @ViewState private var filtersShown = false
     @ViewState private var editAlbum: AlbumEdit?
     @ViewState private var editSourceName: SourceNameEdit?
+    @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
@@ -94,6 +95,9 @@ struct LibraryView: View {
                 default: selected = edit.mediaID
                 }
             }
+        }
+        .sheet(item: $addAlbumMedia) { album in
+            AlbumMediaPicker(album: album, model: model)
         }
         .alert("无法完成操作", isPresented: Binding(
             get: { model.error != nil },
@@ -260,6 +264,17 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let album = scope.virtualAlbum {
+                        if !scope.items.isEmpty {
+                            Button {
+                                addAlbumMedia = album
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("添加媒体")
+                            .help("添加媒体")
+                            .disabled(model.isWorking)
+                        }
                         Button {
                             editAlbum = AlbumEdit(album: album)
                         } label: {
@@ -372,9 +387,28 @@ struct LibraryView: View {
                 .accessibilityLabel("正在读取媒体库")
         } else if searching {
             ContentUnavailableView("没有匹配媒体", systemImage: "magnifyingglass", description: Text("调整关键词或搜索范围。"))
-        } else if scope.virtualAlbum != nil {
-            ContentUnavailableView("专辑为空", systemImage: "rectangle.stack",
-                                   description: Text("在媒体库选中媒体，再用「加入虚拟专辑」添加。"))
+        } else if let album = scope.virtualAlbum {
+            VStack(spacing: 14) {
+                Button {
+                    addAlbumMedia = album
+                } label: {
+                    Image(systemName: "rectangle.stack")
+                        .font(.system(size: 35, weight: .light))
+                        .foregroundStyle(Color.libraryInk.opacity(0.64))
+                        .frame(width: 74, height: 70)
+                        .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundStyle(.white, Color.ipreviewAccent)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("添加媒体")
+                .help("添加媒体")
+                Text("专辑为空").font(.title3.weight(.semibold))
+            }
         } else if scope.source != nil {
             ContentUnavailableView("没有可显示的媒体", systemImage: "photo.on.rectangle")
                 .focusable(page.parent(in: scope.source?.layout) != nil)
@@ -837,7 +871,7 @@ struct ContentScope {
         }
     }
 
-    private static func folderKey(_ media: Media) -> String {
+    static func folderKey(_ media: Media) -> String {
         media.components.dropLast().joined(separator: "/")
     }
 }

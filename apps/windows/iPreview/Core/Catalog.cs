@@ -154,7 +154,7 @@ internal sealed partial class Catalog : IDisposable
             database.Execute("INSERT INTO albums (name) VALUES (?);", name.Trim());
             id = database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
             if (media is long member)
-                AddToAlbum(id, member);
+                InsertAlbumMember(id, member, 0);
         });
         return id;
     }
@@ -162,11 +162,22 @@ internal sealed partial class Catalog : IDisposable
     public void RenameAlbum(long album, string name) =>
         database.Execute("UPDATE albums SET name = ? WHERE id = ?;", name.Trim(), album);
 
-    public void AddToAlbum(long album, long media) =>
+    public void AddToAlbum(long album, long media) => AppendToAlbum(album, [media]);
+
+    public void AppendToAlbum(long album, IReadOnlyList<long> media) =>
+        database.InTransaction(() =>
+        {
+            var position = database.Query(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM album_media WHERE album_id = ?;",
+                row => row.Number(0), album).Single();
+            foreach (var member in media)
+                InsertAlbumMember(album, member, position++);
+        });
+
+    private void InsertAlbumMember(long album, long media, long position) =>
         database.Execute("""
-            INSERT OR IGNORE INTO album_media (album_id, media_id, position)
-            VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM album_media WHERE album_id = ?));
-            """, album, media, album);
+            INSERT OR IGNORE INTO album_media (album_id, media_id, position) VALUES (?, ?, ?);
+            """, album, media, position);
 
     public void RemoveFromAlbum(long album, long media) =>
         database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, media);

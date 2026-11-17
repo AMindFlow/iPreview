@@ -33,6 +33,8 @@
                              CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf"
                              CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)AlbumMediaPicker.xbf" RelativePath="AlbumMediaPicker.xbf"
+                             CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>

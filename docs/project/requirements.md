@@ -10,9 +10,9 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 | 键盘预览 | [PRE-001、PRE-007、PRE-008](../specs/official/preview.md) | [普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
 | 专辑浏览 | [图片点击响应](../specs/official/browsing.md#brw-001-图片选中响应)、[图标、列表与画廊](../specs/official/browsing.md#brw-002-图标列表和画廊视图) | |
 | 搜索 | [SRCH-001](../specs/official/search.md) | [旧版分类结果及标签搜索](../specs/spike/search.md) |
-| 专辑组织 | [ALB-001](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、批量组织与删除](../specs/spike/virtual-albums.md) |
+| 专辑组织 | [ALB-001、ALB-004](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、拖动重排与删除](../specs/spike/virtual-albums.md) |
 | 媒体元信息 | | [从文件提取及修改后写回](../specs/spike/metadata.md) |
-| 应用视觉标识 | [UI-001 应用图标](../specs/official/appearance.md) | |
+| 应用视觉 | [UI-001 应用图标、UI-002 虚拟专辑选片器](../specs/official/appearance.md) | |
 | 平台与分发 | [平台与技术栈](overview.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
 
 ## 设计要求
