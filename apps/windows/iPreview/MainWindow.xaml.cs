@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -47,6 +49,15 @@ public sealed partial class MainWindow : Window
     private MediaSource? videoSource;
     private readonly DispatcherTimer playbackClock = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool settingPosition;
+    private static readonly string? ClickMetricsPath =
+        Environment.GetEnvironmentVariable("IPREVIEW_DATA_DIR") is { Length: > 0 } qaDirectory
+            ? Path.Combine(qaDirectory, "selection-latency.tsv")
+            : null;
+    private long measuredMedia;
+    private long pressedAt;
+    private long releasedAt;
+    private long selectedAt;
+    private int pointerSamples;
 
     public MainWindow()
     {
@@ -520,7 +531,48 @@ public sealed partial class MainWindow : Window
         catch (InvalidOperationException error) { ShowNotice("无法调整顺序", error.Message); }
     }
 
-    private void SelectionChanged(object sender, SelectionChangedEventArgs args) => UpdateSelection();
+    private void MeasurePointerPressed(object sender, PointerRoutedEventArgs args)
+    {
+        if (ClickMetricsPath is null || sender is not FrameworkElement { DataContext: Tile tile } element ||
+            args.GetCurrentPoint(element).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+            return;
+        measuredMedia = tile.Media.Id;
+        pressedAt = Stopwatch.GetTimestamp();
+        releasedAt = 0;
+        selectedAt = 0;
+        pointerSamples++;
+    }
+
+    private void MeasurePointerReleased(object sender, PointerRoutedEventArgs args)
+    {
+        if (pressedAt == 0 || sender is not FrameworkElement { DataContext: Tile tile } element ||
+            tile.Media.Id != measuredMedia ||
+            args.GetCurrentPoint(element).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonReleased)
+            return;
+        releasedAt = Stopwatch.GetTimestamp();
+        WriteClickMeasure();
+    }
+
+    private void SelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (pressedAt != 0 && Selection?.Media.Id == measuredMedia)
+        {
+            selectedAt = Stopwatch.GetTimestamp();
+            WriteClickMeasure();
+        }
+        UpdateSelection();
+    }
+
+    private void WriteClickMeasure()
+    {
+        if (ClickMetricsPath is null || releasedAt == 0 || selectedAt == 0)
+            return;
+        var pressToSelection = Stopwatch.GetElapsedTime(pressedAt, selectedAt).TotalMilliseconds;
+        var releaseToSelection = Stopwatch.GetElapsedTime(releasedAt, selectedAt).TotalMilliseconds;
+        File.AppendAllText(ClickMetricsPath, FormattableString.Invariant(
+            $"{pointerSamples}\t{measuredMedia}\t{pressToSelection:F3}\t{releaseToSelection:F3}\n"));
+        pressedAt = 0;
+    }
 
     private void UpdateSelection()
     {

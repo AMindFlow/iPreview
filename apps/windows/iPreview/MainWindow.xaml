@@ -100,7 +100,8 @@
                         </GridView.ItemsPanel>
                         <GridView.ItemTemplate>
                             <DataTemplate>
-                                <Grid Width="256" Height="193" RowSpacing="5" ToolTipService.ToolTip="{Binding DisplayPath}">
+                                <Grid Width="256" Height="193" RowSpacing="5" ToolTipService.ToolTip="{Binding DisplayPath}"
+                                      PointerPressed="MeasurePointerPressed" PointerReleased="MeasurePointerReleased">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="168" />
                                         <RowDefinition Height="Auto" />
