@@ -55,7 +55,7 @@ jobs:
           Compress-Archive -Path "$publish\*" -DestinationPath $zip
           $expanded = Join-Path $env:RUNNER_TEMP 'iPreview-expanded'
           Expand-Archive -LiteralPath $zip -DestinationPath $expanded
-          foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf') {
+          foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf', 'Assets/AppIcon.ico') {
             if (!(Test-Path -LiteralPath (Join-Path $expanded $file) -PathType Leaf)) {
               throw "Windows ZIP is missing $file"
             }

@@ -5,7 +5,8 @@ import PackageDescription
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let nonCorePaths = [
     "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "requirements.md", "docs", "scripts",
-    "apps/windows", "apps/macos/Info.plist", "apps/macos/Tests", "apps/macos/Sources/iPreview",
+    "apps/windows", "apps/macos/Assets", "apps/macos/Info.plist", "apps/macos/Tests",
+    "apps/macos/Sources/iPreview",
     "shared/README.md", "shared/fixtures",
 ].filter { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
 

@@ -24,6 +24,7 @@ if [[ "$architecture" != arm64 ]]; then
 fi
 ditto "$products/iPreview_iPreviewCore.bundle" "$application/Contents/Resources/iPreview_iPreviewCore.bundle"
 install -m 644 apps/macos/Info.plist "$application/Contents/Info.plist"
+install -m 644 apps/macos/Assets/AppIcon.icns "$application/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$application"
 codesign --verify --strict "$application"
 ditto -c -k --keepParent "$application" "$staging/iPreview-macos-arm64.zip"
@@ -33,6 +34,11 @@ check=(swift run --configuration release --manifest-cache none --scratch-path "$
 smoke="$(mktemp -d "${TMPDIR:-/tmp}/ipreview-package-check.XXXXXX")"
 ditto -x -k "$staging/iPreview-macos-arm64.zip" "$smoke"
 extracted="$smoke/iPreview.app"
+icon_file="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$extracted/Contents/Info.plist")"
+if [[ ! -s "$extracted/Contents/Resources/$icon_file" ]]; then
+  echo "macOS ZIP is missing the bundle icon: $icon_file" >&2
+  exit 1
+fi
 "${check[@]}" --check-packaged-migration "$extracted"
 mv "$extracted/Contents/Resources" "$smoke/withheld-resources"
 "${check[@]}" --check-missing-migration "$extracted"
