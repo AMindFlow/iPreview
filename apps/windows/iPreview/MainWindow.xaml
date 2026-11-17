@@ -516,19 +516,21 @@
                 </ContentControl>
 
                 <StackPanel Grid.Row="2" Spacing="9">
-                    <Grid x:Name="VideoControls" Visibility="Collapsed" Background="#253034"
-                          HorizontalAlignment="Stretch" MaxWidth="640" CornerRadius="12" Padding="12,4" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Button x:Name="PlayPause" Content="播放" Click="TogglePlayback"
-                                AutomationProperties.Name="播放或暂停" />
-                        <TextBlock x:Name="TimeLabel" Grid.Column="1" VerticalAlignment="Center" Foreground="#D2DEDE" />
-                        <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
-                                VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
-                    </Grid>
+                    <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
+                                    HorizontalContentAlignment="Stretch" MaxWidth="640">
+                        <Grid Background="#253034" CornerRadius="12" Padding="12,4" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="PlayPause" Content="播放" Click="TogglePlayback"
+                                    AutomationProperties.Name="播放或暂停" />
+                            <TextBlock x:Name="TimeLabel" Grid.Column="1" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                            <Slider x:Name="Timeline" Grid.Column="2" Minimum="0" Maximum="1" StepFrequency=".25"
+                                    VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
+                        </Grid>
+                    </ContentControl>
                     <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" HorizontalAlignment="Center" FontSize="12" />
                 </StackPanel>
             </Grid>

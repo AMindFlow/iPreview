@@ -682,8 +682,9 @@ public sealed partial class MainWindow : Window
         }) + "     Space / Esc 退出预览";
         PreviewOverlay.Visibility = Visibility.Visible;
         LibraryView.IsHitTestVisible = false;
-        ShowPreview(selectedIndex);
-        AnimatePreview(ThumbnailOf(initialSelection), opening: true, complete: null);
+        var thumbnail = ThumbnailOf(initialSelection);
+        ShowPreview(selectedIndex, thumbnail?.Image);
+        AnimatePreview(thumbnail, opening: true, complete: null);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -758,10 +759,10 @@ public sealed partial class MainWindow : Window
             return;
         args.Handled = true;
         if (!previewMoving && !previewClosing && previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
-            ShowPreview(next);
+            ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image);
     }
 
-    private async void ShowPreview(int index)
+    private async void ShowPreview(int index, BitmapImage? poster)
     {
         previewIndex = index;
         var generation = ++previewGeneration;
@@ -770,9 +771,11 @@ public sealed partial class MainWindow : Window
         PreviewTitle.Text = tile.FileName;
         IndexLabel.Text = $"{index + 1} / {previewTiles.Count}";
         PreviewError.Visibility = Visibility.Collapsed;
-        MainImage.Source = null;
+        MainImage.Source = tile.Media.IsVideo ? null : poster;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Visibility = Visibility.Collapsed;
+        VideoControls.Opacity = 0;
+        VideoControls.IsEnabled = false;
+        VideoControls.Visibility = tile.Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
         LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
         LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
         LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
@@ -788,14 +791,10 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            var image = await DecodeImage(tile.Media, 0, true, (source, error) =>
+            var image = await DecodeImage(tile.Media, 0, true, (_, error) =>
             {
-                if (generation != previewGeneration ||
-                    (MainImage.Source is { } currentSource && !ReferenceEquals(currentSource, source)))
-                    return;
-
-                MainImage.Source = null;
-                ShowPreviewError("无法解码此图片。", error.ErrorMessage);
+                if (generation == previewGeneration)
+                    ShowPreviewError("无法解码此图片。", error.ErrorMessage);
             });
             if (generation == previewGeneration && PreviewError.Visibility == Visibility.Collapsed)
                 MainImage.Source = image;
@@ -831,8 +830,9 @@ public sealed partial class MainWindow : Window
         {
             if (generation != previewGeneration)
                 return;
-            VideoControls.Visibility = Visibility.Visible;
             UpdateTime();
+            VideoControls.IsEnabled = true;
+            VideoControls.Opacity = 1;
         });
         mediaPlayer.MediaFailed += (_, details) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -876,8 +876,10 @@ public sealed partial class MainWindow : Window
     private void ShowPreviewError(string title, string detail)
     {
         StopVideo();
+        MainImage.Source = null;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Visibility = Visibility.Collapsed;
+        VideoControls.Opacity = 0;
+        VideoControls.IsEnabled = false;
         PreviewError.Text = string.IsNullOrWhiteSpace(detail) ? title : $"{title}\n{detail}";
         PreviewError.Visibility = Visibility.Visible;
         PreviewCanvas.Focus(FocusState.Programmatic);
