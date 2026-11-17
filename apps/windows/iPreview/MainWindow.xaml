@@ -14,7 +14,19 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TreeView x:Name="NavTree" Grid.RowSpan="2" SelectionMode="Single" ItemInvoked="Navigate"
+                <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="LibraryHomeButton" Click="GoToLibrary" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Content="媒体库" />
+                    <Button Grid.Column="1" Click="ShowGlobalSearch" ToolTipService.ToolTip="全局搜索"
+                            AutomationProperties.Name="全局搜索">
+                        <FontIcon Glyph="&#xE721;" FontSize="15" />
+                    </Button>
+                </Grid>
+                <TreeView x:Name="NavTree" Grid.Row="1" SelectionMode="Single" ItemInvoked="Navigate"
                           PreviewKeyDown="NavigationTreeKeyDown">
                     <TreeView.ItemTemplate>
                         <DataTemplate>
@@ -83,9 +95,9 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <AutoSuggestBox x:Name="Query" MinWidth="0" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
-                                        QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索媒体库" />
-                        <Button Grid.Column="1" ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
+                        <AutoSuggestBox x:Name="Query" MinWidth="0" QueryIcon="Find" PlaceholderText="搜索当前范围"
+                                        QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索当前范围" />
+                        <Button x:Name="SearchOptions" Grid.Column="1" ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
                             <FontIcon Glyph="&#xE71C;" FontSize="16" />
                             <Button.Flyout>
                                 <Flyout Placement="BottomEdgeAlignedRight">
@@ -367,6 +379,86 @@
                     </StackPanel>
                 </Grid>
             </Grid>
+        </Grid>
+
+        <Grid x:Name="GlobalSearchOverlay" Visibility="Collapsed" TabFocusNavigation="Cycle"
+              PreviewKeyDown="GlobalSearchKeyDown" AutomationProperties.Name="全局搜索">
+            <Border Background="#360D1726" Tapped="DismissGlobalSearchFromBackdrop" />
+            <Border MaxWidth="585" Margin="22" VerticalAlignment="Center" CornerRadius="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+                <StackPanel Spacing="10" Padding="18,14,18,12">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE721;" FontSize="20" VerticalAlignment="Center" />
+                        <TextBox x:Name="GlobalSearchInput" Grid.Column="1" PlaceholderText="搜索所有来源"
+                                 AutomationProperties.Name="搜索所有来源" VerticalAlignment="Center"
+                                 TextChanged="GlobalSearchEdited" />
+                        <Button Grid.Column="2" Click="CloseGlobalSearchButton" ToolTipService.ToolTip="关闭全局搜索（Esc）"
+                                AutomationProperties.Name="关闭全局搜索">
+                            <FontIcon Glyph="&#xE8BB;" FontSize="13" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="GlobalSearchStatus" Visibility="Collapsed" Margin="3,3,0,3"
+                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <ListView x:Name="GlobalSearchResults" Visibility="Collapsed" MaxHeight="299" SelectionMode="Single"
+                              SingleSelectionFollowsFocus="True" AutomationProperties.Name="全局搜索结果">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="12" MinHeight="43">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="22" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Location}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel Spacing="6">
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleButton x:Name="GlobalFileScope" Content="Ctrl+1 文件" Click="GlobalScopeClicked"
+                                          AutomationProperties.Name="仅搜索文件">
+                                <ToggleButton.KeyboardAccelerators>
+                                    <KeyboardAccelerator Key="Number1" Modifiers="Control" Invoked="GlobalScopeShortcut" />
+                                </ToggleButton.KeyboardAccelerators>
+                            </ToggleButton>
+                            <ToggleButton x:Name="GlobalDirectoryScope" Grid.Column="1" Content="Ctrl+2 目录"
+                                          Click="GlobalScopeClicked" AutomationProperties.Name="仅搜索目录">
+                                <ToggleButton.KeyboardAccelerators>
+                                    <KeyboardAccelerator Key="Number2" Modifiers="Control" Invoked="GlobalScopeShortcut" />
+                                </ToggleButton.KeyboardAccelerators>
+                            </ToggleButton>
+                            <TextBlock x:Name="GlobalSearchModeHint" Grid.Column="2" Text="以 @ 开头精确匹配"
+                                       FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                        <TextBlock Text="↑ / ↓ 选择    Enter 前往    Space 预览    Esc 关闭"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
+                                   TextWrapping="Wrap" Margin="2,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="#FF10161F" RequestedTheme="Dark" Padding="24,12"

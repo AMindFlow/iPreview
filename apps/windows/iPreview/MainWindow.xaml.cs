@@ -95,7 +95,6 @@ public sealed partial class MainWindow : Window
         albumMembers = snapshot.AlbumMembers;
 
         NavTree.RootNodes.Clear();
-        NavTree.RootNodes.Add(new TreeViewNode { Content = Library });
         if (sources.Count > 0)
         {
             var sourcesNode = new TreeViewNode { Content = new NavigationHeading("来源", "\uE8B7"), IsExpanded = true };
@@ -184,14 +183,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void NavigateTo(Navigation target)
+    private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
         searching = false;
         Query.Text = "";
         Notice.IsOpen = false;
         NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
-        ShowItems();
+        ShowItems(selectedMedia);
     }
 
     private void OpenSourceFolder(object sender, ItemClickEventArgs args)
@@ -286,19 +285,17 @@ public sealed partial class MainWindow : Window
     {
         if (catalog is null)
             return;
+        Query.Visibility = SearchOptions.Visibility = current == Library ? Visibility.Collapsed : Visibility.Visible;
         browsingFolders = ShowSourceFolders();
+        var scopedMedia = ScopeMedia();
         IEnumerable<Media> items = browsingFolders ? []
-            : current.Album is long album
-            ? albumMembers.GetValueOrDefault(album) ?? []
-            : MediaSearch.ByPath(media.Where(item => item.Present
-                && (current.Source is null || item.Source.Id == current.Source)
-                && (current.Folder is null || item.RelativePath.StartsWith(current.Folder, StringComparison.Ordinal))));
+            : current.Album is not null ? scopedMedia : MediaSearch.ByPath(scopedMedia);
 
         if (searching)
         {
             try
             {
-                items = MediaSearch.Find(media.Where(item => item.Present), Query.Text,
+                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), Query.Text,
                     SearchMode.SelectedIndex == 0, SearchFolders.IsChecked == true, SearchFiles.IsChecked == true);
             }
             catch (Exception error) when (error is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
@@ -666,11 +663,16 @@ public sealed partial class MainWindow : Window
         var browser = ActiveMediaBrowser;
         if (SelectingAlbumMembers || browser.SelectedIndex < 0)
             return;
-        initialSelection = Selection?.Media.Id;
-        previewTiles = tiles;
         if (browseMode == BrowseMode.Icons)
             Gallery.UpdateLayout();
-        previewLayout = new(browseMode, Columns);
+        OpenPreview(tiles, browser.SelectedIndex, new(browseMode, Columns));
+    }
+
+    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
+    {
+        initialSelection = items[selectedIndex].Media.Id;
+        previewTiles = items;
+        previewLayout = layout;
         PreviewHint.Text = (previewLayout.Mode switch
         {
             BrowseMode.List => "↑ / ↓ 切换媒体",
@@ -679,7 +681,7 @@ public sealed partial class MainWindow : Window
         }) + "     Space / Esc 退出预览";
         PreviewOverlay.Visibility = Visibility.Visible;
         LibraryView.Visibility = Visibility.Collapsed;
-        ShowPreview(browser.SelectedIndex);
+        ShowPreview(selectedIndex);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -701,6 +703,8 @@ public sealed partial class MainWindow : Window
         PreviewOverlay.Visibility = Visibility.Collapsed;
         LibraryView.Visibility = Visibility.Visible;
         previewTiles = [];
+        if (RestoreGlobalSearchAfterPreview(selectedId))
+            return;
         var browser = ActiveMediaBrowser;
         browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         FocusSelectedMedia();

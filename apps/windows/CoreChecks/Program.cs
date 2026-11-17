@@ -51,7 +51,8 @@ try
         catalog.Import(single.Path, Layout.Creator, single.Options[Layout.Creator]);
         catalog.Import(ambiguous.Path, Layout.MultiCreator, ambiguous.Options[Layout.MultiCreator]);
 
-        var items = catalog.Read().Media;
+        var imported = catalog.Read();
+        var items = imported.Media;
         try
         {
             catalog.CheckSourcePath(work);
@@ -69,6 +70,18 @@ try
         Check(MediaSearch.Find(items, "beijing", false, true, false).Count == 3, "directory full pinyin");
         Check(MediaSearch.Find(items, "beijing", false, false, true).Count == 0, "scope isolation");
         Check(MediaSearch.Find(items, "sumer", false, true, false).Count == 3, "directory typo");
+        var directories = MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@Summer 2"),
+            GlobalSearchScope.Directories);
+        Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
+            "global search shows a distinct directory hit");
+        var exactClip = GlobalSearchTerm.Parse("  ＠ ＣＬＩＰ.mov");
+        var exactFiles = MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
+        Check(exactFiles.Count == 1 && exactFiles[0] is { Media.FileName: "clip.MOV", Folder: "Summer 2/" },
+            "global exact prefix permits normalized file names and returns the containing directory");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@clip"), GlobalSearchScope.All).Count == 0,
+            "global exact prefix only matches the full name");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
+            "global directory scope excludes matching files");
 
         albumId = catalog.CreateAlbum("预览");
         firstId = ordered[0].Id;
