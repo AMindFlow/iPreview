@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
         playbackClock.Tick += (_, _) => UpdateTime();
         Closed += (_, _) =>
         {
+            CancelAlbumAdjustmentPointer();
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();

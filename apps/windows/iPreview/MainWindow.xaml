@@ -1,7 +1,9 @@
 <Window x:Class="IPreview.MainWindow" Title="iPreview"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid x:Name="Root">
+    <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved"
+          PointerReleased="AlbumAdjustmentPointerReleased" PointerCaptureLost="AlbumAdjustmentPointerInterrupted"
+          PointerCanceled="AlbumAdjustmentPointerInterrupted" PointerWheelChanged="AlbumAdjustmentPointerWheelChanged">
         <Grid x:Name="LibraryView" PreviewKeyDown="LibraryKeyDown">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="190" />
@@ -151,9 +153,7 @@
                         <GridView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Width="256" Height="193" RowSpacing="5" ToolTipService.ToolTip="{Binding DisplayPath}" Background="Transparent"
-                                      PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
-                                      PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
-                                      PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
+                                      PointerPressed="AlbumAdjustmentPointerPressed" Tapped="AlbumAdjustmentTapped">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="168" />
                                         <RowDefinition Height="Auto" />
@@ -214,9 +214,7 @@
                                     <Grid Padding="10,0,16,0" MinHeight="29" ColumnSpacing="8"
                                           Background="{Binding RowBackground}" ToolTipService.ToolTip="{Binding DisplayPath}"
                                           Loaded="LoadListDetails" DataContextChanged="UpdateListDetails"
-                                          PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
-                                          PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
-                                          PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
+                                          PointerPressed="AlbumAdjustmentPointerPressed" Tapped="AlbumAdjustmentTapped">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="140" />
@@ -284,9 +282,7 @@
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Width="88" RowSpacing="3" ToolTipService.ToolTip="{Binding DisplayPath}" Background="Transparent"
-                                          PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
-                                          PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
-                                          PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
+                                          PointerPressed="AlbumAdjustmentPointerPressed" Tapped="AlbumAdjustmentTapped">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="58" />
                                             <RowDefinition Height="Auto" />
