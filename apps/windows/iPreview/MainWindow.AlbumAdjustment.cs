@@ -233,17 +233,27 @@ public sealed partial class MainWindow
 
     private void SaveAlbumOrder(long album, long mediaId, int target, long[] expected)
     {
+        string? conflict = null;
         try
         {
             Database.MoveInAlbum(album, mediaId, target, expected);
-            Reload(mediaId);
-            FocusAlbumSelectionItem(mediaId);
         }
-        catch (AlbumOrderChangedException error)
+        catch (AlbumOrderChangedException error) { conflict = error.Message; }
+        catch (InvalidOperationException error)
         {
-            Reload(mediaId);
             ShowNotice("无法调整顺序", error.Message);
+            return;
         }
-        catch (InvalidOperationException error) { ShowNotice("无法调整顺序", error.Message); }
+
+        // Let WinUI finish routing the release before replacing its item containers.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var adjustingAlbum = selectionAlbum == album;
+            Reload(adjustingAlbum ? mediaId : Selection?.Media.Id);
+            if (conflict is not null)
+                ShowNotice("无法调整顺序", conflict);
+            else if (adjustingAlbum)
+                FocusAlbumSelectionItem(mediaId);
+        });
     }
 }
