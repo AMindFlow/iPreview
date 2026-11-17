@@ -119,7 +119,7 @@ struct LibraryView: View {
         .sheet(isPresented: $creatingAlbum, onDismiss: focusBrowser) {
             NewAlbumSheet { name in
                 Task {
-                    if let id = await model.createAlbum(named: name, with: nil) {
+                    if let id = await model.createAlbum(named: name) {
                         navigate(.virtual(id))
                     }
                 }

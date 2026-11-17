@@ -104,10 +104,10 @@ final class LibraryModel {
         }
     }
 
-    func createAlbum(named name: String, with mediaID: Int64?) async -> Int64? {
+    func createAlbum(named name: String) async -> Int64? {
         var created: Int64?
         await change(rebuildSearch: false) { catalog in
-            let id = try await catalog.createAlbum(named: name, mediaID: mediaID)
+            let id = try await catalog.createAlbum(named: name)
             created = id
         }
         return created
@@ -128,10 +128,6 @@ final class LibraryModel {
                                                       expectedFolderMemberID: edit.expectedFolderMemberID)
         try await refresh(catalog, rebuildSearch: true)
         return path
-    }
-
-    func add(mediaID: Int64, to albumID: Int64) async {
-        await add(mediaIDs: [mediaID], to: albumID)
     }
 
     @discardableResult
