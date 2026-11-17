@@ -52,7 +52,6 @@ struct MediaListRow: View {
     let revision: Int
     let selected: Bool
     let shaded: Bool
-    let showPath: Bool
     let checked: Bool
     @ViewState private var facts: Facts?
 
@@ -67,16 +66,8 @@ struct MediaListRow: View {
                 MediaThumbnail(media: media, revision: revision, previewCornerRadius: 3)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(media.name)
-                        .fontWeight(selected ? .semibold : .regular)
-                    if showPath {
-                        Text(media.directories.joined(separator: " / "))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .truncationMode(.middle)
-                    }
-                }
+                Text(media.name)
+                    .fontWeight(selected ? .semibold : .regular)
             }
         } modified: {
             Text(facts?.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—")
@@ -90,7 +81,7 @@ struct MediaListRow: View {
         }
         .font(.system(size: 12))
         .lineLimit(1)
-        .frame(height: showPath ? 37 : 29)
+        .frame(height: 29)
         .background(selected ? Color.ipreviewAccent.opacity(0.16) : shaded ? Color.libraryInk.opacity(0.045) : .clear,
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .bottomTrailing) {

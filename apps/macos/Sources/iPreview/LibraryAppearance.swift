@@ -84,15 +84,6 @@ extension View {
             buttonStyle(.bordered)
         }
     }
-
-    @ViewBuilder
-    func libraryGlassSurface() -> some View {
-        if #available(macOS 26, *) {
-            glassEffect(.regular, in: .rect(cornerRadius: 13))
-        } else {
-            background(.regularMaterial, in: .rect(cornerRadius: 13))
-        }
-    }
 }
 
 struct LibraryTitleEdit {

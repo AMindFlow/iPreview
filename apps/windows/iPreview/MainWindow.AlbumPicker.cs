@@ -8,7 +8,7 @@ public sealed partial class MainWindow
 {
     private async void PickAlbumMedia(object sender, RoutedEventArgs args)
     {
-        if (catalog is null || busy || searching || current.Album is not long album)
+        if (catalog is null || busy || current.Album is not long album)
             return;
 
         var staged = new AlbumMediaPicker(media, (albumMembers.GetValueOrDefault(album) ?? []).Select(item => item.Id),

@@ -60,20 +60,20 @@ try
         }
         catch (IOException) { }
         Check(items.Count == 4, "persisted import");
-        var ordered = MediaSearch.Find(items, "城楼", false, false, true);
+        var sourceList = imported.Sources.Values;
+        var ordered = MediaSearch.Find(sourceList, items, new("城楼", false), GlobalSearchScope.Files)
+            .Select(result => result.Media!).ToList();
         Check(ordered.Select(item => item.FileName).SequenceEqual(["城楼2.PNG", "城楼10.PNG"]),
             "natural file ordering");
-        Check(MediaSearch.Find(items, "ＣＬＩＰ.mov", true, false, true).Count == 1,
-            "compatibility and case normalization");
-        Check(MediaSearch.Find(items, "clip", true, false, true).Single().FileName == "clip.MOV",
-            "exact file allows omitting the suffix");
-        Check(MediaSearch.Find(items, "clip.mp4", true, false, true).Count == 0, "explicit suffix must match");
-        Check(MediaSearch.Find(items, "clip.mo", true, false, true).Count == 0, "partial suffix does not match");
-        Check(MediaSearch.Find(items, "bj", false, true, false).Count == 3, "directory pinyin initials");
-        Check(MediaSearch.Find(items, "beijing", false, true, false).Count == 3, "directory full pinyin");
-        Check(MediaSearch.Find(items, "beijing", false, false, true).Count == 0, "scope isolation");
-        Check(MediaSearch.Find(items, "sumer", false, true, false).Count == 3, "directory typo");
-        var directories = MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
+        Check(MediaSearch.Find(sourceList, items, new("bj", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder is null && result.Name == "北京"), "directory pinyin initials");
+        Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder is null && result.Name == "北京"), "directory full pinyin");
+        Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Files).Count == 0,
+            "file scope excludes matching parent directories");
+        Check(MediaSearch.Find(sourceList, items, new("sumer", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder == "Summer 2/"), "directory typo");
+        var directories = MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
             GlobalSearchScope.Directories);
         Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
             "global search shows a distinct directory hit");
@@ -81,20 +81,33 @@ try
         Check(GlobalSearchTerm.Parse("@clip") is { Text: "@clip", Exact: false }, "the prefix requires a space");
         Check(GlobalSearchTerm.Parse("@ ") is { Text.Length: 0, Exact: true }, "space activates exact mode before a name");
         var exactClip = GlobalSearchTerm.Parse("  ＠　ＣＬＩＰ.mov");
-        var exactFiles = MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
+        var exactFiles = MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
         Check(exactFiles.Count == 1 && exactFiles[0] is { Media.FileName: "clip.MOV", Folder: "Summer 2/" },
             "global exact prefix permits normalized file names and returns the containing directory");
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip"), GlobalSearchScope.Files)
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip"), GlobalSearchScope.Files)
                 .Single().Name == "clip.MOV", "global exact file allows omitting the suffix");
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip.png"), GlobalSearchScope.Files).Count == 0,
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip.png"), GlobalSearchScope.Files).Count == 0,
             "global exact file respects an explicit suffix");
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
             "global exact directory requires its complete name");
         var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", IsVideo = false };
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
+        Check(MediaSearch.Find(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
                 .Single().Name == "Frame.v2.jpg", "the file stem can contain dots");
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
+        Check(MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
             "global directory scope excludes matching files");
+
+        var withinAlbum = items[0] with { RelativePath = "Other/Album/Shared.png" };
+        var inSibling = items[0] with { RelativePath = "Other/Albums/Shared.png" };
+        var outsideScope = items[0] with { RelativePath = "Shared.png" };
+        Media[] scopedFixture = [withinAlbum, inSibling, outsideScope];
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Shared", true), GlobalSearchScope.Files,
+                "Other/Album/").Single().Media == withinAlbum,
+            "current folder results exclude siblings and files outside the subtree");
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Other", true), GlobalSearchScope.Directories,
+                "Other/Album/").Count == 0, "current folder results exclude ancestors");
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Album", true), GlobalSearchScope.Directories,
+                "Other/Album/").Single().Folder == "Other/Album/",
+            "current folder results include the selected folder");
 
         albumId = catalog.CreateAlbum("预览");
         firstId = ordered[0].Id;

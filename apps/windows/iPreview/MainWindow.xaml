@@ -99,56 +99,24 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid ColumnSpacing="12">
+                    <Grid VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3*" />
-                            <ColumnDefinition Width="2*" MaxWidth="310" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Grid VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
-                                    Style="{StaticResource LibraryIconButton}" Margin="0,0,4,0"
-                                    AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
-                                <FontIcon Glyph="&#xE76B;" FontSize="14" />
-                            </Button>
-                            <Grid Grid.Column="1">
-                                <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                           AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
-                                <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
-                                         FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
-                                         PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
-                                         TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
-                            </Grid>
-                        </Grid>
-                        <Grid Grid.Column="1" VerticalAlignment="Center" ColumnSpacing="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <AutoSuggestBox x:Name="Query" MinWidth="0" QueryIcon="Find" PlaceholderText="搜索当前范围"
-                                            GettingFocus="ObserveScopedSearchFocus" ToolTipService.ToolTip="搜索当前范围（Ctrl+F）"
-                                            QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索当前范围" />
-                            <Button x:Name="SearchOptions" Grid.Column="1" Style="{StaticResource LibraryIconButton}"
-                                    ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
-                                <FontIcon Glyph="&#xE71C;" FontSize="15" />
-                                <Button.Flyout>
-                                    <Flyout Placement="BottomEdgeAlignedRight">
-                                        <StackPanel Spacing="9" MinWidth="150">
-                                            <ComboBox x:Name="SearchMode" SelectedIndex="1" SelectionChanged="ChangeSearchMode"
-                                                      AutomationProperties.Name="搜索精确度" HorizontalAlignment="Stretch">
-                                                <ComboBoxItem Content="精确" />
-                                                <ComboBoxItem Content="模糊" />
-                                            </ComboBox>
-                                            <CheckBox x:Name="SearchFolders" Content="目录" IsChecked="True" Click="ChangeSearchScope" />
-                                            <CheckBox x:Name="SearchFiles" Content="文件" IsChecked="True" Click="ChangeSearchScope" />
-                                        </StackPanel>
-                                    </Flyout>
-                                </Button.Flyout>
-                            </Button>
+                        <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
+                                Style="{StaticResource LibraryIconButton}" Margin="0,0,4,0"
+                                AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
+                            <FontIcon Glyph="&#xE76B;" FontSize="14" />
+                        </Button>
+                        <Grid Grid.Column="1">
+                            <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
+                            <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
+                                     FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
+                                     PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
+                                     TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
                         </Grid>
                     </Grid>
                     <Grid Grid.Row="1" ColumnSpacing="10">
@@ -484,9 +452,9 @@
         </Grid>
         </ContentControl>
 
-        <Grid x:Name="GlobalSearchOverlay" Visibility="Collapsed" TabFocusNavigation="Cycle"
-              PreviewKeyDown="GlobalSearchKeyDown" AutomationProperties.Name="全局搜索">
-            <Border Background="#2E000000" Tapped="DismissGlobalSearchFromBackdrop" />
+        <Grid x:Name="SearchOverlay" Visibility="Collapsed" TabFocusNavigation="Cycle"
+              PreviewKeyDown="SearchKeyDown" AutomationProperties.Name="搜索">
+            <Border Background="#2E000000" Tapped="DismissSearchFromBackdrop" />
             <Border MaxWidth="585" Margin="22" VerticalAlignment="Center" CornerRadius="24" BorderThickness="1"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
@@ -500,31 +468,31 @@
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE721;" FontSize="20" VerticalAlignment="Center"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBox x:Name="GlobalSearchInput" Grid.Column="1" PlaceholderText="搜索所有来源"
+                        <TextBox x:Name="SearchInput" Grid.Column="1" PlaceholderText="搜索所有来源"
                                  AutomationProperties.Name="搜索所有来源" VerticalAlignment="Center" MinWidth="0"
                                  FontSize="21" Padding="0,4" BorderThickness="0" Background="Transparent"
-                                 TextChanged="GlobalSearchEdited" TextCompositionStarted="TextCompositionStarted"
+                                 TextChanged="SearchEdited" TextCompositionStarted="TextCompositionStarted"
                                  TextCompositionEnded="TextCompositionEnded" />
-                        <Border x:Name="GlobalSearchExactBadge" Grid.Column="2" Visibility="Collapsed"
+                        <Border x:Name="SearchExactBadge" Grid.Column="2" Visibility="Collapsed"
                                 VerticalAlignment="Center" CornerRadius="12" Padding="9,4"
                                 Background="{ThemeResource SubtleFillColorSecondaryBrush}">
                             <TextBlock Text="精确匹配" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
-                        <Button Grid.Column="3" Click="CloseGlobalSearchButton" ToolTipService.ToolTip="关闭全局搜索（Esc）"
+                        <Button Grid.Column="3" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
                                 VerticalAlignment="Center" Width="32" Height="32" Padding="0" CornerRadius="12"
                                 Background="Transparent" BorderThickness="0"
-                                AutomationProperties.Name="关闭全局搜索">
+                                AutomationProperties.Name="关闭搜索">
                             <FontIcon Glyph="&#xE8BB;" FontSize="13" />
                         </Button>
                     </Grid>
                     <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                    <TextBlock x:Name="GlobalSearchStatus" Visibility="Collapsed" Margin="3,3,0,3"
+                    <TextBlock x:Name="SearchStatus" Visibility="Collapsed" Margin="3,3,0,3"
                                TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                AutomationProperties.LiveSetting="Polite" />
-                    <ListView x:Name="GlobalSearchResults" Visibility="Collapsed" MaxHeight="299" SelectionMode="Single"
-                              SingleSelectionFollowsFocus="True" AutomationProperties.Name="全局搜索结果">
+                    <ListView x:Name="SearchResults" Visibility="Collapsed" MaxHeight="299" SelectionMode="Single"
+                              SingleSelectionFollowsFocus="True" AutomationProperties.Name="搜索结果">
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -552,27 +520,35 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <ToggleButton x:Name="GlobalFileScope" Content="Ctrl+1 文件" Click="GlobalScopeClicked"
+                            <ToggleButton x:Name="SearchFiles" Content="Ctrl+1 文件" Click="ResultKindClicked"
                                           CornerRadius="12" MinHeight="28" Padding="8,3"
                                           AutomationProperties.Name="仅搜索文件">
                                 <ToggleButton.KeyboardAccelerators>
-                                    <KeyboardAccelerator Key="Number1" Modifiers="Control" Invoked="GlobalScopeShortcut" />
+                                    <KeyboardAccelerator Key="Number1" Modifiers="Control" Invoked="ResultKindShortcut" />
                                 </ToggleButton.KeyboardAccelerators>
                             </ToggleButton>
-                            <ToggleButton x:Name="GlobalDirectoryScope" Grid.Column="1" Content="Ctrl+2 目录"
+                            <ToggleButton x:Name="SearchDirectories" Grid.Column="1" Content="Ctrl+2 目录"
                                           CornerRadius="12" MinHeight="28" Padding="8,3"
-                                          Click="GlobalScopeClicked" AutomationProperties.Name="仅搜索目录">
+                                          Click="ResultKindClicked" AutomationProperties.Name="仅搜索目录">
                                 <ToggleButton.KeyboardAccelerators>
-                                    <KeyboardAccelerator Key="Number2" Modifiers="Control" Invoked="GlobalScopeShortcut" />
+                                    <KeyboardAccelerator Key="Number2" Modifiers="Control" Invoked="ResultKindShortcut" />
                                 </ToggleButton.KeyboardAccelerators>
                             </ToggleButton>
-                            <TextBlock Grid.Column="2" Text="输入 @ 后按空格精确匹配"
+                            <Button x:Name="SearchDomain" Grid.Column="2" Content="Ctrl+0 全局"
+                                    CornerRadius="12" MinHeight="28" Padding="8,3" Click="SwitchSearchDomainClick"
+                                    AutomationProperties.Name="切换搜索范围">
+                                <Button.KeyboardAccelerators>
+                                    <KeyboardAccelerator Key="Number0" Modifiers="Control" Invoked="SwitchSearchDomainShortcut" />
+                                </Button.KeyboardAccelerators>
+                            </Button>
+                            <TextBlock x:Name="SearchExactHint" Grid.Column="3" Text="输入 @ 后按空格精确匹配"
                                        FontSize="12" Margin="6,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
-                        <TextBlock Text="↑ / ↓ 选择    Enter 前往    Space 预览    Esc 关闭"
+                        <TextBlock x:Name="SearchKeyHelp"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
                                    TextWrapping="Wrap" Margin="2,0,0,0" />
                     </StackPanel>

@@ -3,8 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibrarySearchActions {
-    let focusCurrent: (@MainActor () -> Void)?
-    let focusGlobal: (@MainActor () -> Void)?
+    let show: (@MainActor (LibrarySearchDomain) -> Void)?
 }
 
 private struct LibrarySearchActionsKey: FocusedValueKey {
@@ -23,67 +22,57 @@ struct LibrarySearchCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
-            Button("搜索当前范围") { actions?.focusCurrent?() }
+            Button("搜索当前范围") { actions?.show?(.current) }
                 .keyboardShortcut("f", modifiers: .command)
-                .disabled(actions?.focusCurrent == nil)
-            Button("全局搜索") { actions?.focusGlobal?() }
+                .disabled(actions?.show == nil)
+            Button("全局搜索") { actions?.show?(.global) }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(actions?.focusGlobal == nil)
+                .disabled(actions?.show == nil)
         }
     }
 }
 
-struct LibrarySearchFilters: View {
-    @Binding var mode: MatchMode
-    @Binding var directories: Bool
-    @Binding var files: Bool
+enum LibrarySearchDomain: Sendable {
+    case current, global
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Picker("搜索模式", selection: $mode) {
-                ForEach(MatchMode.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            Toggle("目录名", systemImage: "folder", isOn: $directories)
-                .toggleStyle(.switch)
-            Toggle("文件名", systemImage: "doc", isOn: $files)
-                .toggleStyle(.switch)
-        }
-        .controlSize(.small)
-        .frame(width: 200)
-        .padding(15)
-    }
+    var title: String { self == .current ? "当前范围" : "全局" }
+    var prompt: String { self == .current ? "搜索当前范围" : "搜索所有来源" }
 }
 
-struct GlobalSearchPanel: View {
+struct LibrarySearchPanel: View {
     let index: SearchIndex
     let revision: Int
+    let page: LibraryPage
+    let albumMembers: Set<Int64>
+    let domain: LibrarySearchDomain
     let isPreviewing: Bool
     let focus: FocusState<LibraryView.Focus?>.Binding
+    let switchDomain: () -> Void
     let dismiss: () -> Void
     let open: (GlobalSearchResult) -> Void
     let preview: (Media, [Media]) -> Void
 
     @ViewState private var query = ""
+    @ViewState private var mode = MatchMode.fuzzy
     @ViewState private var selection: GlobalSearchResult?
     @ViewState private var matches: (request: Request, results: [GlobalSearchResult])?
     @ViewState private var scope = Scope.all
 
-    private enum Scope { case all, files, directories }
+    private enum Scope: Sendable { case all, files, directories }
 
     private struct Request: Equatable, Sendable {
         let query: String
         let mode: MatchMode
-        let directories: Bool
-        let files: Bool
+        let scope: Scope
+        let domain: LibrarySearchDomain
+        let page: LibraryPage
+        let albumMembers: Set<Int64>
         let revision: Int
     }
 
     private var request: Request {
-        let term = GlobalSearchTerm(query)
-        return Request(query: term.text, mode: term.mode, directories: scope != .files,
-                       files: scope != .directories, revision: revision)
+        Request(query: query.trimmingCharacters(in: .whitespacesAndNewlines), mode: mode, scope: scope,
+                domain: domain, page: page, albumMembers: albumMembers, revision: revision)
     }
 
     private var results: [GlobalSearchResult] {
@@ -107,13 +96,13 @@ struct GlobalSearchPanel: View {
                 .padding(25)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("global-search-panel")
+        .accessibilityIdentifier("library-search-panel")
         .task {
             await Task.yield()
-            if !Task.isCancelled { focus.wrappedValue = .globalSearchQuery }
+            if !Task.isCancelled { focus.wrappedValue = .searchQuery }
         }
         .onChange(of: isPreviewing) { _, previewing in
-            if !previewing { focus.wrappedValue = .globalSearchResults }
+            if !previewing { focus.wrappedValue = .searchResults }
         }
         .task(id: request) {
             selection = nil
@@ -122,7 +111,10 @@ struct GlobalSearchPanel: View {
                 return
             }
             let result = await Task.detached(priority: .userInitiated) {
-                index.globalSearch(request.query, mode: request.mode, directories: request.directories, files: request.files)
+                index.globalSearch(request.query, mode: request.mode,
+                                   directories: request.scope != .files, files: request.scope != .directories) { result in
+                    request.domain == .global || request.page.containsSearchResult(result, virtualMembers: request.albumMembers)
+                }
             }.value
             if !Task.isCancelled { matches = (request, result) }
         }
@@ -175,32 +167,39 @@ struct GlobalSearchPanel: View {
                 .font(.system(size: 21, weight: .medium))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField("搜索所有来源", text: $query)
+            TextField(domain.prompt, text: $query)
                 .font(.title2)
                 .textFieldStyle(.plain)
-                .focused(focus, equals: .globalSearchQuery)
-                .accessibilityIdentifier("global-search-query")
+                .focused(focus, equals: .searchQuery)
+                .accessibilityIdentifier("library-search-query")
                 .onSubmit(confirmResult)
                 .onKeyPress(keys: [.upArrow, .downArrow, .escape], phases: .down, action: handleKey)
-            if request.mode == .exact {
+                .onChange(of: query) { _, value in
+                    let term = GlobalSearchTerm(value)
+                    if mode == .fuzzy, term.mode == .exact, !isComposingQuery {
+                        mode = .exact
+                        query = term.text
+                    }
+                }
+            if mode == .exact {
                 Text("精确匹配")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
                     .background(Color.accentColor.opacity(0.13), in: Capsule())
-                    .accessibilityIdentifier("global-search-match-mode")
+                    .accessibilityIdentifier("library-search-match-mode")
                     .accessibilityAddTraits(.updatesFrequently)
             }
             if !query.isEmpty {
                 Button {
                     query = ""
-                    focus.wrappedValue = .globalSearchQuery
+                    focus.wrappedValue = .searchQuery
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("清除全局搜索")
+                .accessibilityLabel("清除搜索")
             }
         }
     }
@@ -208,13 +207,27 @@ struct GlobalSearchPanel: View {
     private var shortcutHints: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
+                Button {
+                    if !isComposingQuery { switchDomain() }
+                } label: {
+                    Text("⌘0 \(domain.title)")
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .foregroundStyle(Color.accentColor)
+                        .background(Color.accentColor.opacity(0.15), in: .rect(cornerRadius: 4))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("0", modifiers: .command)
+                .accessibilityLabel("搜索域：\(domain.title)")
+                .help("在当前范围和全局之间切换")
+                .disabled(isPreviewing)
                 scopeShortcut(.files, key: "1", label: "文件")
                 scopeShortcut(.directories, key: "2", label: "目录")
                 Spacer()
-                Text("输入 @ 后按空格精确匹配")
+                Text(mode == .exact ? "Esc 退出精确匹配" : "输入 @ 后按空格精确匹配")
                     .foregroundStyle(.secondary)
             }
-            Text("↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
+            Text(mode == .exact ? "↑ ↓ 选择    ↵ 前往    空格预览" : "↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
                 .padding(.leading, 4)
         }
         .font(.caption)
@@ -225,7 +238,7 @@ struct GlobalSearchPanel: View {
         let isActive = scope == target
         return Button {
             scope = isActive ? .all : target
-            focus.wrappedValue = .globalSearchQuery
+            focus.wrappedValue = .searchQuery
         } label: {
             Text("⌘\(String(key.character)) \(label)")
                 .padding(.horizontal, 5)
@@ -255,7 +268,7 @@ struct GlobalSearchPanel: View {
             .frame(height: CGFloat(min(results.count, 6)) * 44 + 14)
             .focusable()
             .focusEffectDisabled()
-            .focused(focus, equals: .globalSearchResults)
+            .focused(focus, equals: .searchResults)
             .onKeyPress(keys: [.upArrow, .downArrow, .return, .space, .tab, .escape],
                         phases: [.down, .repeat], action: handleKey)
             .onChange(of: selection) { _, result in
@@ -268,7 +281,7 @@ struct GlobalSearchPanel: View {
         let isSelected = result == highlighted
         return Button {
             selection = result
-            focus.wrappedValue = .globalSearchResults
+            focus.wrappedValue = .searchResults
         } label: {
             HStack(spacing: 11) {
                 Image(systemName: result.symbol)
@@ -302,19 +315,28 @@ struct GlobalSearchPanel: View {
         if let highlighted { open(highlighted) }
     }
 
+    private var isComposingQuery: Bool {
+        focus.wrappedValue == .searchQuery
+            && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        if focus.wrappedValue == .globalSearchQuery,
-           let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.hasMarkedText() {
-            return .ignored
-        }
+        if isComposingQuery { return .ignored }
         switch press.key {
         case .escape:
-            if press.phase == .down { dismiss() }
+            if press.phase == .down {
+                if mode == .exact {
+                    mode = .fuzzy
+                    focus.wrappedValue = .searchQuery
+                } else {
+                    dismiss()
+                }
+            }
         case .upArrow, .downArrow:
             guard !results.isEmpty else { return .ignored }
-            if focus.wrappedValue == .globalSearchQuery {
+            if focus.wrappedValue == .searchQuery {
                 selection = press.key == .upArrow ? results.last : results.first
-                focus.wrappedValue = .globalSearchResults
+                focus.wrappedValue = .searchResults
             } else if let highlighted, let offset = results.firstIndex(of: highlighted) {
                 let next = offset + (press.key == .upArrow ? -1 : 1)
                 if results.indices.contains(next) { selection = results[next] }
@@ -329,11 +351,30 @@ struct GlobalSearchPanel: View {
                 preview(item, files)
             }
         case .tab:
-            if press.phase == .down { focus.wrappedValue = .globalSearchQuery }
+            if press.phase == .down { focus.wrappedValue = .searchQuery }
         default:
             return .ignored
         }
         return .handled
+    }
+}
+
+private extension LibraryPage {
+    func containsSearchResult(_ result: GlobalSearchResult, virtualMembers: Set<Int64>) -> Bool {
+        if self == .library { return true }
+        switch result {
+        case .file(let item):
+            return contains(item, virtualMembers: virtualMembers)
+        case .directory(let directory):
+            guard directory.source.id == sourceID else { return false }
+            let path = directory.relativePath
+            switch self {
+            case .source: return true
+            case .creator(_, let creator): return path == creator || path.hasPrefix(creator + "/")
+            case .folder(_, let folder): return path == folder
+            case .library, .virtual: return false
+            }
+        }
     }
 }
 

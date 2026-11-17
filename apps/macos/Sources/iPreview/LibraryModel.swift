@@ -25,15 +25,12 @@ final class LibraryModel {
         }
     }
 
-    func contentScope(for page: LibraryPage, matches: [Media]?) -> ContentScope {
+    func contentScope(for page: LibraryPage) -> ContentScope {
         let currentSnapshot = snapshot
-        if let matches {
-            return ContentScope(page: page, snapshot: currentSnapshot, matches: matches)
-        }
         if let cachedScope, cachedScope.page == page {
             return cachedScope.value
         }
-        let scope = ContentScope(page: page, snapshot: currentSnapshot, matches: nil)
+        let scope = ContentScope(page: page, snapshot: currentSnapshot)
         cachedScope = (page, scope)
         return scope
     }
