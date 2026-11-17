@@ -62,24 +62,15 @@ struct LibraryView: View {
             .accessibilityHidden(libraryOverlayShown)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
-                if let preview {
-                    ToolbarItem(placement: .navigation) { PreviewCloseButton(session: preview) }
-                    ToolbarItem(placement: .principal) {
-                        Text(preview.media.name)
-                            .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                            .frame(maxWidth: 420)
-                            .accessibilityAddTraits(.isHeader)
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: chooseFolder) {
+                        Label("导入", systemImage: "folder.badge.plus")
                     }
-                } else {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: chooseFolder) {
-                            Label("导入", systemImage: "folder.badge.plus")
-                        }
-                        .keyboardShortcut("o", modifiers: .command)
-                        .disabled(model.isWorking || libraryOverlayShown)
-                        .help("导入本地媒体目录")
-                    }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .disabled(model.isWorking || libraryOverlayShown)
+                    .opacity(preview == nil ? 1 : 0)
+                    .accessibilityHidden(preview != nil)
+                    .help("导入本地媒体目录")
                 }
             }
         }
@@ -87,8 +78,8 @@ struct LibraryView: View {
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
         .background {
-            if preview != nil {
-                PreviewWindowButtons()
+            if let preview {
+                PreviewWindowChrome(session: preview)
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
             }

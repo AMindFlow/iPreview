@@ -410,41 +410,70 @@ struct MediaPreview: View {
     }
 }
 
-struct PreviewCloseButton: View {
+private struct PreviewTitleBar: View {
     let session: PreviewSession
 
     var body: some View {
-        Button {
-            session.dismiss(returningTo: session.selection)
-        } label: {
-            Image(systemName: "xmark")
-        }
-        .keyboardShortcut(.cancelAction)
-        .disabled(session.closingSelection != nil)
-        .accessibilityLabel("关闭预览")
-        .help("关闭预览（Esc）")
+        Text(session.media.name)
+            .font(.callout.weight(.semibold))
+            .lineLimit(1)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.horizontal, 58)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.regularMaterial)
+            .overlay(alignment: .leading) {
+                Button {
+                    session.dismiss(returningTo: session.selection)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.callout.weight(.semibold))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                        .previewGlass(in: Circle(), interactive: true)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .disabled(session.closingSelection != nil)
+                .accessibilityLabel("关闭预览")
+                .help("关闭预览（Esc）")
+                .padding(.leading, 12)
+            }
     }
 }
 
-struct PreviewWindowButtons: NSViewRepresentable {
-    func makeNSView(context: Context) -> WindowButtonsView { WindowButtonsView() }
-    func updateNSView(_ view: WindowButtonsView, context: Context) { }
+struct PreviewWindowChrome: NSViewRepresentable {
+    let session: PreviewSession
 
-    static func dismantleNSView(_ view: WindowButtonsView, coordinator: ()) {
-        view.restoreButtons()
+    func makeNSView(context: Context) -> WindowChromeView { WindowChromeView(session: session) }
+    func updateNSView(_ view: WindowChromeView, context: Context) { }
+
+    static func dismantleNSView(_ view: WindowChromeView, coordinator: ()) {
+        view.uninstallTitleBar()
     }
 
-    final class WindowButtonsView: NSView {
+    final class WindowChromeView: NSView {
+        private let titleBar: TitleBarHost
         private var hiddenButtons: [(button: NSButton, wasHidden: Bool)] = []
+        private var layoutObservation: NSKeyValueObservation?
+
+        init(session: PreviewSession) {
+            titleBar = TitleBarHost(rootView: PreviewTitleBar(session: session))
+            super.init(frame: .zero)
+            titleBar.sizingOptions = []
+            titleBar.safeAreaRegions = []
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
 
         override func viewWillMove(toWindow newWindow: NSWindow?) {
-            restoreButtons()
+            uninstallTitleBar()
             super.viewWillMove(toWindow: newWindow)
         }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window else { return }
+            guard let window, let frameView = window.contentView?.superview else { return }
             let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
             for type in types {
                 if let button = window.standardWindowButton(type) {
@@ -452,12 +481,35 @@ struct PreviewWindowButtons: NSViewRepresentable {
                     button.isHidden = true
                 }
             }
+            // Keep the native toolbar installed so the split view and thumbnail coordinates stay put.
+            frameView.addSubview(titleBar, positioned: .above, relativeTo: nil)
+            titleBar.autoresizingMask = frameView.isFlipped ? [.width, .maxYMargin] : [.width, .minYMargin]
+            updateTitleBarFrame()
+            layoutObservation = window.observe(\.contentLayoutRect) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.updateTitleBarFrame() }
+            }
         }
 
-        func restoreButtons() {
+        private func updateTitleBarFrame() {
+            guard let window, let parent = titleBar.superview else { return }
+            let bounds = parent.bounds
+            let content = parent.convert(window.contentLayoutRect, from: nil)
+            let toolbarHeight = parent.isFlipped ? content.minY - bounds.minY : bounds.maxY - content.maxY
+            let height = max(36, toolbarHeight)
+            let top = parent.isFlipped ? bounds.minY : bounds.maxY - height
+            titleBar.frame = NSRect(x: bounds.minX, y: top, width: bounds.width, height: height)
+        }
+
+        func uninstallTitleBar() {
+            layoutObservation = nil
+            titleBar.removeFromSuperview()
             for (button, wasHidden) in hiddenButtons { button.isHidden = wasHidden }
             hiddenButtons.removeAll()
         }
+    }
+
+    private final class TitleBarHost: NSHostingView<PreviewTitleBar> {
+        override var mouseDownCanMoveWindow: Bool { false }
     }
 }
 
