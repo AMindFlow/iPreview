@@ -746,9 +746,13 @@ public sealed partial class MainWindow : Window
 
         var content = new DataPackage();
         content.SetText(previewTiles[previewIndex].FileName);
-        Clipboard.SetContent(content);
-        Clipboard.Flush();
         args.Handled = true;
+        if (!Clipboard.SetContentWithOptions(content, null))
+        {
+            PreviewHint.Text = "剪贴板正忙，请双击文件名重试。";
+            return;
+        }
+        SetPreviewVideoLock(previewVideoLocked);
     }
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
