@@ -13,6 +13,7 @@ final class LibraryModel {
     var error: String?
     var inspection: SourceInspection?
 
+    @ObservationIgnored private var cachedScope: (page: LibraryPage, value: ContentScope)?
     private let dataDirectory: URL
 
     init() {
@@ -21,6 +22,19 @@ final class LibraryModel {
         } else {
             dataDirectory = URL.applicationSupportDirectory.appendingPathComponent("iPreview", isDirectory: true)
         }
+    }
+
+    func contentScope(for page: LibraryPage, matches: [Media]?) -> ContentScope {
+        let currentSnapshot = snapshot
+        if let matches {
+            return ContentScope(page: page, snapshot: currentSnapshot, matches: matches)
+        }
+        if let cachedScope, cachedScope.page == page {
+            return cachedScope.value
+        }
+        let scope = ContentScope(page: page, snapshot: currentSnapshot, matches: nil)
+        cachedScope = (page, scope)
+        return scope
     }
 
     func start() async {
@@ -132,6 +146,7 @@ final class LibraryModel {
             searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media) }.value
             revision += 1
         }
+        cachedScope = nil
         snapshot = loaded
     }
 }
