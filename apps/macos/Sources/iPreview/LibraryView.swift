@@ -18,13 +18,16 @@ struct LibraryView: View {
     @ViewState private var revealSearchResult: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
+    @ViewState private var editDirectoryTitle: SourceNameEdit?
+    @ViewState private var directoryName = ""
+    @ViewState private var directoryNameSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, search, albumTitle }
+    enum Focus: Hashable { case browser, search, albumTitle, directoryTitle }
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -92,6 +95,9 @@ struct LibraryView: View {
         }
         .task { await model.start() }
         .onChange(of: searching) { removalSelection = nil }
+        .onChange(of: focus) { old, new in
+            if old == .directoryTitle, new != .directoryTitle { finishDirectoryTitle() }
+        }
         .task(id: request) {
             guard let request else {
                 matches = nil
@@ -127,21 +133,7 @@ struct LibraryView: View {
         }
         .sheet(item: $editSourceName, onDismiss: focusBrowser) { edit in
             SourceNameSheet(edit: edit) { name in
-                let path = try await model.renameSourceItem(edit, to: name)
-                let renamed: LibraryPage
-                switch edit.folder {
-                case .creator(let sourceID, _): renamed = .creator(sourceID, path)
-                case .folder(let sourceID, _): renamed = .folder(sourceID, path)
-                default:
-                    selected = edit.mediaID
-                    return
-                }
-                if page == edit.folder {
-                    page = renamed
-                    selectedFolder = nil
-                } else {
-                    selectedFolder = renamed
-                }
+                try await renameSourceItem(edit, to: name)
             }
         }
         .sheet(item: $addAlbumMedia) { album in
@@ -347,19 +339,50 @@ struct LibraryView: View {
                                   finished: focusBrowser)
                     .id(album.id)
             } else if !searching, let source = scope.source, let folder = page.indexedDirectory {
-                let member = scope.items.first(where: \.isAvailable)
-                    ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
-                Button {
-                    beginRename(SourceNameEdit(folder: folder, source: source, expectedMember: member))
-                } label: {
+                if editDirectoryTitle?.folder == folder {
+                    TextField("文件夹名称", text: $directoryName, selection: $directoryNameSelection)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focus, equals: .directoryTitle)
+                        .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
+                        .accessibilityIdentifier("source-directory-name")
+                        .background {
+                            RenameClickBoundary(onOutsideClick: finishDirectoryTitle)
+                                .allowsHitTesting(false)
+                        }
+                        .task {
+                            await Task.yield()
+                            focus = .directoryTitle
+                        }
+                        .onSubmit {
+                            finishDirectoryTitle()
+                            focusBrowser()
+                        }
+                        .onKeyPress(.escape) {
+                            editDirectoryTitle = nil
+                            focusBrowser()
+                            return .handled
+                        }
+                } else if !model.isWorking, source.isAvailable {
+                    let start = {
+                        let member = scope.items.first(where: \.isAvailable)
+                            ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
+                        let edit = SourceNameEdit(folder: folder, source: source, expectedMember: member)
+                        directoryName = edit.name
+                        directoryNameSelection = TextSelection(range: directoryName.startIndex..<directoryName.endIndex)
+                        editDirectoryTitle = edit
+                    }
+                    Text(scope.title)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2, perform: start)
+                        .accessibilityAddTraits([.isHeader, .isButton])
+                        .accessibilityAction { start() }
+                        .accessibilityHint("双击标题重命名文件夹")
+                        .accessibilityIdentifier("source-directory-title")
+                        .help("双击标题重命名文件夹")
+                } else {
                     Text(scope.title)
                         .accessibilityAddTraits(.isHeader)
                 }
-                .buttonStyle(.plain)
-                .disabled(model.isWorking || !source.isAvailable)
-                .accessibilityHint("重命名真实文件夹")
-                .accessibilityIdentifier("source-directory-title")
-                .help("点击标题重命名文件夹")
             } else {
                 Text(scope.title)
                     .accessibilityAddTraits(.isHeader)
@@ -872,6 +895,35 @@ struct LibraryView: View {
         guard preview == nil, !searching, let parent = page.parent(in: sourceLayout) else { return .ignored }
         if press.phase == .down { navigate(parent.page, selecting: page) }
         return .handled
+    }
+
+    private func finishDirectoryTitle() {
+        guard let edit = editDirectoryTitle else { return }
+        editDirectoryTitle = nil
+        let name = directoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != edit.name else { return }
+        Task {
+            do {
+                try await renameSourceItem(edit, to: name)
+            } catch {
+                model.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func renameSourceItem(_ edit: SourceNameEdit, to name: String) async throws {
+        let path = try await model.renameSourceItem(edit, to: name)
+        guard let folder = edit.folder else {
+            selected = edit.mediaID
+            return
+        }
+        if let updatedPage = page.renamedDirectory(in: edit, to: path) {
+            page = updatedPage
+            selectedFolder = selectedFolder?.renamedDirectory(in: edit, to: path) ?? selectedFolder
+        } else if page == folder.parent(in: edit.source.layout)?.page,
+                  selectedFolder == folder {
+            selectedFolder = folder.renamedDirectory(in: edit, to: path)
+        }
     }
 
     private func beginRename(_ edit: SourceNameEdit) {
