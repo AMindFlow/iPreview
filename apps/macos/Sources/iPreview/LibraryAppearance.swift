@@ -117,3 +117,58 @@ struct LibraryTitleEdit {
         }
     }
 }
+
+struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
+    let controls: Controls
+
+    func makeNSView(context: Context) -> AttachmentView {
+        AttachmentView(controls: controls)
+    }
+
+    func updateNSView(_ view: AttachmentView, context: Context) {
+        view.host.rootView = controls
+    }
+
+    static func dismantleNSView(_ view: AttachmentView, coordinator: ()) {
+        view.uninstall()
+    }
+
+    final class AttachmentView: NSView {
+        let host: NSHostingView<Controls>
+        private let accessory = NSTitlebarAccessoryViewController()
+        private weak var installedWindow: NSWindow?
+
+        init(controls: Controls) {
+            host = NSHostingView(rootView: controls)
+            super.init(frame: .zero)
+            host.sizingOptions = []
+            host.safeAreaRegions = []
+            host.frame = NSRect(x: 0, y: 0, width: 64, height: 26)
+            accessory.view = host
+            accessory.layoutAttribute = .left
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            uninstall()
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.addTitlebarAccessoryViewController(accessory)
+            installedWindow = window
+        }
+
+        func uninstall() {
+            if let window = installedWindow,
+               let index = window.titlebarAccessoryViewControllers.firstIndex(of: accessory) {
+                window.removeTitlebarAccessoryViewController(at: index)
+            }
+            installedWindow = nil
+        }
+    }
+}

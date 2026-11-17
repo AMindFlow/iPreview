@@ -44,20 +44,10 @@ struct LibraryView: View {
         let scope = model.contentScope(for: page)
 
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 4) {
-                    sidebarToggle
-                    sidebarButton("导入文件夹", symbol: "folder.badge.plus", action: chooseFolder)
-                        .disabled(!canChooseFolder)
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-                sidebar
-            }
-            .accessibilityHidden(libraryOverlayShown)
-            .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
-            .toolbar(removing: .sidebarToggle)
+            sidebar
+                .accessibilityHidden(libraryOverlayShown)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             VStack(alignment: .leading, spacing: 0) {
                 header(scope)
@@ -72,6 +62,8 @@ struct LibraryView: View {
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
         .background {
+            LibraryTitleBarControls(controls: windowControls)
+                .frame(width: 0, height: 0)
             if let preview {
                 PreviewWindowChrome(session: preview)
                     .frame(width: 0, height: 0)
@@ -146,6 +138,18 @@ struct LibraryView: View {
         } message: {
             Text(model.error ?? "")
         }
+    }
+
+    private var windowControls: some View {
+        HStack(spacing: 4) {
+            sidebarToggle
+            sidebarButton("导入文件夹", symbol: "folder.badge.plus", action: chooseFolder)
+                .disabled(!canChooseFolder)
+        }
+        .frame(width: 64, height: 26)
+        .frame(maxHeight: .infinity)
+        .opacity(preview == nil ? 1 : 0)
+        .accessibilityHidden(libraryOverlayShown)
     }
 
     private var sidebarToggle: some View {
@@ -277,9 +281,6 @@ struct LibraryView: View {
     private func header(_ scope: ContentScope) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
-                if sidebarVisibility == .detailOnly {
-                    sidebarToggle
-                }
                 if let parent = page.parent(in: scope.source?.layout) {
                     Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
