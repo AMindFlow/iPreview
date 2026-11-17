@@ -154,7 +154,7 @@ struct MediaPreview: View {
                 Image(systemName: "xmark")
                     .font(.callout.weight(.semibold))
                     .frame(width: 35, height: 35)
-                    .background(.thinMaterial, in: Circle())
+                    .previewGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
@@ -167,7 +167,7 @@ struct MediaPreview: View {
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .frame(height: 34)
-                .background(.thinMaterial, in: Capsule())
+                .previewGlass(in: Capsule())
                 .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, 19)
@@ -216,7 +216,7 @@ struct MediaPreview: View {
                 Image(systemName: icon)
                     .font(.body.weight(.medium))
                     .frame(width: 34, height: 34)
-                    .background(.thinMaterial, in: Circle())
+                    .previewGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
@@ -308,11 +308,22 @@ struct MediaPreview: View {
         .font(.caption)
         .padding(.horizontal, 15)
         .frame(height: 42)
-        .background(.regularMaterial, in: Capsule())
+        .previewGlass(in: Capsule(), interactive: true)
     }
 
     private func time(_ seconds: Double) -> String {
         let rounded = Int(seconds)
         return String(format: "%d:%02d", rounded / 60, rounded % 60)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func previewGlass(in shape: some Shape, interactive: Bool = false) -> some View {
+        if #available(macOS 26, *) {
+            glassEffect(.regular.interactive(interactive), in: shape)
+        } else {
+            background(.regularMaterial, in: shape)
+        }
     }
 }
