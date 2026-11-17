@@ -162,11 +162,11 @@ static void CheckSourceRename(string work)
         File.Delete(Path.Combine(sourcePath, "Maker/Album/used.jpg"));
         catalog.Rescan(sourceId, MediaFiles.Scan(sourcePath, Layout.MultiCreator)
             .Where(item => item.RelativePath != "Maker/Album/not-indexed.jpg").ToList());
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "not-indexed", false), "unindexed collision");
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "used", false), "historical collision");
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "COM¹.txt", false), "Windows device name");
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "../bad", false), "rename stays within parent");
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, ".hidden", false), "hidden name");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "not-indexed", false, coverId), "unindexed collision");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "used", false, coverId), "historical collision");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "COM¹.txt", false, coverId), "Windows device name");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "../bad", false, coverId), "rename stays within parent");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, ".hidden", false, coverId), "hidden name");
 
         using (var failure = new Sqlite(indexPath))
         {
@@ -175,13 +175,13 @@ static void CheckSourceRename(string work)
                 BEGIN SELECT RAISE(ABORT, 'injected path update failure'); END;
                 """);
             Reject<InvalidOperationException>(
-                () => catalog.RenameSourceItem(sourceId, cover, "rolled-back", false), "rollback on index error");
+                () => catalog.RenameSourceItem(sourceId, cover, "rolled-back", false, coverId), "rollback on index error");
             Check(File.Exists(Path.Combine(sourcePath, cover)) && !File.Exists(Path.Combine(sourcePath, "Maker/Album/rolled-back.jpg"))
                 && !catalog.HasPendingRename(sourceId), "database failure restores original disk and clears pending record");
             failure.ExecuteScript("DROP TRIGGER reject_path_update;");
         }
 
-        var renamed = catalog.RenameSourceItem(sourceId, cover, "Front", false);
+        var renamed = catalog.RenameSourceItem(sourceId, cover, "Front", false, coverId);
         Check(renamed == "Maker/Album/Front.jpg" &&
             Directory.EnumerateFiles(Path.Combine(sourcePath, "Maker/Album")).Any(item => Path.GetFileName(item) == "Front.jpg"),
             "case-only rename preserves exact disk spelling and extension");
@@ -189,16 +189,24 @@ static void CheckSourceRename(string work)
         {
             var staleVersion = replica.DataVersion;
             var staleFiles = MediaFiles.Scan(sourcePath, Layout.MultiCreator);
-            renamed = catalog.RenameSourceItem(sourceId, renamed, "新版封面", false);
+            renamed = catalog.RenameSourceItem(sourceId, renamed, "新版封面", false, coverId);
             Reject<InvalidOperationException>(() => replica.Rescan(sourceId, staleFiles, staleVersion),
                 "a scan collected before another window renames cannot reinsert obsolete paths");
         }
         Check(File.ReadAllText(Path.Combine(sourcePath, renamed)) == "fixture", "file bytes preserved");
-        Check(catalog.RenameSourceItem(sourceId, "Maker/Album", "New Album", true) == "Maker/New Album",
+        AddFile(sourcePath, cover);
+        catalog.Rescan(sourceId, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+        Check(catalog.Read().Media.Single(item => item.RelativePath == cover).Id != coverId, "reused path has another ID");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, cover, "wrong-target", false, coverId),
+            "stale selected ID cannot rename a replacement at the same path");
+        Check(File.Exists(Path.Combine(sourcePath, cover)) &&
+            !File.Exists(Path.Combine(sourcePath, "Maker/Album/wrong-target.jpg")), "replacement is untouched");
+
+        Check(catalog.RenameSourceItem(sourceId, "Maker/Album", "New Album", true, coverId) == "Maker/New Album",
             "indexed album folder renamed");
         Check(catalog.Read().Media.Single(item => item.FileName == "untouched.jpg").RelativePath == "Maker/Album2/untouched.jpg",
             "same-prefix sibling folder remains distinct");
-        catalog.RenameSourceItem(sourceId, "Maker", "新创作者", true);
+        catalog.RenameSourceItem(sourceId, "Maker", "新创作者", true, coverId);
         catalog.Rescan(sourceId, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
         var members = catalog.Read().AlbumMembers[albumId];
         Check(members.Select(item => item.Id).SequenceEqual([coverId, secondId]) &&
@@ -207,9 +215,20 @@ static void CheckSourceRename(string work)
 
         var nested = Path.Combine(sourcePath, "新创作者/Album2");
         catalog.Import(nested, Layout.Flat, MediaFiles.Scan(nested, Layout.Flat));
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, "新创作者", "Blocked", true), "nested registered root collision");
-        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, "新创作者/Album2/untouched.jpg", "Blocked", false),
+        var other = catalog.Read().Media.Single(item => item.Source.Id == sourceId && item.FileName == "untouched.jpg");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, "新创作者", "Blocked", true, coverId), "nested registered root collision");
+        Reject<IOException>(() => catalog.RenameSourceItem(sourceId, other.RelativePath, "Blocked", false, other.Id),
             "file also indexed by another source");
+
+        var previous = Path.Combine(work, "previous-folder-name");
+        AddFile(previous, "Future.jpg/Old.png");
+        catalog.Import(previous, Layout.Creator, MediaFiles.Scan(previous, Layout.Creator));
+        Directory.Move(Path.Combine(previous, "Future.jpg"), Path.Combine(work, "saved-fixture-folder"));
+        AddFile(previous, "Direct.jpg");
+        var flatId = catalog.Import(previous, Layout.Flat, MediaFiles.Scan(previous, Layout.Flat));
+        var direct = catalog.Read().Media.Single(item => item.Source.Id == flatId && item.FileName == "Direct.jpg");
+        Reject<IOException>(() => catalog.RenameSourceItem(flatId, direct.RelativePath, "Future", false, direct.Id),
+            "an unavailable folder subtree reserves its historical name even for a file destination");
     }
 
     var source = new Source(sourceId, sourcePath, Layout.MultiCreator, Available: true);
@@ -238,6 +257,7 @@ static void CheckSourceRename(string work)
     using (var catalog = new Catalog(data))
     {
         Check(catalog.RenameRecoveryNotice is not null && catalog.HasPendingRename(sourceId), "ambiguous recovery is visible");
+        Check(catalog.CurrentRenameNotice() == catalog.RenameRecoveryNotice, "pending rename blocks another editor");
         Reject<InvalidOperationException>(() => catalog.Rescan(sourceId, null), "ambiguous source cannot rescan");
         Check(File.Exists(Path.Combine(sourcePath, oldPath)) && File.Exists(Path.Combine(sourcePath, newPath)) &&
               catalog.Read().Media.Single(item => item.Id == secondId).RelativePath == newPath,

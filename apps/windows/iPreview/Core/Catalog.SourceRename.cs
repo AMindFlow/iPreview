@@ -10,8 +10,14 @@ internal sealed partial class Catalog
 
     public bool HasPendingRename(long source) => ReadPendingRename()?.Source == source;
 
-    public string RenameSourceItem(long sourceId, string oldPath, string baseName, bool isDirectory)
+    public string? CurrentRenameNotice() => ReadPendingRename() is null ? null :
+        RenameRecoveryNotice ?? "有一项重命名尚待完成，请稍后重试。";
+
+    public string RenameSourceItem(long sourceId, string oldPath, string baseName, bool isDirectory,
+        long expectedMediaId)
     {
+        if (CurrentRenameNotice() is { } notice)
+            throw new IOException(notice);
         var newPath = SourceRename.Destination(oldPath, baseName, isDirectory);
         if (oldPath == newPath)
             return oldPath;
@@ -34,7 +40,7 @@ internal sealed partial class Catalog
                 if (ReadPendingRename() is not null)
                     throw new IOException("有一项重命名尚待恢复，请先处理后再试。");
                 EnsureSeparateRoots(source, pending);
-                ValidateRenameProjection(pending);
+                ValidateRenameProjection(pending, expectedMediaId);
                 database.Execute("""
                     INSERT INTO pending_rename (id, source_id, old_path, new_path, is_directory, file_identity)
                     VALUES (1, ?, ?, ?, ?, ?);
@@ -52,6 +58,7 @@ internal sealed partial class Catalog
                     if (!StringComparer.OrdinalIgnoreCase.Equals(registeredPath, source.Path))
                         throw new IOException("来源路径已改变。");
                     EnsureSeparateRoots(source, pending);
+                    ValidateRenameProjection(pending, expectedMediaId);
                     EnsureRenameLocation(source, oldPath, newPath);
                     SourceRename.AssertPath(target, source, oldPath, isDirectory);
                     SourceRename.Move(target, parent, SourceRename.SplitPath(newPath).Leaf);
@@ -96,20 +103,20 @@ internal sealed partial class Catalog
             throw new IOException("目录中已经存在同名项目。");
     }
 
-    private void ValidateRenameProjection(PendingRename pending)
+    private void ValidateRenameProjection(PendingRename pending, long? expectedMediaId = null)
     {
-        var items = database.Query("SELECT relative_path, available FROM media WHERE source_id = ?;",
-            row => (Path: row.Text(0), Present: row.Number(1) != 0), pending.Source);
+        var items = database.Query("SELECT id, relative_path, available FROM media WHERE source_id = ?;",
+            row => (Id: row.Number(0), Path: row.Text(1), Present: row.Number(2) != 0), pending.Source);
         var memberPrefix = pending.Before + "/";
         var targetPrefix = pending.After + "/";
         var hasPresentMember = false;
-        foreach (var (path, present) in items)
+        foreach (var (id, path, present) in items)
         {
             var belongs = pending.Directory ? path.StartsWith(memberPrefix, StringComparison.Ordinal) : path == pending.Before;
             if (belongs)
-                hasPresentMember |= present;
+                hasPresentMember |= present && (expectedMediaId is null || expectedMediaId == id);
             else if (StringComparer.OrdinalIgnoreCase.Equals(path, pending.After) ||
-                     pending.Directory && path.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                     path.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
                 throw new IOException("新名称与媒体库中的已有路径冲突。");
         }
         if (!hasPresentMember)

@@ -687,7 +687,7 @@ public sealed partial class MainWindow : Window
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown && Selection is { } tile)
                 await RenameSourceItem(tile.Media.Source.Id, tile.Media.RelativePath, tile.Media.Available,
-                    isDirectory: false, selectedMediaId: tile.Media.Id);
+                    isDirectory: false, expectedMediaId: tile.Media.Id);
             return;
         }
         if (args.Key != VirtualKey.Space)

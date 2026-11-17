@@ -47,17 +47,31 @@ public sealed partial class MainWindow
             NavTree.Focus(FocusState.Keyboard);
     }
 
-    private Task RenameIndexedFolder(Navigation target, bool fromSidebar) =>
-        target is { Source: long id, Folder: { } path }
-            ? RenameSourceItem(id, path.TrimEnd('/'), sources[id].Available, isDirectory: true,
-                fromSidebar: fromSidebar)
-            : Task.CompletedTask;
+    private Task RenameIndexedFolder(Navigation target, bool fromSidebar)
+    {
+        if (target is not { Source: long id, Folder: { } path })
+            return Task.CompletedTask;
+        var anchor = media.Find(item => item.Source.Id == id && item.Present &&
+            item.RelativePath.StartsWith(path, StringComparison.Ordinal));
+        if (anchor is null)
+        {
+            ShowNotice("无法重命名", "所选文件夹已不在活动索引中。");
+            return Task.CompletedTask;
+        }
+        return RenameSourceItem(id, path.TrimEnd('/'), sources[id].Available, isDirectory: true,
+            expectedMediaId: anchor.Id, fromSidebar: fromSidebar);
+    }
 
     private async Task RenameSourceItem(long sourceId, string path, bool available, bool isDirectory,
-        long? selectedMediaId = null, bool fromSidebar = false)
+        long expectedMediaId, bool fromSidebar = false)
     {
         if (busy || catalog is null)
             return;
+        if (Database.CurrentRenameNotice() is { } pending)
+        {
+            ShowNotice("有待恢复的重命名", pending, InfoBarSeverity.Warning);
+            return;
+        }
         if (!available)
         {
             ShowNotice("无法重命名", "来源或所选项目当前不可用。");
@@ -108,13 +122,15 @@ public sealed partial class MainWindow
         {
             try
             {
-                renamedPath = Database.RenameSourceItem(sourceId, path, entry.Text, isDirectory);
+                renamedPath = Database.RenameSourceItem(sourceId, path, entry.Text, isDirectory, expectedMediaId);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
                 args.Cancel = true;
                 errorMessage.Text = error.Message;
                 errorMessage.Visibility = Visibility.Visible;
+                if (Database.RenameRecoveryNotice is not null && Database.CurrentRenameNotice() is not null)
+                    dialog.IsPrimaryButtonEnabled = false;
                 entry.Focus(FocusState.Programmatic);
             }
         };
@@ -131,7 +147,7 @@ public sealed partial class MainWindow
                     current = new Navigation(SourceRename.SplitPath(updated.TrimEnd('/')).Leaf,
                         Source: sourceId, Folder: updated);
                 }
-                Reload(selectedMediaId ?? Selection?.Media.Id);
+                Reload(isDirectory ? Selection?.Media.Id : expectedMediaId);
             }
         }
         finally
