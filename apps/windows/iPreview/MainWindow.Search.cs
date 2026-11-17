@@ -1,7 +1,10 @@
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace IPreview;
 
@@ -11,6 +14,11 @@ public sealed partial class MainWindow
     private int globalSearchRevision;
     private GlobalSearchScope globalSearchScope;
     private List<GlobalSearchHit> globalSearchHits = [];
+    private Control? globalSearchReturnFocus;
+    private TextBox? scopedSearchInput;
+    private TextBox? composingInput;
+
+    private bool IsComposingText => composingInput is { FocusState: not FocusState.Unfocused };
 
     private IEnumerable<Media> ScopeMedia()
     {
@@ -23,11 +31,74 @@ public sealed partial class MainWindow
 
     private void GoToLibrary(object sender, RoutedEventArgs args) => NavigateFromContent(Library);
 
-    private void ShowGlobalSearch(object sender, RoutedEventArgs args)
+    private void FindInLibrary(KeyRoutedEventArgs args)
     {
-        if (catalog is null || busy)
+        if (args.Key != VirtualKey.F || catalog is null || busy || globalSearchOpen || titleEdit is not null ||
+            SelectingAlbumMembers || IsComposingText || !KeyIsDown(VirtualKey.Control) || KeyIsDown(VirtualKey.Menu) ||
+            KeyIsDown(VirtualKey.LeftWindows) || KeyIsDown(VirtualKey.RightWindows))
             return;
 
+        var global = KeyIsDown(VirtualKey.Shift);
+        if (!global && Query.Visibility != Visibility.Visible)
+            return;
+        args.Handled = true;
+        if (args.KeyStatus.WasKeyDown)
+            return;
+        if (global)
+        {
+            OpenGlobalSearch();
+            return;
+        }
+
+        Query.ApplyTemplate();
+        FindQueryInput(Query)?.Focus(FocusState.Keyboard);
+    }
+
+    private static bool KeyIsDown(VirtualKey key) =>
+        (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
+
+    private static TextBox? FindQueryInput(DependencyObject parent)
+    {
+        if (parent is TextBox input)
+            return input;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            if (FindQueryInput(VisualTreeHelper.GetChild(parent, i)) is { } textBox)
+                return textBox;
+        }
+        return null;
+    }
+
+    private void ObserveScopedSearchFocus(UIElement sender, GettingFocusEventArgs args)
+    {
+        if (args.NewFocusedElement is not TextBox input || ReferenceEquals(input, scopedSearchInput))
+            return;
+        if (scopedSearchInput is not null)
+        {
+            scopedSearchInput.TextCompositionStarted -= TextCompositionStarted;
+            scopedSearchInput.TextCompositionEnded -= TextCompositionEnded;
+        }
+        scopedSearchInput = input;
+        input.TextCompositionStarted += TextCompositionStarted;
+        input.TextCompositionEnded += TextCompositionEnded;
+    }
+
+    private void TextCompositionStarted(TextBox sender, TextCompositionStartedEventArgs args) => composingInput = sender;
+
+    private void TextCompositionEnded(TextBox sender, TextCompositionEndedEventArgs args)
+    {
+        if (ReferenceEquals(sender, composingInput))
+            composingInput = null;
+    }
+
+    private void ShowGlobalSearch(object sender, RoutedEventArgs args) => OpenGlobalSearch();
+
+    private void OpenGlobalSearch()
+    {
+        if (catalog is null || busy || globalSearchOpen)
+            return;
+
+        globalSearchReturnFocus = FocusManager.GetFocusedElement(Root.XamlRoot) as Control;
         globalSearchScope = GlobalSearchScope.All;
         GlobalFileScope.IsChecked = GlobalDirectoryScope.IsChecked = false;
         GlobalSearchInput.Text = "";
@@ -53,7 +124,12 @@ public sealed partial class MainWindow
         LibraryView.IsHitTestVisible = true;
         SetGlobalSearchHits([]);
         GlobalSearchStatus.Visibility = Visibility.Collapsed;
+        var previousFocus = globalSearchReturnFocus;
+        globalSearchReturnFocus = null;
         if (!restoreFocus)
+            return;
+        if (previousFocus is { IsEnabled: true, IsLoaded: true, Visibility: Visibility.Visible } &&
+            previousFocus.Focus(FocusState.Programmatic))
             return;
 
         if (browsingFolders)
@@ -117,7 +193,7 @@ public sealed partial class MainWindow
 
     private async void GlobalScopeShortcut(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        if (GlobalSearchOverlay.Visibility != Visibility.Visible)
+        if (GlobalSearchOverlay.Visibility != Visibility.Visible || IsComposingText)
             return;
         args.Handled = true;
         await ChangeGlobalSearchScope(sender.Key == VirtualKey.Number1 ? GlobalSearchScope.Files : GlobalSearchScope.Directories);
@@ -135,6 +211,8 @@ public sealed partial class MainWindow
     private void GlobalSearchKeyDown(object sender, KeyRoutedEventArgs args)
     {
         var editingQuery = GlobalSearchInput.FocusState != FocusState.Unfocused;
+        if (editingQuery && IsComposingText)
+            return;
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
         var resultFocused = focused is ListViewItem row && GlobalSearchResults.ItemFromContainer(row) is GlobalSearchHit;
         switch (args.Key)
