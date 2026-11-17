@@ -76,6 +76,7 @@ public sealed partial class MainWindow : Window
             dataDirectory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPreview");
             catalog = new Catalog(dataDirectory);
             Reload();
+            LibraryHomeButton.Focus(FocusState.Programmatic);
             if (catalog.RenameRecoveryNotice is { } warning)
                 ShowNotice("有待恢复的重命名", warning, InfoBarSeverity.Warning);
         }
@@ -744,6 +745,8 @@ public sealed partial class MainWindow : Window
             return;
         if (args.Key == VirtualKey.Enter && previewTiles[previewIndex].Media.IsVideo)
         {
+            if (ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCloseAction))
+                return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
                 ChangePreviewVideoLock(!previewVideoLocked);

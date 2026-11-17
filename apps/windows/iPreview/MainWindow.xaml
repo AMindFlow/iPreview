@@ -600,7 +600,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid MinHeight="40">
-                    <Button Click="ClosePreviewButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Left"
+                    <Button x:Name="PreviewCloseAction" Click="ClosePreviewButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Left"
                             AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>

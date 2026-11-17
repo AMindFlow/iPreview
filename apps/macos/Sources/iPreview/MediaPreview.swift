@@ -215,7 +215,8 @@ struct MediaPreview: View {
                 if press.key == .leftArrow { video.seek(video.elapsed - 15) }
                 if press.key == .rightArrow { video.seek(video.elapsed + 15) }
             } else if focus == .timeline {
-                return .ignored
+                let backward = press.key == .leftArrow || press.key == .downArrow
+                video.seek(video.elapsed + (backward ? -0.25 : 0.25))
             } else if let destination = neighbor(toward: press.key) {
                 session.index = destination
             }

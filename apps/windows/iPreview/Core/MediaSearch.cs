@@ -115,7 +115,8 @@ internal static class MediaSearch
     {
         if (exact)
         {
-            var acceptsOmittedSuffix = FileSuffixIndex(query) < 0;
+            var suffix = FileSuffixIndex(query);
+            var acceptsOmittedSuffix = suffix < 0 || !MediaFiles.IsSupportedExtension(query[suffix..]);
             return (label, isFile) => RankExact(Normalize(label), query, acceptsOmittedSuffix && isFile);
         }
 

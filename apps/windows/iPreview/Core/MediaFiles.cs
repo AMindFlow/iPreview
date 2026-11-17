@@ -140,14 +140,19 @@ internal static class MediaFiles
             }
 
             var extension = item.Extension;
-            var video = extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase);
+            var video = IsVideoExtension(extension);
             if (!video && !Images.Contains(extension))
                 continue;
             var relative = Path.GetRelativePath(root, item.FullName).Replace(Path.DirectorySeparatorChar, '/');
             add(depth, new(relative, video));
         }
     }
+
+    internal static bool IsSupportedExtension(string extension) => IsVideoExtension(extension) || Images.Contains(extension);
+
+    private static bool IsVideoExtension(string extension) =>
+        extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+        || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase);
 
     private static void EnsureReadableLocalRoot(string path)
     {

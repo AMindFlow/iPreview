@@ -90,6 +90,9 @@ try
             "global exact file respects an explicit suffix");
         Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
             "global exact directory requires its complete name");
+        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", IsVideo = false };
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
+                .Single().Name == "Frame.v2.jpg", "the file stem can contain dots");
         Check(MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
             "global directory scope excludes matching files");
 

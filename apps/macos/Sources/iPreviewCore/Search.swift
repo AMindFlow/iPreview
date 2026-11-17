@@ -151,7 +151,11 @@ private struct Name: Sendable {
         init(text: String) {
             self.text = text
             compact = text.filter { !$0.isWhitespace }
-            hasSuffix = fileSuffixIndex(in: text) != nil
+            if let dot = fileSuffixIndex(in: text) {
+                hasSuffix = MediaKind(extension: String(text[text.index(after: dot)...])) != nil
+            } else {
+                hasSuffix = false
+            }
             switch text.count {
             case 0...2: limit = 0
             case 3...6: limit = 1

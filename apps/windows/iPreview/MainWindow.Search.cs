@@ -109,6 +109,8 @@ public sealed partial class MainWindow
         globalSearchOpen = true;
         GlobalSearchOverlay.Visibility = Visibility.Visible;
         LibraryView.IsHitTestVisible = false;
+        if (GlobalSearchInput.Focus(FocusState.Programmatic))
+            return;
         DispatcherQueue.TryEnqueue(() =>
         {
             if (GlobalSearchOverlay.Visibility == Visibility.Visible)
