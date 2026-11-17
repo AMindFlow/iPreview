@@ -293,14 +293,17 @@ public sealed partial class MainWindow : Window
                 ? $" · {sources.Count} 个来源" : "");
         if (!searching && current.Source is long source && !sources[source].Available)
             CountLabel.Text += " · 来源离线";
-        AlbumTools.Visibility = current.Album is not null && !searching ? Visibility.Visible : Visibility.Collapsed;
-        EmptyLabel.Text = searching ? "没有匹配项。" : current.Album is not null
-            ? "从媒体库选取图片或视频，加入此专辑。" : sources.Count == 0
+        var showAlbum = current.Album is not null && !searching;
+        var isEmptyAlbum = showAlbum && tiles.Count == 0;
+        AlbumTools.Visibility = showAlbum ? Visibility.Visible : Visibility.Collapsed;
+        AlbumPickerButton.Visibility = showAlbum && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
+        EmptyAlbumPicker.Visibility = isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
+        EmptyLabel.Text = searching ? "没有匹配项。" : sources.Count == 0
                 ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
         if (browsingFolders)
             EmptyLabel.Text = current.Folder is null ? "没有已索引的创作者。" : "没有已索引的专辑。";
         var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
-        EmptyLabel.Visibility = visibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyLabel.Visibility = visibleItemCount == 0 && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
     }
 

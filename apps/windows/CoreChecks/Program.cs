@@ -74,8 +74,23 @@ try
         firstId = ordered[0].Id;
         secondId = items.Single(item => item.FileName == "other.jpg").Id;
         catalog.AddToAlbum(albumId, firstId);
-        catalog.AddToAlbum(albumId, secondId);
-        catalog.AddToAlbum(albumId, firstId);
+        var clipId = items.Single(item => item.IsVideo).Id;
+        catalog.AppendToAlbum(albumId, [secondId, firstId, clipId, secondId]);
+        Check(catalog.Read().AlbumMembers[albumId].Select(item => item.Id).SequenceEqual([firstId, secondId, clipId]),
+            "batch append preserves existing and staged order and deduplicates");
+        var badBatchFailed = false;
+        try
+        {
+            catalog.AppendToAlbum(albumId, [ordered[1].Id, long.MaxValue]);
+        }
+        catch (InvalidOperationException)
+        {
+            badBatchFailed = true;
+        }
+        Check(badBatchFailed, "batch append fails for missing member ID");
+        Check(catalog.Read().AlbumMembers[albumId].Select(item => item.Id).SequenceEqual([firstId, secondId, clipId]),
+            "failed batch leaves no partial references");
+        catalog.RemoveFromAlbum(albumId, clipId);
         catalog.MoveInAlbum(albumId, secondId, -1);
         catalog.RenameAlbum(albumId, "海外");
     }

@@ -260,6 +260,21 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
+                    <StackPanel x:Name="EmptyAlbumPicker" Visibility="Collapsed" Spacing="12"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Button Click="PickAlbumMedia" AutomationProperties.Name="添加媒体"
+                                ToolTipService.ToolTip="添加媒体" BorderThickness="0" Background="Transparent"
+                                HorizontalAlignment="Center" Padding="4">
+                            <Grid Width="66" Height="66">
+                                <FontIcon Glyph="&#xE8B7;" FontSize="44" Foreground="#576375" />
+                                <Border Width="25" Height="25" CornerRadius="13" Background="#5274DF"
+                                        HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                    <FontIcon Glyph="&#xE710;" FontSize="13" Foreground="White" />
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <TextBlock Text="专辑为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    </StackPanel>
                     <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
                                Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#576375" TextWrapping="Wrap" />
@@ -270,6 +285,10 @@
                         <Button x:Name="OpenButton" Click="PreviewSelected" Content="预览" />
                         <Button x:Name="AddButton" Click="AddToAlbum" Content="加入专辑" />
                         <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="7" Visibility="Collapsed">
+                            <Button x:Name="AlbumPickerButton" Click="PickAlbumMedia" AutomationProperties.Name="添加媒体"
+                                    ToolTipService.ToolTip="添加媒体" Visibility="Collapsed">
+                                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                            </Button>
                             <Button Click="RenameAlbum" Content="重命名" />
                             <Button x:Name="MoveUpButton" Click="MoveEarlier" Content="上移" />
                             <Button x:Name="MoveDownButton" Click="MoveLater" Content="下移" />
