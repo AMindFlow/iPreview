@@ -5,6 +5,23 @@ using System.Text.RegularExpressions;
 
 namespace IPreview;
 
+internal enum GlobalSearchScope { All, Files, Directories }
+
+internal readonly record struct GlobalSearchTerm(string Text, bool Exact)
+{
+    public static GlobalSearchTerm Parse(string input)
+    {
+        var text = input.Trim();
+        var exact = text.StartsWith('@') || text.StartsWith('＠');
+        return new(exact ? text[1..].TrimStart() : text, exact);
+    }
+}
+
+internal sealed record GlobalSearchHit(Source Source, string? Folder, string Name, string Location, Media? Media = null)
+{
+    public string Glyph => Media is null ? "\uE8B7" : Media.IsVideo ? "\uE714" : "\uEB9F";
+}
+
 internal static class MediaSearch
 {
     private static readonly StringComparer NaturalName = StringComparer.Create(
@@ -23,8 +40,7 @@ internal static class MediaSearch
         if (query.Length == 0)
             return ByPath(items).ToList();
 
-        var pinyin = new Dictionary<string, (string Full, string Initials)>(StringComparer.Ordinal);
-        var compact = string.Concat(Words.Matches(query).Select(match => match.Value));
+        var rankName = Matcher(query, exact);
         var matches = new List<(Media Media, int Rank)>();
         foreach (var item in items)
         {
@@ -33,7 +49,7 @@ internal static class MediaSearch
             var count = files ? labels.Length : labels.Length - 1;
             var rank = int.MaxValue;
             for (var index = first; index < count && rank > 0; index++)
-                rank = Math.Min(rank, Rank(Normalize(labels[index]), query, compact, exact, pinyin));
+                rank = Math.Min(rank, rankName(labels[index]));
             if (rank != int.MaxValue)
                 matches.Add((item, rank));
         }
@@ -42,6 +58,64 @@ internal static class MediaSearch
             .ThenBy(match => Normalize(match.Media.DisplayPath), NaturalName)
             .ThenBy(match => match.Media.Id)
             .Select(match => match.Media).ToList();
+    }
+
+    public static List<GlobalSearchHit> FindGlobal(IEnumerable<Source> sources, IEnumerable<Media> items,
+                                                   GlobalSearchTerm term, GlobalSearchScope scope)
+    {
+        if (term.Text.Length == 0)
+            return [];
+
+        var rankName = Matcher(Normalize(term.Text), term.Exact);
+        var seen = new HashSet<(long Source, string Folder)>();
+        var matches = new List<(GlobalSearchHit Hit, int Rank)>();
+        void AddFolder(Source source, string folder, string label, string location)
+        {
+            if (!seen.Add((source.Id, folder)))
+                return;
+            var rank = rankName(label);
+            if (rank != int.MaxValue)
+                matches.Add((new(source, folder.Length == 0 ? null : folder, label, location), rank));
+        }
+        if (scope != GlobalSearchScope.Files)
+            foreach (var source in sources)
+                AddFolder(source, "", source.Name, Path.GetDirectoryName(source.Path) ?? source.Path);
+
+        foreach (var item in items.Where(item => item.Present))
+        {
+            var parts = item.RelativePath.Split('/');
+            var folder = "";
+            for (var index = 0; index < parts.Length - 1; index++)
+            {
+                var parent = folder;
+                folder += parts[index] + "/";
+                if (scope != GlobalSearchScope.Files)
+                    AddFolder(item.Source, folder, parts[index], DirectoryDisplay(item.Source, parent));
+            }
+            if (scope == GlobalSearchScope.Directories)
+                continue;
+            var rank = rankName(parts[^1]);
+            if (rank != int.MaxValue)
+                matches.Add((new(item.Source, folder.Length == 0 ? null : folder, parts[^1],
+                    DirectoryDisplay(item.Source, folder), item), rank));
+        }
+
+        return matches.OrderBy(match => match.Rank)
+            .ThenBy(match => match.Hit.Media is not null)
+            .ThenBy(match => Normalize(match.Hit.Location), NaturalName)
+            .ThenBy(match => Normalize(match.Hit.Name), NaturalName)
+            .ThenBy(match => match.Hit.Source.Id)
+            .Select(match => match.Hit).ToList();
+    }
+
+    private static string DirectoryDisplay(Source source, string folder) =>
+        folder.Length == 0 ? source.Name : source.Name + "/" + folder.TrimEnd('/');
+
+    private static Func<string, int> Matcher(string query, bool exact)
+    {
+        var pinyin = new Dictionary<string, (string Full, string Initials)>(StringComparer.Ordinal);
+        var compact = string.Concat(Words.Matches(query).Select(match => match.Value));
+        return label => Rank(Normalize(label), query, compact, exact, pinyin);
     }
 
     private static int Rank(string value, string query, string compact, bool exact,

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -16,19 +17,22 @@ namespace IPreview;
 
 public sealed partial class MainWindow : Window
 {
-    private sealed record Navigation(string Label, long? Source = null, string? Folder = null, long? Album = null)
+    private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
+        long? Album = null, string Glyph = "\uE8B7")
     {
         public override string ToString() => Label;
     }
 
-    private static readonly Navigation Library = new("媒体库");
+    private sealed record NavigationHeading(string Label, string Glyph);
+
+    private static readonly Navigation Library = new("媒体库", Glyph: "\uE8B9");
     private Catalog? catalog;
     private Navigation current = Library;
     private Dictionary<long, Source> sources = [];
     private List<Media> media = [];
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
-    private List<Tile> tiles = [];
+    private ObservableCollection<Tile> tiles = [];
     private bool searching;
     private bool busy;
     private int previewIndex = -1;
@@ -47,9 +51,11 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
+        Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
         Closed += (_, _) =>
         {
+            CancelAlbumAdjustmentPointer();
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();
@@ -91,16 +97,21 @@ public sealed partial class MainWindow : Window
         albumMembers = snapshot.AlbumMembers;
 
         NavTree.RootNodes.Clear();
-        NavTree.RootNodes.Add(new TreeViewNode { Content = Library });
         if (sources.Count > 0)
         {
-            var sourcesNode = new TreeViewNode { Content = "文件夹", IsExpanded = true };
+            var sourcesNode = new TreeViewNode { Content = new NavigationHeading("来源", "\uE8B7"), IsExpanded = true };
             foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
             {
                 var label = source.Available ? source.Name : $"{source.Name}（离线）";
+                var glyph = source.Layout switch
+                {
+                    Layout.MultiCreator => "\uE902",
+                    Layout.Creator => "\uE77B",
+                    _ => "\uE8B7"
+                };
                 var node = new TreeViewNode
                 {
-                    Content = new Navigation(label, Source: source.Id),
+                    Content = new Navigation(label, Source: source.Id, Glyph: glyph),
                     IsExpanded = expanded.Contains(source.Id)
                 };
                 AddFolders(node, source.Id, media.Where(item => item.Source.Id == source.Id && item.Present));
@@ -111,9 +122,9 @@ public sealed partial class MainWindow : Window
 
         if (albums.Count > 0)
         {
-            var albumsNode = new TreeViewNode { Content = "虚拟专辑", IsExpanded = true };
+            var albumsNode = new TreeViewNode { Content = new NavigationHeading("虚拟专辑", "\uE7B8"), IsExpanded = true };
             foreach (var album in albums)
-                albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id) });
+                albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id, Glyph: "\uE7B8") });
             NavTree.RootNodes.Add(albumsNode);
         }
 
@@ -174,14 +185,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void NavigateTo(Navigation target)
+    private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
         searching = false;
         Query.Text = "";
         Notice.IsOpen = false;
         NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
-        ShowItems();
+        ShowItems(selectedMedia);
     }
 
     private void OpenSourceFolder(object sender, ItemClickEventArgs args)
@@ -276,19 +287,17 @@ public sealed partial class MainWindow : Window
     {
         if (catalog is null)
             return;
+        Query.Visibility = SearchOptions.Visibility = current == Library ? Visibility.Collapsed : Visibility.Visible;
         browsingFolders = ShowSourceFolders();
+        var scopedMedia = ScopeMedia();
         IEnumerable<Media> items = browsingFolders ? []
-            : current.Album is long album
-            ? albumMembers.GetValueOrDefault(album) ?? []
-            : MediaSearch.ByPath(media.Where(item => item.Present
-                && (current.Source is null || item.Source.Id == current.Source)
-                && (current.Folder is null || item.RelativePath.StartsWith(current.Folder, StringComparison.Ordinal))));
+            : current.Album is not null ? scopedMedia : MediaSearch.ByPath(scopedMedia);
 
         if (searching)
         {
             try
             {
-                items = MediaSearch.Find(media.Where(item => item.Present), Query.Text,
+                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), Query.Text,
                     SearchMode.SelectedIndex == 0, SearchFolders.IsChecked == true, SearchFiles.IsChecked == true);
             }
             catch (Exception error) when (error is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
@@ -298,7 +307,7 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        tiles = items.Select((item, index) => new Tile(item, index)).ToList();
+        tiles = new ObservableCollection<Tile>(items.Select((item, index) => new Tile(item, index)));
         if (selectionAlbum is long selectedAlbum)
         {
             if (current.Album != selectedAlbum || searching || tiles.Count == 0)
@@ -308,6 +317,7 @@ public sealed partial class MainWindow : Window
         }
         RefreshMediaBrowser(selected);
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        RefreshTitleEditor();
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
@@ -519,70 +529,6 @@ public sealed partial class MainWindow : Window
         catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }
     }
 
-    private async void RenameAlbum(object sender, RoutedEventArgs args)
-    {
-        if (current.Album is not long album)
-            return;
-        var name = await AskAlbumName("重命名虚拟专辑", current.Label);
-        if (name is null)
-            return;
-        try
-        {
-            Database.RenameAlbum(album, name);
-            Reload(Selection?.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法重命名专辑", error.Message); }
-    }
-
-    private async void AddToAlbum(object sender, RoutedEventArgs args)
-    {
-        if (Selection is not Tile tile)
-            return;
-        try
-        {
-            if (albums.Count == 0)
-            {
-                var name = await AskAlbumName("新建虚拟专辑并添加媒体", "");
-                if (name is null)
-                    return;
-                Database.CreateAlbum(name, tile.Media.Id);
-            }
-            else
-            {
-                var combo = new ComboBox { ItemsSource = albums, DisplayMemberPath = nameof(Album.Name), SelectedIndex = 0 };
-                var choice = await new ContentDialog
-                {
-                    XamlRoot = Root.XamlRoot,
-                    Title = "加入虚拟专辑",
-                    Content = combo,
-                    PrimaryButtonText = "加入",
-                    CloseButtonText = "取消",
-                    DefaultButton = ContentDialogButton.Primary
-                }.ShowAsync();
-                if (choice != ContentDialogResult.Primary || combo.SelectedItem is not Album album)
-                    return;
-                Database.AddToAlbum(album.Id, tile.Media.Id);
-            }
-            Reload(tile.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法添加媒体", error.Message); }
-    }
-
-    private void MoveEarlier(object sender, RoutedEventArgs args) => MoveMember(-1);
-    private void MoveLater(object sender, RoutedEventArgs args) => MoveMember(1);
-
-    private void MoveMember(int offset)
-    {
-        if (current.Album is not long album || Selection is not Tile tile)
-            return;
-        try
-        {
-            Database.MoveInAlbum(album, tile.Media.Id, offset);
-            Reload(tile.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法调整顺序", error.Message); }
-    }
-
     private void SelectionChanged(object sender, SelectionChangedEventArgs args)
     {
         if (updatingBrowser || !ReferenceEquals(sender, ActiveMediaBrowser))
@@ -609,15 +555,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdateSelection()
     {
-        if (OpenButton is null || AddButton is null || MoveUpButton is null ||
-            MoveDownButton is null || RemoveButton is null || AlbumSelectionTools is null)
+        if (OpenButton is null || AlbumSelectionTools is null)
             return;
         UpdateAlbumSelectionTools();
         OpenButton.IsEnabled = Selection is not null;
-        AddButton.IsEnabled = Selection is not null;
-        RemoveButton.IsEnabled = Selection is not null;
-        MoveUpButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex > 0;
-        MoveDownButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex < tiles.Count - 1;
     }
 
     private void ShowNotice(string title, string message, InfoBarSeverity severity = InfoBarSeverity.Error)
@@ -724,11 +665,17 @@ public sealed partial class MainWindow : Window
         var browser = ActiveMediaBrowser;
         if (SelectingAlbumMembers || browser.SelectedIndex < 0)
             return;
-        initialSelection = Selection?.Media.Id;
-        previewTiles = tiles;
         if (browseMode == BrowseMode.Icons)
             Gallery.UpdateLayout();
-        previewLayout = new(browseMode, Columns);
+        previewBrowser = browser;
+        OpenPreview(tiles.ToList(), browser.SelectedIndex, new(browseMode, Columns));
+    }
+
+    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
+    {
+        initialSelection = items[selectedIndex].Media.Id;
+        previewTiles = items;
+        previewLayout = layout;
         PreviewHint.Text = (previewLayout.Mode switch
         {
             BrowseMode.List => "↑ / ↓ 切换媒体",
@@ -736,8 +683,10 @@ public sealed partial class MainWindow : Window
             _ => "方向键 切换媒体"
         }) + "     Space / Esc 退出预览";
         PreviewOverlay.Visibility = Visibility.Visible;
-        LibraryView.Visibility = Visibility.Collapsed;
-        ShowPreview(browser.SelectedIndex);
+        LibraryView.IsHitTestVisible = false;
+        var thumbnail = ThumbnailOf(initialSelection);
+        ShowPreview(selectedIndex, thumbnail?.Image);
+        AnimatePreview(thumbnail, opening: true, complete: null);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -751,16 +700,35 @@ public sealed partial class MainWindow : Window
 
     private void ClosePreview(long? selectedId)
     {
+        if (previewClosing || PreviewOverlay.Visibility != Visibility.Visible)
+            return;
+        if (previewMoving)
+        {
+            afterPreviewMotion = () => ClosePreview(selectedId);
+            return;
+        }
+        previewClosing = true;
+        if (player?.PlaybackSession.CanPause == true)
+            player.Pause();
+        AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
+    }
+
+    private void FinishClosePreview(long? selectedId)
+    {
+        previewClosing = false;
+        previewBrowser = null;
         previewGeneration++;
         previewIndex = -1;
         StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         PreviewOverlay.Visibility = Visibility.Collapsed;
-        LibraryView.Visibility = Visibility.Visible;
         previewTiles = [];
+        if (RestoreGlobalSearchAfterPreview(selectedId))
+            return;
+        LibraryView.IsHitTestVisible = true;
         var browser = ActiveMediaBrowser;
-        browser.SelectedItem = tiles.Find(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
+        browser.SelectedItem = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
         FocusSelectedMedia();
     }
 
@@ -792,11 +760,11 @@ public sealed partial class MainWindow : Window
         if (direction is not { } arrow)
             return;
         args.Handled = true;
-        if (previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
-            ShowPreview(next);
+        if (!previewMoving && !previewClosing && previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
+            ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image);
     }
 
-    private async void ShowPreview(int index)
+    private async void ShowPreview(int index, BitmapImage? poster)
     {
         previewIndex = index;
         var generation = ++previewGeneration;
@@ -805,9 +773,11 @@ public sealed partial class MainWindow : Window
         PreviewTitle.Text = tile.FileName;
         IndexLabel.Text = $"{index + 1} / {previewTiles.Count}";
         PreviewError.Visibility = Visibility.Collapsed;
-        MainImage.Source = null;
+        MainImage.Source = tile.Media.IsVideo ? null : poster;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Visibility = Visibility.Collapsed;
+        VideoControls.Opacity = 0;
+        VideoControls.IsEnabled = false;
+        VideoControls.Visibility = tile.Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
         LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
         LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
         LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
@@ -823,14 +793,10 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            var image = await DecodeImage(tile.Media, 0, true, (source, error) =>
+            var image = await DecodeImage(tile.Media, 0, true, (_, error) =>
             {
-                if (generation != previewGeneration ||
-                    (MainImage.Source is { } currentSource && !ReferenceEquals(currentSource, source)))
-                    return;
-
-                MainImage.Source = null;
-                ShowPreviewError("无法解码此图片。", error.ErrorMessage);
+                if (generation == previewGeneration)
+                    ShowPreviewError("无法解码此图片。", error.ErrorMessage);
             });
             if (generation == previewGeneration && PreviewError.Visibility == Visibility.Collapsed)
                 MainImage.Source = image;
@@ -866,8 +832,9 @@ public sealed partial class MainWindow : Window
         {
             if (generation != previewGeneration)
                 return;
-            VideoControls.Visibility = Visibility.Visible;
             UpdateTime();
+            VideoControls.IsEnabled = true;
+            VideoControls.Opacity = 1;
         });
         mediaPlayer.MediaFailed += (_, details) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -911,8 +878,10 @@ public sealed partial class MainWindow : Window
     private void ShowPreviewError(string title, string detail)
     {
         StopVideo();
+        MainImage.Source = null;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Visibility = Visibility.Collapsed;
+        VideoControls.Opacity = 0;
+        VideoControls.IsEnabled = false;
         PreviewError.Text = string.IsNullOrWhiteSpace(detail) ? title : $"{title}\n{detail}";
         PreviewError.Visibility = Visibility.Visible;
         PreviewCanvas.Focus(FocusState.Programmatic);

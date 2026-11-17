@@ -34,8 +34,8 @@
 
 数据约定见 [共享契约](../../../shared/README.md)。
 
-## LIB-012 macOS 双击目录标题重命名
+## LIB-012 双击目录标题重命名
 
 - **要求** 双击已打开的真实创作者或专辑标题进入行内编辑。Enter 或点击编辑框外提交并结束编辑，Esc 放弃更改。沿用 [LIB-011](#lib-011-重命名真实目录和媒体) 的路径校验和恢复流程。完成后更新当前导航路径。来源根目录遵从 LIB-011 的范围。
-- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)。
+- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，[Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)。
 - **验收** 在合成库验证单击无编辑、双击进入行内编辑、点击空白区提交、点击子目录同时提交并导航，以及 Esc 取消。核对标题、磁盘路径、文件内容和虚拟引用。

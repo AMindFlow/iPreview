@@ -25,3 +25,9 @@
 - **设计决定** 采用 Safari 参考中的连续侧栏和浅层微透明。按苹果规范将玻璃用于导航与控件，保持内容层和控制层清楚分离。[Apple 迁移指南](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass) · [Apple 材质规范](https://developer.apple.com/design/human-interface-guidelines/materials)
 - **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，用户提供的 Safari 与 iPreview 窗口对照。
 - **验收** 在同一 macOS 版本对照 Safari，检查红绿灯、侧栏及其上方区域是否连续，核对三种来源图标和离线提示。打开搜索、预览和选片器，核对文字、媒体及交互状态在不同系统外观下可辨识。
+
+## UI-004 Windows 图库材质与来源图标
+
+- **要求** 保留 Windows 原生窗框。图库侧栏、全局搜索和媒体预览使用 WinUI 系统材质，支持系统关闭透明效果时的回退。直属媒体目录用文件夹，单创作者来源用个人，多创作者来源用多人，离线状态保持可见。
+- **来源** [Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)，[WinUI 应用内 Acrylic](https://learn.microsoft.com/en-us/windows/apps/develop/ui/in-app-acrylic)。
+- **验收** 在 Windows 11 检查来源图标、离线标识、全局搜索与预览的材质，核对系统降低视觉效果时主要控件及媒体仍可辨识。

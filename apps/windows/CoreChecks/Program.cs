@@ -51,7 +51,8 @@ try
         catalog.Import(single.Path, Layout.Creator, single.Options[Layout.Creator]);
         catalog.Import(ambiguous.Path, Layout.MultiCreator, ambiguous.Options[Layout.MultiCreator]);
 
-        var items = catalog.Read().Media;
+        var imported = catalog.Read();
+        var items = imported.Media;
         try
         {
             catalog.CheckSourcePath(work);
@@ -69,6 +70,18 @@ try
         Check(MediaSearch.Find(items, "beijing", false, true, false).Count == 3, "directory full pinyin");
         Check(MediaSearch.Find(items, "beijing", false, false, true).Count == 0, "scope isolation");
         Check(MediaSearch.Find(items, "sumer", false, true, false).Count == 3, "directory typo");
+        var directories = MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@Summer 2"),
+            GlobalSearchScope.Directories);
+        Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
+            "global search shows a distinct directory hit");
+        var exactClip = GlobalSearchTerm.Parse("  ＠ ＣＬＩＰ.mov");
+        var exactFiles = MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
+        Check(exactFiles.Count == 1 && exactFiles[0] is { Media.FileName: "clip.MOV", Folder: "Summer 2/" },
+            "global exact prefix permits normalized file names and returns the containing directory");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@clip"), GlobalSearchScope.All).Count == 0,
+            "global exact prefix only matches the full name");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
+            "global directory scope excludes matching files");
 
         albumId = catalog.CreateAlbum("预览");
         firstId = ordered[0].Id;
@@ -118,14 +131,20 @@ try
         var clip = snapshot.Media.Single(item => item.IsVideo);
         var retainedPhoto = snapshot.Media.Single(item => item.FileName == "城楼10.PNG");
         var batchAlbum = catalog.CreateAlbum("批量移除");
-        catalog.AppendToAlbum(batchAlbum, [secondId, firstId, clip.Id, retainedPhoto.Id]);
+        long[] oldOrder = [secondId, firstId, clip.Id, retainedPhoto.Id];
+        catalog.AppendToAlbum(batchAlbum, oldOrder);
         var removedFiles = new[] { online, clip }.Select(MediaFiles.OpenPath).ToArray();
         var originalTimes = removedFiles.Select(File.GetLastWriteTimeUtc).ToArray();
+        catalog.MoveInAlbum(batchAlbum, retainedPhoto.Id, 0, oldOrder);
+        Check(catalog.Read().AlbumMembers[batchAlbum].Select(item => item.Id)
+            .SequenceEqual([retainedPhoto.Id, secondId, firstId, clip.Id]), "drag order persists across sources");
+        Reject<AlbumOrderChangedException>(() => catalog.MoveInAlbum(batchAlbum, secondId, 2, oldOrder),
+            "a stale drag leaves the current album order unchanged");
         catalog.RemoveFromAlbum(batchAlbum, [clip.Id, secondId]);
         using (var reopened = new Catalog(data))
         {
             var members = reopened.Read().AlbumMembers;
-            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([firstId, retainedPhoto.Id]),
+            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([retainedPhoto.Id, firstId]),
                 "batch removal persists remaining album order");
             Check(members[albumId].Select(item => item.Id).SequenceEqual([secondId, firstId]),
                 "batch removal preserves references in another album");

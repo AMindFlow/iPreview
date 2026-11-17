@@ -21,7 +21,7 @@ public sealed partial class MainWindow
     }
 
     private void FocusAlbumSelectionItem(long? mediaId) =>
-        FocusBrowserItem(ActiveMediaBrowser, tiles.Find(tile => tile.Media.Id == mediaId) ?? tiles.FirstOrDefault(),
+        FocusBrowserItem(ActiveMediaBrowser, tiles.FirstOrDefault(tile => tile.Media.Id == mediaId) ?? tiles.FirstOrDefault(),
             FocusState.Programmatic);
 
     private void LibraryKeyDown(object sender, KeyRoutedEventArgs args)
@@ -30,7 +30,12 @@ public sealed partial class MainWindow
             return;
         args.Handled = true;
         if (!args.KeyStatus.WasKeyDown)
-            CancelAlbumSelection(sender, args);
+        {
+            if (albumPress?.Dragging == true)
+                CancelAlbumAdjustmentPointer();
+            else
+                CancelAlbumSelection(sender, args);
+        }
     }
 
     private void CancelAlbumSelection(object sender, RoutedEventArgs args)
@@ -43,10 +48,11 @@ public sealed partial class MainWindow
 
     private void ClearAlbumSelection()
     {
+        CancelAlbumAdjustmentPointer();
         if (SelectingAlbumMembers)
         {
             foreach (var tile in tiles)
-                tile.SetAlbumRemovalSelection(null);
+                tile.SetAlbumRemovalSelection(false);
         }
         selectionAlbum = null;
         selectionBeforeAlbumRemoval = null;
@@ -65,22 +71,17 @@ public sealed partial class MainWindow
 
     private void RemoveFromAlbum(object sender, RoutedEventArgs args)
     {
-        if (current.Album is not long album)
-            return;
-
-        var batch = SelectingAlbumMembers;
-        IReadOnlyCollection<long> ids = batch ? albumRemovalIds : Selection is { } tile ? [tile.Media.Id] : [];
-        if (ids.Count == 0)
+        if (selectionAlbum is not long album || albumRemovalIds.Count == 0)
             return;
         try
         {
-            Database.RemoveFromAlbum(album, ids);
+            Database.RemoveFromAlbum(album, albumRemovalIds);
             var previous = selectionBeforeAlbumRemoval;
             ClearAlbumSelection();
             Reload(previous);
-            if (batch && tiles.Count == 0)
+            if (tiles.Count == 0)
                 EmptyAlbumAddButton.Focus(FocusState.Programmatic);
-            else if (batch)
+            else
                 FocusSelectedMedia();
         }
         catch (InvalidOperationException error) { ShowNotice("无法移除引用", error.Message); }
