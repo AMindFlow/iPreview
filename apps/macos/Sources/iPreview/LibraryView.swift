@@ -21,7 +21,7 @@ struct LibraryView: View {
 
     var body: some View {
         @Bindable var model = model
-        let scope = ContentScope(page: page, snapshot: model.snapshot, matches: searching ? matches : nil)
+        let scope = model.contentScope(for: page, matches: searching ? matches : nil)
 
         ZStack {
             HStack(spacing: 0) {
@@ -404,10 +404,15 @@ struct LibraryView: View {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                         ForEach(items) { item in
                             MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
-                                .onTapGesture(count: 2) { open(item, among: items, columns: columns.count) }
-                                .onTapGesture {
-                                    selected = item.id
-                                    focus = .gallery
+                                .overlay {
+                                    MediaTileClick { clickCount in
+                                        selected = item.id
+                                        focus = .gallery
+                                        if clickCount == 2 {
+                                            open(item, among: items, columns: columns.count)
+                                        }
+                                    }
+                                    .accessibilityHidden(true)
                                 }
                                 .contextMenu { mediaActions(item, in: album) }
                                 .accessibilityElement(children: .ignore)
@@ -528,7 +533,7 @@ private struct SearchRequest: Equatable {
     let revision: Int
 }
 
-private enum LibraryPage: Hashable {
+enum LibraryPage: Hashable {
     case library
     case source(Int64)
     case creator(Int64, String)
@@ -557,7 +562,7 @@ private enum LibraryPage: Hashable {
     }
 }
 
-private struct LibraryFolder: Identifiable {
+struct LibraryFolder: Identifiable {
     let page: LibraryPage
     let name: String
     let cover: Media
@@ -566,7 +571,7 @@ private struct LibraryFolder: Identifiable {
     var id: LibraryPage { page }
 }
 
-private struct ContentScope {
+struct ContentScope {
     let title: String
     let subtitle: String
     let items: [Media]
