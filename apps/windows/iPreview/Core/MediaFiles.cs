@@ -82,11 +82,20 @@ internal static class MediaFiles
     {
         if (!media.Available)
             throw new IOException("文件所在目录或媒体当前不可用。");
-        EnsureReadableLocalRoot(media.Source.Path);
-        var path = media.Source.Path;
-        var components = media.RelativePath.Split('/');
-        foreach (var component in components)
+        return ResolveIndexedPath(media.Source, media.RelativePath, isDirectory: false);
+    }
+
+    internal static string ResolveIndexedPath(Source source, string relativePath, bool isDirectory)
+    {
+        EnsureReadableLocalRoot(source.Path);
+        if (isDirectory && relativePath.Length == 0)
+            return source.Path;
+
+        var path = source.Path;
+        var components = relativePath.Split('/');
+        for (var index = 0; index < components.Length; index++)
         {
+            var component = components[index];
             if (component.Length == 0 || component is "." or ".." ||
                 component.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
                 throw new IOException("媒体路径无效。");
@@ -94,9 +103,10 @@ internal static class MediaFiles
             var attributes = File.GetAttributes(path);
             if (IsSkipped(component, attributes))
                 throw new IOException("隐藏文件和重解析点不可预览。");
+            var shouldBeDirectory = index < components.Length - 1 || isDirectory;
+            if (((attributes & FileAttributes.Directory) != 0) != shouldBeDirectory)
+                throw new IOException("文件或文件夹已移动，或类型已改变。");
         }
-        if ((File.GetAttributes(path) & FileAttributes.Directory) != 0)
-            throw new IOException("媒体已移走或不再是文件。");
         return path;
     }
 

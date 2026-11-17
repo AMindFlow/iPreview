@@ -6,9 +6,9 @@ internal sealed record CatalogSnapshot(
     Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
     Dictionary<long, List<Media>> AlbumMembers);
 
-internal sealed class Catalog : IDisposable
+internal sealed partial class Catalog : IDisposable
 {
-    private const string Migration = "iPreview.Migrations.001-initial.sql";
+    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql"];
     private readonly Sqlite database;
     private readonly string dataDirectory;
 
@@ -22,16 +22,19 @@ internal sealed class Catalog : IDisposable
             database.InTransaction(() =>
             {
                 var version = database.Query("PRAGMA user_version;", row => row.Number(0)).Single();
-                if (version == 1)
-                    return;
-                if (version != 0)
+                if (version < 0 || version > Migrations.Length)
                     throw new InvalidDataException("该媒体库由更高版本的 iPreview 创建。");
 
-                using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(Migration)
-                    ?? throw new InvalidOperationException("The shared catalog migration was not embedded.");
-                using var reader = new StreamReader(resource);
-                database.ExecuteScript(reader.ReadToEnd());
+                foreach (var migration in Migrations.Skip((int)version))
+                {
+                    using var resource = Assembly.GetExecutingAssembly()
+                        .GetManifestResourceStream("iPreview.Migrations." + migration)
+                        ?? throw new InvalidOperationException("The shared catalog migration was not embedded: " + migration);
+                    using var reader = new StreamReader(resource);
+                    database.ExecuteScript(reader.ReadToEnd());
+                }
             });
+            RecoverSourceRename();
         }
         catch
         {
@@ -87,6 +90,7 @@ internal sealed class Catalog : IDisposable
         long id = 0;
         database.InTransaction(() =>
         {
+            EnsureImportOutsidePendingRename(path);
             var existing = database.Query("SELECT id, path FROM sources;", row => (row.Number(0), row.Text(1)))
                 .Find(source => StringComparer.OrdinalIgnoreCase.Equals(source.Item2, path));
             id = existing.Item1;
@@ -107,10 +111,15 @@ internal sealed class Catalog : IDisposable
 
     public void Rescan(long source, List<ScannedMedia>? files)
     {
-        if (files is null)
-            database.Execute("UPDATE sources SET available = 0 WHERE id = ?;", source);
-        else
-            database.InTransaction(() => ReplaceScan(source, files));
+        database.InTransaction(() =>
+        {
+            if (HasPendingRename(source))
+                throw new InvalidOperationException("此来源有待恢复的重命名，暂时无法重新扫描。");
+            if (files is null)
+                database.Execute("UPDATE sources SET available = 0 WHERE id = ?;", source);
+            else
+                ReplaceScan(source, files);
+        });
     }
 
     private void ReplaceScan(long source, List<ScannedMedia> files)
