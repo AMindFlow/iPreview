@@ -29,9 +29,7 @@ struct GlobalSearchPanel: View {
     let index: SearchIndex
     let revision: Int
     let isPreviewing: Bool
-    @Binding var mode: MatchMode
-    @Binding var directories: Bool
-    @Binding var files: Bool
+    let focus: FocusState<LibraryView.Focus?>.Binding
     let dismiss: () -> Void
     let open: (GlobalSearchResult) -> Void
     let preview: (Media, [Media]) -> Void
@@ -39,10 +37,9 @@ struct GlobalSearchPanel: View {
     @ViewState private var query = ""
     @ViewState private var selection: GlobalSearchResult?
     @ViewState private var matches: (request: Request, results: [GlobalSearchResult])?
-    @ViewState private var filtersShown = false
-    @FocusState private var focus: Focus?
+    @ViewState private var scope = Scope.all
 
-    private enum Focus: Hashable { case query, results }
+    private enum Scope { case all, files, directories }
 
     private struct Request: Equatable, Sendable {
         let query: String
@@ -52,9 +49,16 @@ struct GlobalSearchPanel: View {
         let revision: Int
     }
 
+    private var usesExactPrefix: Bool {
+        let first = query.first { !$0.isWhitespace }
+        return first == "@" || first == "＠"
+    }
+
     private var request: Request {
-        Request(query: query.trimmingCharacters(in: .whitespacesAndNewlines),
-                mode: mode, directories: directories, files: files, revision: revision)
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let terms = usesExactPrefix ? text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines) : text
+        return Request(query: terms, mode: usesExactPrefix ? .exact : .fuzzy, directories: scope != .files,
+                       files: scope != .directories, revision: revision)
     }
 
     private var results: [GlobalSearchResult] {
@@ -79,9 +83,12 @@ struct GlobalSearchPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("global-search-panel")
-        .task { focus = .query }
+        .task {
+            await Task.yield()
+            if !Task.isCancelled { focus.wrappedValue = .globalSearchQuery }
+        }
         .onChange(of: isPreviewing) { _, previewing in
-            if !previewing { focus = .results }
+            if !previewing { focus.wrappedValue = .globalSearchResults }
         }
         .task(id: request) {
             selection = nil
@@ -130,11 +137,9 @@ struct GlobalSearchPanel: View {
                         .frame(maxWidth: .infinity, minHeight: 54)
                 }
             }
-            Text("↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 11)
+            shortcutHints
+                .padding(.horizontal, 17)
+                .padding(.vertical, 10)
         }
         .contentShape(.rect(cornerRadius: 25))
     }
@@ -148,32 +153,58 @@ struct GlobalSearchPanel: View {
             TextField("搜索所有来源", text: $query)
                 .font(.title2)
                 .textFieldStyle(.plain)
-                .focused($focus, equals: .query)
+                .focused(focus, equals: .globalSearchQuery)
                 .accessibilityIdentifier("global-search-query")
                 .onSubmit(confirmResult)
                 .onKeyPress(keys: [.upArrow, .downArrow, .escape], phases: .down, action: handleKey)
             if !query.isEmpty {
                 Button {
                     query = ""
-                    focus = .query
+                    focus.wrappedValue = .globalSearchQuery
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除全局搜索")
             }
-            Button {
-                filtersShown.toggle()
-            } label: {
-                Image(systemName: "slider.horizontal.3").frame(width: 22, height: 26)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("全局搜索筛选")
-            .help("搜索模式和范围")
-            .popover(isPresented: $filtersShown, arrowEdge: .bottom) {
-                LibrarySearchFilters(mode: $mode, directories: $directories, files: $files)
-            }
         }
+    }
+
+    private var shortcutHints: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                scopeShortcut(.files, key: "1", label: "文件")
+                scopeShortcut(.directories, key: "2", label: "目录")
+                Spacer()
+                Text(usesExactPrefix ? "@ 精确匹配" : "以 @ 开头精确匹配")
+                    .foregroundStyle(usesExactPrefix ? Color.accentColor : Color.secondary)
+                    .accessibilityIdentifier("global-search-match-mode")
+            }
+            Text("↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
+                .padding(.leading, 4)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func scopeShortcut(_ target: Scope, key: KeyEquivalent, label: String) -> some View {
+        let isActive = scope == target
+        return Button {
+            scope = isActive ? .all : target
+            focus.wrappedValue = .globalSearchQuery
+        } label: {
+            Text("⌘\(String(key.character)) \(label)")
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                .background(isActive ? Color.accentColor.opacity(0.15) : .clear, in: .rect(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(key, modifiers: .command)
+        .accessibilityLabel("仅搜索\(label)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .help(isActive ? "再次按下以搜索全部" : "仅搜索\(label)")
+        .disabled(isPreviewing)
     }
 
     private var resultsList: some View {
@@ -190,7 +221,7 @@ struct GlobalSearchPanel: View {
             .frame(height: CGFloat(min(results.count, 6)) * 44 + 14)
             .focusable()
             .focusEffectDisabled()
-            .focused($focus, equals: .results)
+            .focused(focus, equals: .globalSearchResults)
             .onKeyPress(keys: [.upArrow, .downArrow, .return, .space, .tab, .escape],
                         phases: [.down, .repeat], action: handleKey)
             .onChange(of: selection) { _, result in
@@ -203,7 +234,7 @@ struct GlobalSearchPanel: View {
         let isSelected = result == highlighted
         return Button {
             selection = result
-            focus = .results
+            focus.wrappedValue = .globalSearchResults
         } label: {
             HStack(spacing: 11) {
                 Image(systemName: result.symbol)
@@ -238,7 +269,7 @@ struct GlobalSearchPanel: View {
     }
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        if focus == .query,
+        if focus.wrappedValue == .globalSearchQuery,
            let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.hasMarkedText() {
             return .ignored
         }
@@ -247,9 +278,9 @@ struct GlobalSearchPanel: View {
             if press.phase == .down { dismiss() }
         case .upArrow, .downArrow:
             guard !results.isEmpty else { return .ignored }
-            if focus == .query {
+            if focus.wrappedValue == .globalSearchQuery {
                 selection = press.key == .upArrow ? results.last : results.first
-                focus = .results
+                focus.wrappedValue = .globalSearchResults
             } else if let highlighted, let offset = results.firstIndex(of: highlighted) {
                 let next = offset + (press.key == .upArrow ? -1 : 1)
                 if results.indices.contains(next) { selection = results[next] }
@@ -264,7 +295,7 @@ struct GlobalSearchPanel: View {
                 preview(item, files)
             }
         case .tab:
-            if press.phase == .down { focus = .query }
+            if press.phase == .down { focus.wrappedValue = .globalSearchQuery }
         default:
             return .ignored
         }

@@ -27,7 +27,7 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, search, albumTitle, directoryTitle }
+    enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, albumTitle, directoryTitle }
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -68,7 +68,7 @@ struct LibraryView: View {
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
-                                  mode: $mode, directories: $searchDirectories, files: $searchFiles,
+                                  focus: $focus,
                                   dismiss: dismissGlobalSearch, open: openSearchResult) { item, results in
                     open(item, among: results, layout: .list)
                 }
@@ -154,6 +154,7 @@ struct LibraryView: View {
                         navigate(.library)
                     }
                     Button {
+                        focus = nil
                         globalSearchShown = true
                     } label: {
                         Image(systemName: "magnifyingglass")
