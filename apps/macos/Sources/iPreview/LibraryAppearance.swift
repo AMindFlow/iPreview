@@ -117,3 +117,83 @@ struct LibraryTitleEdit {
         }
     }
 }
+
+struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
+    let sidebarWidth: CGFloat?
+    let controls: Controls
+
+    func makeNSView(context: Context) -> AttachmentView {
+        AttachmentView(sidebarWidth: sidebarWidth, controls: controls)
+    }
+
+    func updateNSView(_ view: AttachmentView, context: Context) {
+        view.host.rootView = controls
+        view.sidebarWidth = sidebarWidth
+        view.updateWidth()
+    }
+
+    static func dismantleNSView(_ view: AttachmentView, coordinator: ()) {
+        view.uninstall()
+    }
+
+    final class AttachmentView: NSView {
+        let host: NSHostingView<Controls>
+        var sidebarWidth: CGFloat?
+        private let accessory = TitleBarAccessory()
+        private weak var installedWindow: NSWindow?
+
+        init(sidebarWidth: CGFloat?, controls: Controls) {
+            self.sidebarWidth = sidebarWidth
+            host = NSHostingView(rootView: controls)
+            super.init(frame: .zero)
+            host.sizingOptions = []
+            host.safeAreaRegions = []
+            host.frame = NSRect(x: 0, y: 0, width: 64, height: 26)
+            accessory.view = host
+            accessory.layoutAttribute = .left
+            accessory.onLayout = { [weak self] in self?.updateWidth() }
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            uninstall()
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.addTitlebarAccessoryViewController(accessory)
+            installedWindow = window
+            updateWidth()
+        }
+
+        func updateWidth() {
+            guard installedWindow != nil else { return }
+            let leading = host.convert(host.bounds, to: nil).minX
+            let width = max(64, (sidebarWidth ?? 0) - leading - 8)
+            if abs(host.frame.width - width) > 0.5 {
+                host.setFrameSize(NSSize(width: width, height: host.frame.height))
+            }
+        }
+
+        func uninstall() {
+            if let window = installedWindow,
+               let index = window.titlebarAccessoryViewControllers.firstIndex(of: accessory) {
+                window.removeTitlebarAccessoryViewController(at: index)
+            }
+            installedWindow = nil
+        }
+    }
+}
+
+private final class TitleBarAccessory: NSTitlebarAccessoryViewController {
+    var onLayout: (() -> Void)?
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        onLayout?()
+    }
+}
