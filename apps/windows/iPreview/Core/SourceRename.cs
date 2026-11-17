@@ -8,13 +8,14 @@ namespace IPreview;
 internal static class SourceRename
 {
     private const string Kernel = "kernel32.dll";
+    private const string Native = "ntdll.dll";
     private const uint ReadAttributes = 0x80;
     private const uint TraverseDirectory = 0x20;
     private const uint DeleteAccess = 0x10000;
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
     private const uint OpenReparsePoint = 0x00200000;
-    private const int FileRenameInfo = 3;
+    private const int FileRenameInformation = 10;
     private const int FileAttributeTagInfo = 9;
     private const int FileIdInfo = 18;
 
@@ -145,19 +146,20 @@ internal static class SourceRename
         var directoryOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.RootDirectory));
         var lengthOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.NameBytes));
         var nameOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.FirstCharacter));
-        var buffer = new byte[Math.Max(Marshal.SizeOf<RenameInfo>(), nameOffset + name.Length + sizeof(char))];
+        var buffer = new byte[Marshal.SizeOf<RenameInfo>() + name.Length];
         // Keep the no-replacement flag zero and resolve the basename against the pinned parent.
         var directory = parent.DangerousGetHandle();
         MemoryMarshal.Write(buffer.AsSpan(directoryOffset, IntPtr.Size), in directory);
         BitConverter.TryWriteBytes(buffer.AsSpan(lengthOffset, sizeof(uint)), (uint)name.Length);
         name.CopyTo(buffer, nameOffset);
-        if (!SetFileInformationByHandle(handle, FileRenameInfo, buffer, (uint)buffer.Length))
-            throw NativeError("无法在原目录中重命名项目");
+        var status = NtSetInformationFile(handle, out _, buffer, (uint)buffer.Length, FileRenameInformation);
+        if (status < 0)
+            throw NativeError("无法在原目录中重命名项目", unchecked((int)RtlNtStatusToDosError(status)));
     }
 
-    private static IOException NativeError(string message)
+    private static IOException NativeError(string message, int? error = null)
     {
-        var cause = new Win32Exception(Marshal.GetLastPInvokeError());
+        var cause = new Win32Exception(error ?? Marshal.GetLastPInvokeError());
         return new IOException($"{message}。{cause.Message}", cause);
     }
 
@@ -185,6 +187,13 @@ internal static class SourceRename
         public char FirstCharacter;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoStatusBlock
+    {
+        public IntPtr Status;
+        public UIntPtr Information;
+    }
+
     [DllImport(Kernel, ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern SafeFileHandle CreateFileW(string name, uint access, FileShare share,
@@ -207,9 +216,12 @@ internal static class SourceRename
     private static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path,
         uint capacity, uint flags);
 
-    [DllImport(Kernel, ExactSpelling = true, SetLastError = true)]
+    [DllImport(Native, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int kind,
-        byte[] information, uint size);
+    private static extern int NtSetInformationFile(SafeFileHandle handle, out IoStatusBlock status,
+        byte[] information, uint size, int kind);
+
+    [DllImport(Native, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint RtlNtStatusToDosError(int status);
 }
