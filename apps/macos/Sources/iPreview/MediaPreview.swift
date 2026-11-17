@@ -417,7 +417,11 @@ private struct PreviewTitleBar: View {
         Text(session.media.name)
             .font(.callout.weight(.semibold))
             .lineLimit(1)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: copyFilename)
             .accessibilityAddTraits(.isHeader)
+            .accessibilityAction(named: Text("复制文件名"), copyFilename)
+            .help("双击复制文件名")
             .padding(.horizontal, 58)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.regularMaterial)
@@ -438,6 +442,12 @@ private struct PreviewTitleBar: View {
                 .help("关闭预览（Esc）")
                 .padding(.leading, 12)
             }
+    }
+
+    private func copyFilename() {
+        let clipboard = NSPasteboard.general
+        clipboard.clearContents()
+        clipboard.setString(session.media.name, forType: .string)
     }
 }
 
