@@ -38,7 +38,11 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="12">
+                <Grid ColumnSpacing="12" RowSpacing="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -56,16 +60,9 @@
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
                                        Foreground="#18202D" TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="CountLabel" Foreground="#576375" FontSize="12" />
                         </StackPanel>
                     </Grid>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <ComboBox x:Name="ViewModePicker" SelectedIndex="0" SelectionChanged="ChangeBrowseMode"
-                                  AutomationProperties.Name="浏览视图" ToolTipService.ToolTip="浏览视图">
-                            <ComboBoxItem Content="图标" />
-                            <ComboBoxItem Content="列表" />
-                            <ComboBoxItem Content="画廊" />
-                        </ComboBox>
                         <AutoSuggestBox x:Name="Query" Width="236" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
                                         QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索媒体库" />
                         <Button ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
@@ -92,6 +89,14 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
+                    <TextBlock x:Name="CountLabel" Grid.Row="1" VerticalAlignment="Center"
+                               Foreground="#576375" FontSize="12" />
+                    <ComboBox x:Name="ViewModePicker" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Right" SelectedIndex="0" SelectionChanged="ChangeBrowseMode"
+                              AutomationProperties.Name="浏览视图" ToolTipService.ToolTip="浏览视图">
+                        <ComboBoxItem Content="图标" />
+                        <ComboBoxItem Content="列表" />
+                        <ComboBoxItem Content="画廊" />
+                    </ComboBox>
                 </Grid>
 
                 <InfoBar x:Name="Notice" Grid.Row="1" IsClosable="True" />
