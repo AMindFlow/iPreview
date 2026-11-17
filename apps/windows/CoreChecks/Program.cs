@@ -118,14 +118,20 @@ try
         var clip = snapshot.Media.Single(item => item.IsVideo);
         var retainedPhoto = snapshot.Media.Single(item => item.FileName == "城楼10.PNG");
         var batchAlbum = catalog.CreateAlbum("批量移除");
-        catalog.AppendToAlbum(batchAlbum, [secondId, firstId, clip.Id, retainedPhoto.Id]);
+        long[] oldOrder = [secondId, firstId, clip.Id, retainedPhoto.Id];
+        catalog.AppendToAlbum(batchAlbum, oldOrder);
         var removedFiles = new[] { online, clip }.Select(MediaFiles.OpenPath).ToArray();
         var originalTimes = removedFiles.Select(File.GetLastWriteTimeUtc).ToArray();
+        catalog.MoveInAlbum(batchAlbum, retainedPhoto.Id, 0, oldOrder);
+        Check(catalog.Read().AlbumMembers[batchAlbum].Select(item => item.Id)
+            .SequenceEqual([retainedPhoto.Id, secondId, firstId, clip.Id]), "drag order persists across sources");
+        Reject<AlbumOrderChangedException>(() => catalog.MoveInAlbum(batchAlbum, secondId, 2, oldOrder),
+            "a stale drag leaves the current album order unchanged");
         catalog.RemoveFromAlbum(batchAlbum, [clip.Id, secondId]);
         using (var reopened = new Catalog(data))
         {
             var members = reopened.Read().AlbumMembers;
-            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([firstId, retainedPhoto.Id]),
+            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([retainedPhoto.Id, firstId]),
                 "batch removal persists remaining album order");
             Check(members[albumId].Select(item => item.Id).SequenceEqual([secondId, firstId]),
                 "batch removal preserves references in another album");

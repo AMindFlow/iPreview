@@ -530,21 +530,6 @@ public sealed partial class MainWindow : Window
         catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }
     }
 
-    private void MoveEarlier(object sender, RoutedEventArgs args) => MoveMember(-1);
-    private void MoveLater(object sender, RoutedEventArgs args) => MoveMember(1);
-
-    private void MoveMember(int offset)
-    {
-        if (current.Album is not long album || Selection is not Tile tile)
-            return;
-        try
-        {
-            Database.MoveInAlbum(album, tile.Media.Id, offset);
-            Reload(tile.Media.Id);
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法调整顺序", error.Message); }
-    }
-
     private void SelectionChanged(object sender, SelectionChangedEventArgs args)
     {
         if (updatingBrowser || !ReferenceEquals(sender, ActiveMediaBrowser))
@@ -571,14 +556,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdateSelection()
     {
-        if (OpenButton is null || MoveUpButton is null ||
-            MoveDownButton is null || RemoveButton is null || AlbumSelectionTools is null)
+        if (OpenButton is null || AlbumSelectionTools is null)
             return;
         UpdateAlbumSelectionTools();
         OpenButton.IsEnabled = Selection is not null;
-        RemoveButton.IsEnabled = Selection is not null;
-        MoveUpButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex > 0;
-        MoveDownButton.IsEnabled = Selection is not null && ActiveMediaBrowser.SelectedIndex < tiles.Count - 1;
     }
 
     private void ShowNotice(string title, string message, InfoBarSeverity severity = InfoBarSeverity.Error)

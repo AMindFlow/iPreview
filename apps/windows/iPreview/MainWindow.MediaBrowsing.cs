@@ -17,29 +17,29 @@ public sealed partial class MainWindow
     {
         private static readonly Brush AlternateBackground = new SolidColorBrush(
             Windows.UI.Color.FromArgb(10, 102, 121, 153));
+        private static readonly Brush TransparentBackground = new SolidColorBrush(
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
 
         public Media Media { get; } = media;
         public string FileName => Media.FileName;
         public string DisplayPath => Media.DisplayPath;
         public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : "";
         public Visibility BadgeVisibility => Label.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        public Brush? RowBackground => index % 2 == 0 ? null : AlternateBackground;
+        public Brush RowBackground => index % 2 == 0 ? TransparentBackground : AlternateBackground;
         private string Extension => Path.GetExtension(Media.RelativePath).TrimStart('.').ToUpperInvariant();
         public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : "图像")}";
         public TileDetails Details { get; private set; } = TileDetails.Unavailable;
         public Task<TileDetails>? DetailsRequest { get; set; }
-        private bool? albumRemovalSelection;
-        public Visibility AlbumRemovalMarkVisibility => albumRemovalSelection.HasValue ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility AlbumRemovalTickVisibility => albumRemovalSelection == true ? Visibility.Visible : Visibility.Collapsed;
+        private bool albumRemovalSelection;
+        public Visibility AlbumRemovalTickVisibility => albumRemovalSelection ? Visibility.Visible : Visibility.Collapsed;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public void SetAlbumRemovalSelection(bool? marked)
+        public void SetAlbumRemovalSelection(bool marked)
         {
             if (albumRemovalSelection == marked)
                 return;
             albumRemovalSelection = marked;
-            PropertyChanged?.Invoke(this, new(nameof(AlbumRemovalMarkVisibility)));
             PropertyChanged?.Invoke(this, new(nameof(AlbumRemovalTickVisibility)));
         }
 
@@ -80,6 +80,7 @@ public sealed partial class MainWindow
 
     private void RefreshMediaBrowser(long? selected)
     {
+        CancelAlbumAdjustmentPointer();
         var browser = ActiveMediaBrowser;
         var mediaVisibility = browsingFolders ? Visibility.Collapsed : Visibility.Visible;
         updatingBrowser = true;

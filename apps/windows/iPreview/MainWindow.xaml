@@ -122,14 +122,9 @@
                     <Grid.Resources>
                         <SolidColorBrush x:Key="AlbumSelectionMarkFill" Color="{StaticResource SystemAccentColorDark1}" />
                         <DataTemplate x:Key="AlbumSelectionMark">
-                            <Grid Width="17" Height="17">
-                                <Border Background="{ThemeResource SystemControlBackgroundAltHighBrush}" BorderThickness="1.5"
-                                        BorderBrush="{ThemeResource SystemControlForegroundBaseHighBrush}" CornerRadius="4" />
-                                <Border Background="{StaticResource AlbumSelectionMarkFill}" CornerRadius="4"
-                                        Visibility="{Binding AlbumRemovalTickVisibility}">
-                                    <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" />
-                                </Border>
-                            </Grid>
+                            <Border Width="17" Height="17" Background="{StaticResource AlbumSelectionMarkFill}" CornerRadius="4">
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" />
+                            </Border>
                         </DataTemplate>
                     </Grid.Resources>
                     <GridView x:Name="Gallery" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
@@ -143,7 +138,10 @@
                         </GridView.ItemsPanel>
                         <GridView.ItemTemplate>
                             <DataTemplate>
-                                <Grid Width="256" Height="193" RowSpacing="5" ToolTipService.ToolTip="{Binding DisplayPath}">
+                                <Grid Width="256" Height="193" RowSpacing="5" ToolTipService.ToolTip="{Binding DisplayPath}" Background="Transparent"
+                                      PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
+                                      PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
+                                      PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="168" />
                                         <RowDefinition Height="Auto" />
@@ -157,9 +155,9 @@
                                                 <TextBlock Text="{Binding Label}" Foreground="White" FontSize="11" />
                                             </Border>
                                             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
-                                                            Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
+                                                            Visibility="{Binding AlbumRemovalTickVisibility}" IsHitTestVisible="False"
                                                             IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
-                                                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" />
+                                                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" />
                                         </Grid>
                                     </Border>
                                     <TextBlock Grid.Row="1" Text="{Binding FileName}" Foreground="#374458" FontSize="12"
@@ -203,7 +201,10 @@
                                 <DataTemplate>
                                     <Grid Padding="10,0,16,0" MinHeight="29" ColumnSpacing="8"
                                           Background="{Binding RowBackground}" ToolTipService.ToolTip="{Binding DisplayPath}"
-                                          Loaded="LoadListDetails" DataContextChanged="UpdateListDetails">
+                                          Loaded="LoadListDetails" DataContextChanged="UpdateListDetails"
+                                          PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
+                                          PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
+                                          PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="140" />
@@ -215,16 +216,10 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
-                                                                Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
-                                                                IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
-                                                                Margin="0,0,7,0" />
-                                                <Border Width="20" Height="17" Background="#E4EAF4" CornerRadius="3">
-                                                    <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
-                                                           DataContextChanged="UpdateThumbnail" />
-                                                </Border>
-                                            </StackPanel>
+                                            <Border Width="20" Height="17" Background="#E4EAF4" CornerRadius="3">
+                                                <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
+                                                       DataContextChanged="UpdateThumbnail" />
+                                            </Border>
                                             <TextBlock Grid.Column="1" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                        FontSize="12" VerticalAlignment="Center" />
                                         </Grid>
@@ -234,6 +229,10 @@
                                                    FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" />
                                         <TextBlock Grid.Column="3" Text="{Binding Kind}" Foreground="#576375"
                                                    FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <ContentControl Grid.ColumnSpan="4" Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
+                                                        Visibility="{Binding AlbumRemovalTickVisibility}" IsHitTestVisible="False"
+                                                        IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,3,3" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -272,7 +271,10 @@
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Width="88" RowSpacing="3" ToolTipService.ToolTip="{Binding DisplayPath}">
+                                    <Grid Width="88" RowSpacing="3" ToolTipService.ToolTip="{Binding DisplayPath}" Background="Transparent"
+                                          PointerPressed="AlbumAdjustmentPointerPressed" PointerMoved="AlbumAdjustmentPointerMoved"
+                                          PointerReleased="AlbumAdjustmentPointerReleased" Tapped="AlbumAdjustmentTapped"
+                                          PointerCaptureLost="AlbumAdjustmentPointerInterrupted" PointerCanceled="AlbumAdjustmentPointerInterrupted">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="58" />
                                             <RowDefinition Height="Auto" />
@@ -282,9 +284,9 @@
                                                 <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
                                                        DataContextChanged="UpdateThumbnail" />
                                                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
-                                                                Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
+                                                                Visibility="{Binding AlbumRemovalTickVisibility}" IsHitTestVisible="False"
                                                                 IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" />
+                                                                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" />
                                             </Grid>
                                         </Border>
                                         <TextBlock Grid.Row="1" Text="{Binding FileName}" FontSize="11"
@@ -326,6 +328,21 @@
                     <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
                                Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#576375" TextWrapping="Wrap" />
+                    <Canvas x:Name="AlbumDragLayer" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+                        <Rectangle x:Name="AlbumDropPlaceholder" RadiusX="7" RadiusY="7" Fill="#155274DF"
+                                   Stroke="{StaticResource AlbumSelectionMarkFill}" StrokeThickness="1.5"
+                                   StrokeDashArray="5,4" Visibility="Collapsed" />
+                        <Border x:Name="AlbumDragAvatar" CornerRadius="7" BorderThickness="1"
+                                BorderBrush="{StaticResource AlbumSelectionMarkFill}"
+                                Background="{ThemeResource SystemControlBackgroundAltHighBrush}"
+                                Opacity="0.96" Visibility="Collapsed">
+                            <Grid>
+                                <TextBlock x:Name="AlbumDragCaption" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="10,0" TextTrimming="CharacterEllipsis" />
+                                <Image x:Name="AlbumDragImage" Stretch="Fill" />
+                            </Grid>
+                        </Border>
+                    </Canvas>
                 </Grid>
 
                 <Grid Grid.Row="3">
@@ -336,10 +353,8 @@
                                     ToolTipService.ToolTip="添加媒体" Visibility="Collapsed">
                                 <FontIcon Glyph="&#xE710;" FontSize="14" />
                             </Button>
-                            <Button x:Name="MoveUpButton" Click="MoveEarlier" Content="上移" />
-                            <Button x:Name="MoveDownButton" Click="MoveLater" Content="下移" />
-                            <Button x:Name="RemoveButton" Click="RemoveFromAlbum" Content="移除引用" />
-                            <Button x:Name="SelectAlbumMembersButton" Click="BeginAlbumSelection" Content="选择"
+                            <Button x:Name="SelectAlbumMembersButton" Click="BeginAlbumSelection" Content="调整"
+                                    ToolTipService.ToolTip="勾选媒体或按住媒体拖动排序"
                                     Visibility="Collapsed" />
                         </StackPanel>
                     </StackPanel>
