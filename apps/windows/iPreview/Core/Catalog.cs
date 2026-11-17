@@ -1,0 +1,172 @@
+using System.Reflection;
+
+namespace IPreview;
+
+internal sealed record CatalogSnapshot(
+    Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
+    Dictionary<long, List<Media>> AlbumMembers);
+
+internal sealed class Catalog : IDisposable
+{
+    private const string Migration = "iPreview.Migrations.001-initial.sql";
+    private readonly Sqlite database;
+    private readonly string dataDirectory;
+
+    public Catalog(string dataDirectory)
+    {
+        this.dataDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDirectory));
+        Directory.CreateDirectory(this.dataDirectory);
+        database = new Sqlite(Path.Combine(this.dataDirectory, "library.sqlite3"));
+        try
+        {
+            database.InTransaction(() =>
+            {
+                var version = database.Query("PRAGMA user_version;", row => row.Number(0)).Single();
+                if (version == 1)
+                    return;
+                if (version != 0)
+                    throw new InvalidDataException("该媒体库由更高版本的 iPreview 创建。");
+
+                using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(Migration)
+                    ?? throw new InvalidOperationException("The shared catalog migration was not embedded.");
+                using var reader = new StreamReader(resource);
+                database.ExecuteScript(reader.ReadToEnd());
+            });
+        }
+        catch
+        {
+            database.Dispose();
+            throw;
+        }
+    }
+
+    public void CheckSourcePath(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (Contains(path, dataDirectory) || Contains(dataDirectory, path))
+            throw new IOException("请选取媒体文件夹。应用数据目录及其父子目录不可导入。");
+    }
+
+    private static bool Contains(string parent, string child)
+    {
+        var relative = Path.GetRelativePath(parent, child);
+        return !Path.IsPathRooted(relative)
+            && !relative.Equals("..", StringComparison.Ordinal)
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    public CatalogSnapshot Read()
+    {
+        CatalogSnapshot? snapshot = null;
+        database.InTransaction(() =>
+        {
+            var sources = database.Query("SELECT id, path, layout, available FROM sources;", row =>
+            {
+                var path = row.Text(1);
+                return new Source(row.Number(0), path, MediaFiles.DecodeLayout(row.Text(2)),
+                    row.Number(3) != 0 && MediaFiles.IsLocalRootAvailable(path));
+            }).ToDictionary(source => source.Id);
+            var media = database.Query("SELECT id, source_id, relative_path, kind, available FROM media;", row =>
+                new Media(row.Number(0), sources[row.Number(1)], row.Text(2), row.Text(3) == "video", row.Number(4) != 0));
+            var albums = database.Query("SELECT id, name FROM albums ORDER BY name COLLATE NOCASE, id;",
+                row => new Album(row.Number(0), row.Text(1)));
+            var mediaById = media.ToDictionary(item => item.Id);
+            var members = database.Query(
+                "SELECT album_id, media_id FROM album_media ORDER BY position, media_id;",
+                row => (Album: row.Number(0), Media: mediaById[row.Number(1)]))
+                .GroupBy(member => member.Album)
+                .ToDictionary(album => album.Key, album => album.Select(member => member.Media).ToList());
+            snapshot = new(sources, media, albums, members);
+        }, write: false);
+        return snapshot!;
+    }
+
+    public long Import(string path, Layout layout, List<ScannedMedia> files)
+    {
+        CheckSourcePath(path);
+        long id = 0;
+        database.InTransaction(() =>
+        {
+            var existing = database.Query("SELECT id, path FROM sources;", row => (row.Number(0), row.Text(1)))
+                .Find(source => StringComparer.OrdinalIgnoreCase.Equals(source.Item2, path));
+            id = existing.Item1;
+            if (id == 0)
+            {
+                database.Execute("INSERT INTO sources (path, layout) VALUES (?, ?);", path, MediaFiles.Store(layout));
+                id = database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
+            }
+            else
+            {
+                database.Execute("UPDATE sources SET path = ?, layout = ? WHERE id = ?;",
+                    path, MediaFiles.Store(layout), id);
+            }
+            ReplaceScan(id, files);
+        });
+        return id;
+    }
+
+    public void Rescan(long source, List<ScannedMedia>? files)
+    {
+        if (files is null)
+            database.Execute("UPDATE sources SET available = 0 WHERE id = ?;", source);
+        else
+            database.InTransaction(() => ReplaceScan(source, files));
+    }
+
+    private void ReplaceScan(long source, List<ScannedMedia> files)
+    {
+        database.Execute("UPDATE sources SET available = 1 WHERE id = ?;", source);
+        database.Execute("UPDATE media SET available = 0 WHERE source_id = ?;", source);
+        foreach (var file in files)
+        {
+            var kind = file.IsVideo ? "video" : "image";
+            database.Execute("""
+                INSERT INTO media (source_id, relative_path, kind) VALUES (?, ?, ?)
+                ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1;
+                """, source, file.RelativePath, kind);
+        }
+    }
+
+    public long CreateAlbum(string name, long? media = null)
+    {
+        long id = 0;
+        database.InTransaction(() =>
+        {
+            database.Execute("INSERT INTO albums (name) VALUES (?);", name.Trim());
+            id = database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
+            if (media is long member)
+                AddToAlbum(id, member);
+        });
+        return id;
+    }
+
+    public void RenameAlbum(long album, string name) =>
+        database.Execute("UPDATE albums SET name = ? WHERE id = ?;", name.Trim(), album);
+
+    public void AddToAlbum(long album, long media) =>
+        database.Execute("""
+            INSERT OR IGNORE INTO album_media (album_id, media_id, position)
+            VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM album_media WHERE album_id = ?));
+            """, album, media, album);
+
+    public void RemoveFromAlbum(long album, long media) =>
+        database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, media);
+
+    public void MoveInAlbum(long album, long media, int offset) =>
+        database.InTransaction(() =>
+        {
+            var members = database.Query("""
+                SELECT media_id, position FROM album_media WHERE album_id = ? ORDER BY position, media_id;
+                """, row => (Media: row.Number(0), Position: row.Number(1)), album);
+            var current = members.FindIndex(member => member.Media == media);
+            var next = current + offset;
+            if (current < 0 || next < 0 || next >= members.Count)
+                return;
+            database.Execute("UPDATE album_media SET position = ? WHERE album_id = ? AND media_id = ?;",
+                members[next].Position, album, media);
+            database.Execute("UPDATE album_media SET position = ? WHERE album_id = ? AND media_id = ?;",
+                members[current].Position, album, members[next].Media);
+        });
+
+    public void Dispose() => database.Dispose();
+}
