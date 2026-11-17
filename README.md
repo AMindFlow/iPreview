@@ -6,7 +6,7 @@ iPreview 是用于本地图片和视频的原生媒体库。可以从已有创�
 
 - macOS 15+ Apple Silicon：解压 `iPreview-macos-arm64.zip`，打开 `iPreview.app`。
 - Windows 11 x64：把 `iPreview-windows-x64.zip` 完整解压到本机，打开 `iPreview.exe`。
-- 点击「导入文件夹」添加来源。选中媒体后按 Space 打开预览，方向键切换，Esc 退出。
+- 点击「导入文件夹」添加来源。选中媒体后按 Space 打开预览，方向键切换。再次按 Space 退出并选中最后查看的媒体，按 Esc 退出并回到进入预览时的选中项。
 
 ## 从源码构建
 

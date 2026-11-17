@@ -42,7 +42,8 @@ struct LibraryView: View {
             .accessibilityHidden(preview != nil)
 
             if let preview {
-                MediaPreview(request: preview) {
+                MediaPreview(request: preview) { selection in
+                    self.selected = selection
                     self.preview = nil
                     focusGallery()
                 }
@@ -433,6 +434,11 @@ struct LibraryView: View {
                         reader.scrollTo(items[next].id, anchor: .center)
                     }
                     return .handled
+                }
+                .onChange(of: preview == nil) { _, closed in
+                    if closed, let selected {
+                        reader.scrollTo(selected)
+                    }
                 }
                 .onChange(of: items.map(\.id), initial: true) { _, ids in
                     if let selected, ids.contains(selected) { return }
