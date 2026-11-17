@@ -5,6 +5,15 @@ enum MediaBrowseMode: String, CaseIterable, Identifiable {
     case icons, list, gallery
 
     var id: Self { self }
+
+    func layout(gridColumns: Int) -> BrowseLayout {
+        switch self {
+        case .icons: .grid(columns: gridColumns)
+        case .list: .list
+        case .gallery: .gallery
+        }
+    }
+
     var title: String {
         switch self {
         case .icons: "图标"

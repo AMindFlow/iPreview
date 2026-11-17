@@ -4,7 +4,7 @@ import iPreviewCore
 struct PreviewRequest {
     let items: [Media]
     let selection: Int64
-    let columns: Int
+    let layout: BrowseLayout
 }
 
 struct MediaPreview: View {
@@ -44,7 +44,6 @@ struct MediaPreview: View {
                     .accessibilityLabel(media.name)
                     .onTapGesture { focus = .canvas }
                 navigation
-                    .padding(.horizontal, 16)
             }
             .focusable()
             .focusEffectDisabled()
@@ -95,8 +94,8 @@ struct MediaPreview: View {
             if focus == .timeline {
                 let backward = press.key == .leftArrow || press.key == .downArrow
                 video.seek(video.elapsed + (backward ? -0.25 : 0.25))
-            } else {
-                index = moveIndex(index, key: press.key, columns: request.columns, count: request.items.count)
+            } else if let destination = neighbor(toward: press.key) {
+                index = destination
             }
         }
         return .handled
@@ -145,43 +144,55 @@ struct MediaPreview: View {
     }
 
     private var navigation: some View {
-        HStack {
-            if index > 0 {
-                navigate("chevron.left", label: "上一项", step: -1)
+        ZStack {
+            HStack {
+                navigationButton(toward: .leftArrow, icon: "chevron.left", label: "左侧媒体")
+                Spacer()
+                navigationButton(toward: .rightArrow, icon: "chevron.right", label: "右侧媒体")
             }
-            Spacer()
-            if index < request.items.count - 1 {
-                navigate("chevron.right", label: "下一项", step: 1)
+            .padding(.horizontal, 16)
+            VStack {
+                navigationButton(toward: .upArrow, icon: "chevron.up", label: "上方媒体")
+                Spacer()
+                navigationButton(toward: .downArrow, icon: "chevron.down", label: "下方媒体")
             }
+            .padding(.top, 42)
+            .padding(.bottom, media.kind == .video && video.message == nil ? 76 : 20)
         }
     }
 
-    private func navigate(_ icon: String, label: String, step: Int) -> some View {
-        Button {
-            index += step
-            focus = .canvas
-        } label: {
-            Image(systemName: icon)
-                .font(.body.weight(.medium))
-                .frame(width: 34, height: 34)
-                .background(.thinMaterial, in: Circle())
+    @ViewBuilder
+    private func navigationButton(toward key: KeyEquivalent, icon: String, label: String) -> some View {
+        if let destination = neighbor(toward: key) {
+            Button {
+                index = destination
+                focus = .canvas
+            } label: {
+                Image(systemName: icon)
+                    .font(.body.weight(.medium))
+                    .frame(width: 34, height: 34)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+            .help(label)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .help(label)
+    }
+
+    private func neighbor(toward key: KeyEquivalent) -> Int? {
+        request.layout.neighbor(of: index, toward: key, count: request.items.count)
     }
 
     @ViewBuilder
     private func neighbors(in size: CGSize) -> some View {
-        let vertical = request.columns
         ZStack {
-            neighbor(at: index - 1, width: size.width * 0.27, height: size.height * 0.54)
+            neighborThumbnail(toward: .leftArrow, width: size.width * 0.27, height: size.height * 0.54)
                 .offset(x: -size.width * 0.43)
-            neighbor(at: index + 1, width: size.width * 0.27, height: size.height * 0.54)
+            neighborThumbnail(toward: .rightArrow, width: size.width * 0.27, height: size.height * 0.54)
                 .offset(x: size.width * 0.43)
-            neighbor(at: index - vertical, width: size.width * 0.54, height: size.height * 0.22)
+            neighborThumbnail(toward: .upArrow, width: size.width * 0.54, height: size.height * 0.22)
                 .offset(y: -size.height * 0.43)
-            neighbor(at: index + vertical, width: size.width * 0.54, height: size.height * 0.22)
+            neighborThumbnail(toward: .downArrow, width: size.width * 0.54, height: size.height * 0.22)
                 .offset(y: size.height * 0.43)
         }
         .frame(width: size.width, height: size.height)
@@ -193,8 +204,8 @@ struct MediaPreview: View {
     }
 
     @ViewBuilder
-    private func neighbor(at position: Int, width: CGFloat, height: CGFloat) -> some View {
-        if request.items.indices.contains(position) {
+    private func neighborThumbnail(toward key: KeyEquivalent, width: CGFloat, height: CGFloat) -> some View {
+        if let position = neighbor(toward: key) {
             MediaThumbnail(media: request.items[position])
                 .frame(width: width, height: height)
                 .clipShape(.rect(cornerRadius: 12))
@@ -259,16 +270,4 @@ struct MediaPreview: View {
         let rounded = Int(seconds)
         return String(format: "%d:%02d", rounded / 60, rounded % 60)
     }
-}
-
-func moveIndex(_ index: Int, key: KeyEquivalent, columns: Int, count: Int) -> Int {
-    let candidate: Int
-    switch key {
-    case .leftArrow: candidate = index - 1
-    case .rightArrow: candidate = index + 1
-    case .upArrow: candidate = index - columns
-    case .downArrow: candidate = index + columns
-    default: return index
-    }
-    return (0..<count).contains(candidate) ? candidate : index
 }
