@@ -94,11 +94,11 @@
             <Grid RowSpacing="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="77" />
+                    <RowDefinition Height="Auto" MinHeight="96" />
                 </Grid.RowDefinitions>
                 <TextBlock x:Name="StagedHeading" Text="待添加 · 0 项" FontSize="14" FontWeight="SemiBold"
                            AutomationProperties.HeadingLevel="Level2" />
-                <ListView x:Name="StagedList" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="False"
+                <ListView x:Name="StagedList" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="False" Padding="0"
                           ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                           ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
                           AutomationProperties.Name="待添加媒体">

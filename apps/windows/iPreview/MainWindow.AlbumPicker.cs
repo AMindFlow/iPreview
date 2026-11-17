@@ -34,7 +34,7 @@ public sealed partial class MainWindow
         void FitPicker()
         {
             staged.Width = Math.Clamp(Root.ActualWidth - 76, 234, 1050);
-            staged.Height = Math.Clamp(Root.ActualHeight - 157, 180, 620);
+            staged.Height = Math.Clamp(Root.ActualHeight - 157, 204, 620);
         }
         FitPicker();
         dialog.Content = staged;
