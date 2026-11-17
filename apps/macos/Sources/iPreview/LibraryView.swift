@@ -53,15 +53,19 @@ struct LibraryView: View {
             .navigationSplitViewStyle(.balanced)
             .allowsHitTesting(preview == nil)
             .accessibilityHidden(preview != nil)
-
+        }
+        .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
-                MediaPreview(request: preview) { selection in
-                    self.selected = selection
-                    self.preview = nil
-                    focusBrowser()
+                GeometryReader { geometry in
+                    MediaPreview(request: preview, sourceFrame: { id in
+                        origins[id].map { geometry[$0] }
+                    }) { selection in
+                        self.selected = selection
+                        self.preview = nil
+                        focusBrowser()
+                    }
+                    .id(preview.selection)
                 }
-                .id(preview.selection)
-                .transition(.opacity)
             }
         }
         .task { await model.start() }
@@ -964,6 +968,7 @@ private struct MediaTile: View {
             MediaThumbnail(media: media, revision: revision)
                 .aspectRatio(1.47, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 12))
+                .anchorPreference(key: PreviewOriginKey.self, value: .bounds) { [media.id: $0] }
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(selected ? Color.ipreviewAccent : .clear, lineWidth: 2)
