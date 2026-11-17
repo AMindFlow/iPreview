@@ -68,12 +68,7 @@ public sealed partial class MainWindow
         {
             if (!Moved(input.Position, press.Anchor))
                 return;
-            if (input.Timestamp - press.Time < AlbumHoldMicroseconds || tiles.Count < 2)
-            {
-                press.Rejected = true;
-                return;
-            }
-            if (!StartAlbumDrag(press))
+            if (tiles.Count < 2 || !StartAlbumDrag(press))
             {
                 press.Rejected = true;
                 return;
