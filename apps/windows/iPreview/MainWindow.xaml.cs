@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
     private List<Tile> previewTiles = [];
     private int previewGeneration;
     private MediaPlayer? player;
+    private MediaSource? videoSource;
     private readonly DispatcherTimer playbackClock = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool settingPosition;
 
@@ -690,6 +691,7 @@ public sealed partial class MainWindow : Window
     private void StartVideo(StorageFile file, int generation)
     {
         var mediaPlayer = new MediaPlayer();
+        player = mediaPlayer;
         mediaPlayer.CommandManager.IsEnabled = false;
         mediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -704,23 +706,37 @@ public sealed partial class MainWindow : Window
                 ShowPreviewError("系统无法播放此视频。", details.ErrorMessage);
         });
 
-        player = mediaPlayer;
         VideoSurface.SetMediaPlayer(mediaPlayer);
         VideoSurface.Visibility = Visibility.Visible;
-        player.Source = MediaSource.CreateFromStorageFile(file);
-        player.Play();
+        videoSource = MediaSource.CreateFromStorageFile(file);
+        mediaPlayer.Source = videoSource;
+        mediaPlayer.Play();
         playbackClock.Start();
     }
 
     private void StopVideo()
     {
         playbackClock.Stop();
-        if (player is null)
+        if (player is not { } active)
             return;
-        player.Pause();
-        player.Source = null;
-        player.Dispose();
+
         player = null;
+        var source = videoSource;
+        videoSource = null;
+        try
+        {
+            if (active.PlaybackSession.CanPause)
+                active.Pause();
+            active.Source = null;
+        }
+        finally
+        {
+            VideoSurface.SetMediaPlayer(null);
+            using (active)
+            {
+                source?.Dispose();
+            }
+        }
     }
 
     private void ShowPreviewError(string title, string detail)
