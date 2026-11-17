@@ -12,19 +12,17 @@ public sealed partial class MainWindow
             return;
 
         var staged = new AlbumMediaPicker(media, (albumMembers.GetValueOrDefault(album) ?? []).Select(item => item.Id),
-            ReadPickerThumbnail)
-        {
-            Width = Math.Clamp(Root.ActualWidth - 96, 260, 480)
-        };
+            ReadPickerThumbnail);
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
             Title = $"添加到「{current.Label}」",
-            PrimaryButtonText = "确认添加",
+            PrimaryButtonText = "添加媒体",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false
         };
+        dialog.Resources["ContentDialogMaxWidth"] = 1100d;
         var saving = false;
         staged.CanAddChanged += canAdd => dialog.IsPrimaryButtonEnabled = canAdd && !saving;
         dialog.Closing += (_, closing) =>
@@ -36,9 +34,14 @@ public sealed partial class MainWindow
         var error = new InfoBar { Title = "无法添加媒体", Severity = InfoBarSeverity.Error };
         var content = new Grid
         {
-            Height = Math.Clamp(Root.ActualHeight - 200, 220, 410),
-            RowSpacing = 7
+            RowSpacing = 8
         };
+        void FitPicker()
+        {
+            content.Width = Math.Clamp(Root.ActualWidth - 76, 234, 1050);
+            content.Height = Math.Clamp(Root.ActualHeight - 157, 170, 620);
+        }
+        FitPicker();
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         content.Children.Add(error);
@@ -86,15 +89,24 @@ public sealed partial class MainWindow
                 deferral.Complete();
             }
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            Reload(selected);
+        SizeChangedEventHandler resize = (_, _) => FitPicker();
+        Root.SizeChanged += resize;
+        try
+        {
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                Reload(selected);
+        }
+        finally
+        {
+            Root.SizeChanged -= resize;
+        }
     }
 
     private static async Task<BitmapImage?> ReadPickerThumbnail(Media item)
     {
         try
         {
-            return item.IsVideo ? await DecodeVideoThumbnail(item, 112) : await DecodeImage(item, 112, false);
+            return item.IsVideo ? await DecodeVideoThumbnail(item, 192) : await DecodeImage(item, 192, false);
         }
         catch (Exception error) when (MediaFailure(error))
         {

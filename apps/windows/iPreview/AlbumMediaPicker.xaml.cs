@@ -12,7 +12,9 @@ public sealed partial class AlbumMediaPicker : UserControl
     private sealed class Candidate(Media media)
     {
         public Media Media { get; } = media;
-        public string Placeholder => Media.IsVideo ? "视频" : "图片";
+        public string PlaceholderGlyph => Media.IsVideo ? "\uE714" : "\uE91B";
+        public Visibility VideoBadge => Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
+        public string RemoveLabel => $"移除 {Media.FileName}";
     }
 
     private readonly ObservableCollection<Candidate> staged = [];
@@ -53,6 +55,37 @@ public sealed partial class AlbumMediaPicker : UserControl
     internal Media[] SelectedMedia => staged.Select(item => item.Media).ToArray();
     internal event Action<bool>? CanAddChanged;
 
+    private void PickerSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (args.NewSize.Width == args.PreviousSize.Width)
+            return;
+
+        var compact = args.NewSize.Width < 700;
+        NavigationColumn.Width = new GridLength(compact ? 0 : 174);
+        QueueColumn.Width = new GridLength(compact ? Math.Clamp(args.NewSize.Width * 0.36, 104, 200) : 220);
+        NavigationRow.Height = compact ? GridLength.Auto : new GridLength(0);
+        Grid.SetRow(NavigationRail, compact ? 0 : 1);
+        Grid.SetColumn(NavigationRail, compact ? 1 : 0);
+        Grid.SetColumnSpan(NavigationRail, compact ? 2 : 1);
+        NavigationRail.BorderThickness = compact ? new Thickness(0, 0, 0, 1) : new Thickness(0, 0, 1, 0);
+        NavigationRail.CornerRadius = compact ? new CornerRadius(10, 10, 0, 0) : new CornerRadius(10, 0, 0, 10);
+        QueuePanel.CornerRadius = compact ? new CornerRadius(0, 0, 10, 0) : new CornerRadius(0, 10, 10, 0);
+
+        SecondSelectorColumn.Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        NavigationSelectors.ColumnSpacing = compact ? 10 : 0;
+        NavigationSelectors.RowSpacing = compact ? 0 : 14;
+        Grid.SetRow(Folders, compact ? 0 : 1);
+        Grid.SetColumn(Folders, compact ? 1 : 0);
+    }
+
+    private void CandidateGridSizeChanged(object sender, SizeChangedEventArgs args) => FitCandidateWidth();
+
+    private void FitCandidateWidth()
+    {
+        if (Candidates.ItemsPanelRoot is ItemsWrapGrid grid && Candidates.ActualWidth > 0)
+            grid.ItemWidth = Math.Min(128, Candidates.ActualWidth);
+    }
+
     private void CreatorChanged(object sender, SelectionChangedEventArgs args)
     {
         var creator = Creators.SelectedItem as CreatorOption;
@@ -72,6 +105,7 @@ public sealed partial class AlbumMediaPicker : UserControl
         albumCheck?.Cancel();
         albumCheck = null;
         ShowCandidates(null);
+        MediaHeading.Text = album?.Label ?? "媒体";
 
         if (album is null)
         {
@@ -126,7 +160,11 @@ public sealed partial class AlbumMediaPicker : UserControl
         {
             changingSelection = false;
         }
-        CandidateStatus.Visibility = Candidates.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var hasItems = Candidates.Items.Count > 0;
+        CandidateEmpty.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
+        MediaCount.Text = $"{Candidates.Items.Count} 项";
+        MediaCount.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        FitCandidateWidth();
         UpdateButtons();
     }
 
@@ -179,7 +217,7 @@ public sealed partial class AlbumMediaPicker : UserControl
 
     private void RemoveStaged(object sender, RoutedEventArgs args)
     {
-        if (StagedList.SelectedItem is not Candidate item)
+        if (sender is not Button { DataContext: Candidate item })
             return;
         if (Candidates.SelectedItems.Contains(item))
             Candidates.SelectedItems.Remove(item);
@@ -196,12 +234,10 @@ public sealed partial class AlbumMediaPicker : UserControl
             staged.Remove(item);
     }
 
-    private void StagedSelectionChanged(object sender, SelectionChangedEventArgs args) =>
-        RemoveStagedButton.IsEnabled = StagedList.SelectedItem is not null;
-
     private void UpdateButtons()
     {
         StagedHeading.Text = $"待添加 · {staged.Count} 项";
+        QueueEmpty.Visibility = staged.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         SelectAllButton.IsEnabled = Candidates.SelectedItems.Count < Candidates.Items.Count;
         CanAddChanged?.Invoke(staged.Count != 0);
     }
