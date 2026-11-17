@@ -11,9 +11,9 @@ internal readonly record struct GlobalSearchTerm(string Text, bool Exact)
 {
     public static GlobalSearchTerm Parse(string input)
     {
-        var text = input.Trim();
-        var exact = text.StartsWith('@') || text.StartsWith('＠');
-        return new(exact ? text[1..].TrimStart() : text, exact);
+        var text = input.AsSpan().TrimStart();
+        var exact = text.Length >= 2 && (text[0] is '@' or '＠') && char.IsWhiteSpace(text[1]);
+        return new((exact ? text[1..] : text).Trim().ToString(), exact);
     }
 }
 
@@ -49,7 +49,7 @@ internal static class MediaSearch
             var count = files ? labels.Length : labels.Length - 1;
             var rank = int.MaxValue;
             for (var index = first; index < count && rank > 0; index++)
-                rank = Math.Min(rank, rankName(labels[index]));
+                rank = Math.Min(rank, rankName(labels[index], index == labels.Length - 1));
             if (rank != int.MaxValue)
                 matches.Add((item, rank));
         }
@@ -73,7 +73,7 @@ internal static class MediaSearch
         {
             if (!seen.Add((source.Id, folder)))
                 return;
-            var rank = rankName(label);
+            var rank = rankName(label, false);
             if (rank != int.MaxValue)
                 matches.Add((new(source, folder.Length == 0 ? null : folder, label, location), rank));
         }
@@ -94,7 +94,7 @@ internal static class MediaSearch
             }
             if (scope == GlobalSearchScope.Directories)
                 continue;
-            var rank = rankName(parts[^1]);
+            var rank = rankName(parts[^1], true);
             if (rank != int.MaxValue)
                 matches.Add((new(item.Source, folder.Length == 0 ? null : folder, parts[^1],
                     DirectoryDisplay(item.Source, folder), item), rank));
@@ -111,20 +111,38 @@ internal static class MediaSearch
     private static string DirectoryDisplay(Source source, string folder) =>
         folder.Length == 0 ? source.Name : source.Name + "/" + folder.TrimEnd('/');
 
-    private static Func<string, int> Matcher(string query, bool exact)
+    private static Func<string, bool, int> Matcher(string query, bool exact)
     {
+        if (exact)
+        {
+            var acceptsOmittedSuffix = FileSuffixIndex(query) < 0;
+            return (label, isFile) => RankExact(Normalize(label), query, acceptsOmittedSuffix && isFile);
+        }
+
         var pinyin = new Dictionary<string, (string Full, string Initials)>(StringComparer.Ordinal);
         var compact = string.Concat(Words.Matches(query).Select(match => match.Value));
-        return label => Rank(Normalize(label), query, compact, exact, pinyin);
+        return (label, _) => Rank(Normalize(label), query, compact, pinyin);
     }
 
-    private static int Rank(string value, string query, string compact, bool exact,
+    private static int RankExact(string value, string query, bool acceptsOmittedSuffix)
+    {
+        if (value.Equals(query, StringComparison.Ordinal))
+            return 0;
+        var suffix = acceptsOmittedSuffix ? FileSuffixIndex(value) : -1;
+        return suffix >= 0 && value.AsSpan(0, suffix).SequenceEqual(query.AsSpan()) ? 0 : int.MaxValue;
+    }
+
+    private static int FileSuffixIndex(string value)
+    {
+        var dot = value.LastIndexOf('.');
+        return dot > 0 && dot < value.Length - 1 ? dot : -1;
+    }
+
+    private static int Rank(string value, string query, string compact,
                             Dictionary<string, (string Full, string Initials)> pinyin)
     {
         if (value.Equals(query, StringComparison.Ordinal))
             return 0;
-        if (exact)
-            return int.MaxValue;
         if (value.StartsWith(query, StringComparison.Ordinal))
             return 1;
         if (value.Contains(query, StringComparison.Ordinal))

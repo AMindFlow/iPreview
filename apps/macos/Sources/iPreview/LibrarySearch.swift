@@ -80,15 +80,9 @@ struct GlobalSearchPanel: View {
         let revision: Int
     }
 
-    private var usesExactPrefix: Bool {
-        let first = query.first { !$0.isWhitespace }
-        return first == "@" || first == "＠"
-    }
-
     private var request: Request {
-        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let terms = usesExactPrefix ? text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines) : text
-        return Request(query: terms, mode: usesExactPrefix ? .exact : .fuzzy, directories: scope != .files,
+        let term = GlobalSearchTerm(query)
+        return Request(query: term.text, mode: term.mode, directories: scope != .files,
                        files: scope != .directories, revision: revision)
     }
 
@@ -188,6 +182,16 @@ struct GlobalSearchPanel: View {
                 .accessibilityIdentifier("global-search-query")
                 .onSubmit(confirmResult)
                 .onKeyPress(keys: [.upArrow, .downArrow, .escape], phases: .down, action: handleKey)
+            if request.mode == .exact {
+                Text("精确匹配")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.13), in: Capsule())
+                    .accessibilityIdentifier("global-search-match-mode")
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -207,9 +211,8 @@ struct GlobalSearchPanel: View {
                 scopeShortcut(.files, key: "1", label: "文件")
                 scopeShortcut(.directories, key: "2", label: "目录")
                 Spacer()
-                Text(usesExactPrefix ? "@ 精确匹配" : "以 @ 开头精确匹配")
-                    .foregroundStyle(usesExactPrefix ? Color.accentColor : Color.secondary)
-                    .accessibilityIdentifier("global-search-match-mode")
+                Text("输入 @ 后按空格精确匹配")
+                    .foregroundStyle(.secondary)
             }
             Text("↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
                 .padding(.leading, 4)

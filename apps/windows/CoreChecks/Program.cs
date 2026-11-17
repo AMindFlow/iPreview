@@ -65,21 +65,31 @@ try
             "natural file ordering");
         Check(MediaSearch.Find(items, "ＣＬＩＰ.mov", true, false, true).Count == 1,
             "compatibility and case normalization");
-        Check(MediaSearch.Find(items, "clip", true, false, true).Count == 0, "exact file includes extension");
+        Check(MediaSearch.Find(items, "clip", true, false, true).Single().FileName == "clip.MOV",
+            "exact file allows omitting the suffix");
+        Check(MediaSearch.Find(items, "clip.mp4", true, false, true).Count == 0, "explicit suffix must match");
+        Check(MediaSearch.Find(items, "clip.mo", true, false, true).Count == 0, "partial suffix does not match");
         Check(MediaSearch.Find(items, "bj", false, true, false).Count == 3, "directory pinyin initials");
         Check(MediaSearch.Find(items, "beijing", false, true, false).Count == 3, "directory full pinyin");
         Check(MediaSearch.Find(items, "beijing", false, false, true).Count == 0, "scope isolation");
         Check(MediaSearch.Find(items, "sumer", false, true, false).Count == 3, "directory typo");
-        var directories = MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@Summer 2"),
+        var directories = MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
             GlobalSearchScope.Directories);
         Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
             "global search shows a distinct directory hit");
-        var exactClip = GlobalSearchTerm.Parse("  ＠ ＣＬＩＰ.mov");
+        Check(GlobalSearchTerm.Parse("@") is { Text: "@", Exact: false }, "an at sign alone keeps fuzzy search");
+        Check(GlobalSearchTerm.Parse("@clip") is { Text: "@clip", Exact: false }, "the prefix requires a space");
+        Check(GlobalSearchTerm.Parse("@ ") is { Text.Length: 0, Exact: true }, "space activates exact mode before a name");
+        var exactClip = GlobalSearchTerm.Parse("  ＠　ＣＬＩＰ.mov");
         var exactFiles = MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
         Check(exactFiles.Count == 1 && exactFiles[0] is { Media.FileName: "clip.MOV", Folder: "Summer 2/" },
             "global exact prefix permits normalized file names and returns the containing directory");
-        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@clip"), GlobalSearchScope.All).Count == 0,
-            "global exact prefix only matches the full name");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip"), GlobalSearchScope.Files)
+                .Single().Name == "clip.MOV", "global exact file allows omitting the suffix");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip.png"), GlobalSearchScope.Files).Count == 0,
+            "global exact file respects an explicit suffix");
+        Check(MediaSearch.FindGlobal(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
+            "global exact directory requires its complete name");
         Check(MediaSearch.FindGlobal(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
             "global directory scope excludes matching files");
 
