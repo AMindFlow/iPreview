@@ -142,8 +142,13 @@ final class LibraryModel {
     }
 
     func remove(mediaID: Int64, from albumID: Int64) async {
+        await remove(mediaIDs: [mediaID], from: albumID)
+    }
+
+    @discardableResult
+    func remove(mediaIDs: [Int64], from albumID: Int64) async -> Bool {
         await change(rebuildSearch: false) { catalog in
-            try await catalog.remove(mediaIDs: [mediaID], from: albumID)
+            try await catalog.remove(mediaIDs: mediaIDs, from: albumID)
         }
     }
 

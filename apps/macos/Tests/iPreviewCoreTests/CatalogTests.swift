@@ -33,6 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try await checkPersistence()
+        try await checkBatchReferenceRemoval()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -116,6 +117,42 @@ struct CatalogChecks {
         try await reopened.remove(mediaIDs: [memberIDs[0]], from: albumID)
         let removed = try await reopened.snapshot()
         try verify(removed.albums.first?.mediaIDs == [memberIDs[1]])
+    }
+
+    static func checkBatchReferenceRemoval() async throws {
+        let fixtures = try Fixtures()
+        for path in ["First/01.png", "First/02.png", "Second/03.mov", "Second/04.png"] {
+            try fixtures.file(path)
+        }
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["First", "Second"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+
+        let before = try await catalog.snapshot()
+        let mediaIDs = before.media.map(\.id)
+        let selectedIDs = [mediaIDs[0], mediaIDs[2]]
+        let order = [mediaIDs[3], mediaIDs[0], mediaIDs[1], mediaIDs[2]]
+        let albumID = try await catalog.createAlbum(named: "Batch")
+        let otherAlbumID = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: order, to: albumID)
+        try await catalog.append(mediaIDs: selectedIDs, to: otherAlbumID)
+
+        let paths = try before.media.map { try $0.readableURL() }
+        let bytes = try paths.map { try Data(contentsOf: $0) }
+        let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+
+        try await catalog.remove(mediaIDs: selectedIDs, from: albumID)
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let after = try await reopened.snapshot()
+        try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[3], mediaIDs[1]])
+        try verify(after.albums.first { $0.id == otherAlbumID }?.mediaIDs == selectedIDs)
+        try verify(after.media == before.media)
+        let afterBytes = try paths.map { try Data(contentsOf: $0) }
+        let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        try verify(afterBytes == bytes && afterTimes == times)
     }
 
     static func checkSourceRename() async throws {

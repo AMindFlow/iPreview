@@ -53,6 +53,7 @@ struct MediaListRow: View {
     let selected: Bool
     let shaded: Bool
     let showPath: Bool
+    let checked: Bool?
     @ViewState private var facts: Facts?
 
     private struct Facts: Sendable {
@@ -63,6 +64,10 @@ struct MediaListRow: View {
     var body: some View {
         MediaListColumns {
             HStack(spacing: 8) {
+                if let checked {
+                    MediaSelectionMark(isChecked: checked)
+                        .frame(width: 17)
+                }
                 MediaThumbnail(media: media, revision: revision)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
@@ -110,6 +115,19 @@ struct MediaListRow: View {
         let suffix = URL(fileURLWithPath: media.name).pathExtension.uppercased()
         let format = suffix == "JPG" ? "JPEG" : suffix
         return "\(format) \(media.kind == .video ? "视频" : "图像")"
+    }
+}
+
+struct MediaSelectionMark: View {
+    let isChecked: Bool
+
+    var body: some View {
+        Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(isChecked ? .white : Color.libraryInk.opacity(0.65), Color.ipreviewAccent)
+            .background(.white, in: Circle())
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
