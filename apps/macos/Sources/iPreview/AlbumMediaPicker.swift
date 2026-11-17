@@ -4,7 +4,7 @@ import iPreviewCore
 struct AlbumMediaPicker: View {
     let album: VirtualAlbum
     let model: LibraryModel
-    private let creators: [(id: LibraryPage, title: String, source: Source)]
+    private let creators: [(id: LibraryPage, title: String, path: String)]
     private let mediaByCreator: [LibraryPage: [Media]]
     private let existing: Set<Int64>
 
@@ -24,10 +24,18 @@ struct AlbumMediaPicker: View {
         let available = model.snapshot.media.filter(\.isAvailable)
         mediaByCreator = Dictionary(grouping: available, by: Self.creatorPage)
         var seen: Set<LibraryPage> = []
-        creators = available.compactMap { item in
+        let options = available.compactMap { item -> (id: LibraryPage, title: String, path: String)? in
             let key = Self.creatorPage(for: item)
             guard seen.insert(key).inserted else { return nil }
-            return (key, item.creator, item.source)
+            let title = item.source.layout == .multiCreator
+                ? "\(item.creator) · \(item.source.name)"
+                : item.creator
+            return (key, title, item.source.path)
+        }
+        let duplicates = Dictionary(grouping: options, by: \.title).filter { $0.value.count > 1 }
+        creators = options.map { option in
+            let title = duplicates[option.title] == nil ? option.title : "\(option.title) · \(option.path)"
+            return (option.id, title, option.path)
         }
     }
 
@@ -104,25 +112,28 @@ struct AlbumMediaPicker: View {
     private func filters(_ folders: [(id: LibraryPage, title: String)], remaining: [Media]) -> some View {
         HStack(spacing: 18) {
             HStack(spacing: 7) {
-                Text("来源与创作者").foregroundStyle(.secondary)
+                Text("来源与创作者")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Picker("来源与创作者", selection: $creator) {
                     Text("请选择").tag(nil as LibraryPage?)
                     ForEach(creators, id: \.id) { item in
-                        let title = item.source.layout == .multiCreator
-                            ? "\(item.title) · \(item.source.name)"
-                            : item.title
-                        Text(title).tag(Optional(item.id))
+                        Text(item.title)
+                            .help(item.path)
+                            .tag(Optional(item.id))
                     }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .accessibilityLabel("来源与创作者")
+                .help(creators.first { $0.id == creator }?.path ?? "")
                 .frame(width: 150)
                 .disabled(creators.isEmpty)
             }
 
             HStack(spacing: 7) {
-                Text("来源专辑").foregroundStyle(.secondary)
+                Text("来源专辑")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Picker("来源专辑", selection: $folder) {
                     Text("请选择").tag(nil as LibraryPage?)
                     ForEach(folders, id: \.id) { item in
@@ -131,7 +142,6 @@ struct AlbumMediaPicker: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .accessibilityLabel("来源专辑")
                 .frame(width: 165)
                 .disabled(folders.isEmpty)
             }
