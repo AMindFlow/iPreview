@@ -8,13 +8,7 @@ struct LibraryView: View {
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
     @ViewState private var browseMode = MediaBrowseMode.icons
-    @ViewState private var query = ""
-    @ViewState private var mode = MatchMode.fuzzy
-    @ViewState private var searchDirectories = true
-    @ViewState private var searchFiles = true
-    @ViewState private var matches: (request: SearchRequest, items: [Media])?
-    @ViewState private var filtersShown = false
-    @ViewState private var globalSearchShown = false
+    @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
@@ -27,30 +21,25 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewSession?
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, title }
-    private var searching: Bool {
-        page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-    private var libraryOverlayShown: Bool { preview != nil || globalSearchShown }
+    enum Focus: Hashable { case browser, searchQuery, searchResults, title }
+
+    private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
+
     private var searchActions: LibrarySearchActions {
-        let canSearch = preview == nil && titleEdit == nil && editSourceName == nil && !creatingAlbum
-            && addAlbumMedia == nil && model.inspection == nil && model.error == nil
-        let canSearchCurrent = canSearch && page != .library && !globalSearchShown
-        return LibrarySearchActions(focusCurrent: canSearchCurrent ? focusCurrentSearch : nil,
-                                    focusGlobal: canSearch ? showGlobalSearch : nil)
+        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum,
+              addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
+            return LibrarySearchActions(show: nil)
+        }
+        return LibrarySearchActions(show: showSearch)
     }
 
     var body: some View {
         @Bindable var model = model
-        let request = searching ? SearchRequest(query: query, mode: mode, directories: searchDirectories, files: searchFiles,
-                                                revision: model.revision, page: page,
-                                                albumMembers: page.virtualMembers(in: model.snapshot)) : nil
-        let scope = model.contentScope(for: page, matches: request.map { request in
-            if let matches, matches.request == request { matches.items } else { [] }
-        })
+        let scope = model.contentScope(for: page)
 
         NavigationSplitView {
             sidebar
+                .accessibilityHidden(libraryOverlayShown)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
                 .toolbar(removing: preview == nil ? nil : .sidebarToggle)
         } detail: {
@@ -85,10 +74,12 @@ struct LibraryView: View {
             }
         }
         .overlay {
-            if globalSearchShown {
-                GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
-                                  focus: $focus,
-                                  dismiss: dismissGlobalSearch, open: openSearchResult) { item, results in
+            if let searchDomain {
+                LibrarySearchPanel(index: model.searchIndex, revision: model.revision, page: page,
+                                   albumMembers: Set(page.virtualMembers(in: model.snapshot)),
+                                   domain: searchDomain, isPreviewing: preview != nil, focus: $focus,
+                                   switchDomain: { showSearch(searchDomain == .global ? .current : .global) },
+                                   dismiss: dismissSearch, open: openSearchResult) { item, results in
                     open(item, among: results, layout: .list)
                 }
                 .allowsHitTesting(preview == nil)
@@ -99,12 +90,12 @@ struct LibraryView: View {
             if let preview {
                 GeometryReader { geometry in
                     let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard !globalSearchShown else { return nil }
+                        guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
                     MediaPreview(session: preview, thumbnail: thumbnail) { selection in
                         self.preview = nil
-                        if !globalSearchShown {
+                        if searchDomain == nil {
                             self.selected = selection
                             if thumbnail(selection) == nil { self.mediaToReveal = selection }
                             focusBrowser()
@@ -115,21 +106,6 @@ struct LibraryView: View {
             }
         }
         .task { await model.start() }
-        .onChange(of: searching) { removalSelection = nil }
-        .task(id: request) {
-            guard let request else {
-                matches = nil
-                return
-            }
-            let index = model.searchIndex
-            let result = await Task.detached(priority: .userInitiated) {
-                let members = Set(request.albumMembers)
-                return index.search(request.query, mode: request.mode, directories: request.directories, files: request.files) {
-                    request.page.contains($0, virtualMembers: members)
-                }
-            }.value
-            if !Task.isCancelled { matches = (request, result) }
-        }
         .sheet(item: $model.inspection) { inspection in
             ImportSheet(inspection: inspection) { candidate in
                 Task {
@@ -174,7 +150,7 @@ struct LibraryView: View {
                     sidebarRow("媒体库", icon: "photo.on.rectangle.angled", active: page == .library) {
                         navigate(.library)
                     }
-                    Button(action: showGlobalSearch) {
+                    Button { showSearch(.global) } label: {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 27, height: 27)
                     }
@@ -202,7 +178,7 @@ struct LibraryView: View {
 
                     ForEach(model.snapshot.sources) { source in
                         sidebarRow(source.name, icon: source.layout.sidebarSymbol,
-                                   active: page.sourceID == source.id && !searching,
+                                   active: page.sourceID == source.id,
                                    status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
                                    offline: !source.isAvailable) {
                             navigate(.source(source.id))
@@ -235,7 +211,7 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
 
                     ForEach(model.snapshot.albums) { album in
-                        sidebarRow(album.name, icon: "rectangle.stack", active: page == .virtual(album.id) && !searching) {
+                        sidebarRow(album.name, icon: "rectangle.stack", active: page == .virtual(album.id)) {
                             navigate(.virtual(album.id))
                         }
                     }
@@ -284,7 +260,7 @@ struct LibraryView: View {
     private func header(_ scope: ContentScope) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
-                if !searching, let parent = page.parent(in: scope.source?.layout) {
+                if let parent = page.parent(in: scope.source?.layout) {
                     Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
                     }
@@ -299,13 +275,9 @@ struct LibraryView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                if page != .library {
-                    searchField
-                        .frame(idealWidth: 265, maxWidth: 310)
-                }
             }
 
-            if searching || scope.source != nil || scope.virtualAlbum != nil || selected != nil {
+            if scope.source != nil || scope.virtualAlbum != nil || selected != nil {
                 HStack(spacing: 10) {
                     Text(scope.subtitle)
                         .font(.caption)
@@ -377,7 +349,7 @@ struct LibraryView: View {
                 editableTitle(scope.title, controlID: "virtual-album", hint: "双击标题重命名虚拟专辑") {
                     beginTitleEdit(.album(album))
                 }
-            } else if !model.isWorking, !searching, let source = scope.source, source.isAvailable,
+            } else if !model.isWorking, let source = scope.source, source.isAvailable,
                       let folder = page.indexedDirectory {
                 editableTitle(scope.title, controlID: "source-directory", hint: "双击标题重命名文件夹") {
                     let member = scope.items.first(where: \.isAvailable)
@@ -424,7 +396,7 @@ struct LibraryView: View {
                 Task {
                     if await model.remove(mediaIDs: mediaIDs, from: album.id) {
                         self.removalSelection = nil
-                        if page == .virtual(album.id), !searching { focusBrowser() }
+                        if page == .virtual(album.id), searchDomain == nil { focusBrowser() }
                     }
                 }
             }
@@ -453,46 +425,6 @@ struct LibraryView: View {
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            TextField("搜索当前范围", text: $query)
-                .textFieldStyle(.plain)
-                .focused($focus, equals: .search)
-                .accessibilityIdentifier("library-search")
-                .onSubmit { focusBrowser() }
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                    focus = .search
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("清除搜索")
-            }
-            Button {
-                filtersShown.toggle()
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("搜索筛选")
-            .help("搜索模式和范围")
-            .popover(isPresented: $filtersShown, arrowEdge: .bottom) {
-                LibrarySearchFilters(mode: $mode, directories: $searchDirectories, files: $searchFiles)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 36)
-        .libraryGlassSurface()
-    }
-
     @ViewBuilder
     private func content(_ scope: ContentScope) -> some View {
         if !scope.folders.isEmpty {
@@ -502,8 +434,6 @@ struct LibraryView: View {
         } else if model.isWorking {
             ProgressView()
                 .accessibilityLabel("正在读取媒体库")
-        } else if searching {
-            ContentUnavailableView("没有匹配媒体", systemImage: "magnifyingglass", description: Text("调整关键词或搜索范围。"))
         } else if let album = scope.virtualAlbum {
             VStack(spacing: 14) {
                 Button {
@@ -692,7 +622,7 @@ struct LibraryView: View {
                     ForEach(items) { item in
                         browseItem(item, among: items, album: album, layout: layout) {
                             MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                      showPath: searching, checked: removalSelection?.contains(item.id) == true)
+                                      checked: removalSelection?.contains(item.id) == true)
                         }
                     }
                 }
@@ -722,7 +652,7 @@ struct LibraryView: View {
                         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaListRow(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                             shaded: !index.isMultiple(of: 2), showPath: searching,
+                                             shaded: !index.isMultiple(of: 2),
                                              checked: removalSelection?.contains(item.id) == true)
                             }
                         }
@@ -744,14 +674,14 @@ struct LibraryView: View {
                         ForEach(items) { item in
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
-                                          showPath: searching, checked: removalSelection?.contains(item.id) == true)
+                                          checked: removalSelection?.contains(item.id) == true)
                                     .frame(width: 94)
                             }
                         }
                     }
                     .padding(.vertical, 5)
                 }
-                .frame(height: searching ? 101 : 88)
+                .frame(height: 88)
                 .previewScrollViewport()
                 .albumOrderViewport(albumOrder, album: album)
             }
@@ -806,7 +736,7 @@ struct LibraryView: View {
             }
             .id(item.id)
         if let album, album.mediaIDs.count > 1 {
-            let canReorder = adjusting && !model.isWorking && !searching
+            let canReorder = adjusting && !model.isWorking
             AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, adjusting: adjusting,
                            canReorder: canReorder, content: cell, avatar: avatar, click: click) {
                 selected = item.id
@@ -854,7 +784,7 @@ struct LibraryView: View {
     }
 
     private func chooseFolder() {
-        guard !model.isWorking, preview == nil, !globalSearchShown else { return }
+        guard !model.isWorking, preview == nil, searchDomain == nil else { return }
         let picker = NSOpenPanel()
         picker.title = "导入媒体目录"
         picker.prompt = "扫描"
@@ -880,45 +810,42 @@ struct LibraryView: View {
     private func navigate(_ page: LibraryPage, selecting folder: LibraryPage? = nil, selectingMedia mediaID: Int64? = nil) {
         self.page = page
         removalSelection = nil
-        query = ""
         selected = mediaID
         mediaToReveal = mediaID
         selectedFolder = folder
         focusBrowser()
     }
 
-    private func focusCurrentSearch() {
-        focus = .search
+    private func showSearch(_ domain: LibrarySearchDomain) {
+        if searchDomain == nil { focus = nil }
+        searchDomain = domain
+        focus = .searchQuery
     }
 
-    private func showGlobalSearch() {
-        if globalSearchShown {
-            focus = .globalSearchQuery
-        } else {
-            focus = nil
-            globalSearchShown = true
-        }
-    }
-
-    private func dismissGlobalSearch() {
-        globalSearchShown = false
+    private func dismissSearch() {
+        searchDomain = nil
         focusBrowser()
     }
 
     private func openSearchResult(_ result: GlobalSearchResult) {
-        globalSearchShown = false
+        let domain = searchDomain
+        searchDomain = nil
         switch result {
         case .directory(let directory):
             navigate(.directory(directory))
         case .file(let item):
-            let key = ContentScope.folderKey(item)
-            let destination = key.isEmpty ? LibraryPage.source(item.source.id) : .folder(item.source.id, key)
-            navigate(destination, selectingMedia: item.id)
+            if domain == .current, case .virtual = page {
+                navigate(page, selectingMedia: item.id)
+            } else {
+                let key = ContentScope.folderKey(item)
+                let destination = key.isEmpty ? LibraryPage.source(item.source.id) : .folder(item.source.id, key)
+                navigate(destination, selectingMedia: item.id)
+            }
         }
     }
 
     private func backKey(_ press: KeyPress, sourceLayout: iPreviewCore.Layout?) -> KeyPress.Result {
-        guard preview == nil, !searching, let parent = page.parent(in: sourceLayout) else { return .ignored }
+        guard preview == nil, let parent = page.parent(in: sourceLayout) else { return .ignored }
         if press.phase == .down { navigate(parent.page, selecting: page) }
         return .handled
     }
@@ -976,7 +903,7 @@ struct LibraryView: View {
 
     private func open(_ item: Media, among items: [Media], layout: BrowseLayout) {
         guard !model.isWorking else { return }
-        if !globalSearchShown { selected = item.id }
+        if searchDomain == nil { selected = item.id }
         preview = PreviewSession(items: items, selection: item.id, layout: layout)
     }
 
@@ -986,16 +913,6 @@ struct LibraryView: View {
             focus = .browser
         }
     }
-}
-
-private struct SearchRequest: Equatable, Sendable {
-    let query: String
-    let mode: MatchMode
-    let directories: Bool
-    let files: Bool
-    let revision: Int
-    let page: LibraryPage
-    let albumMembers: [Int64]
 }
 
 enum LibraryPage: Hashable, Sendable {
@@ -1067,17 +984,7 @@ struct ContentScope {
     let source: Source?
     let virtualAlbum: VirtualAlbum?
 
-    init(page: LibraryPage, snapshot: LibrarySnapshot, matches: [Media]?) {
-        if let matches {
-            title = "搜索结果"
-            subtitle = "\(matches.count) 项"
-            items = matches
-            folders = []
-            source = nil
-            virtualAlbum = nil
-            return
-        }
-
+    init(page: LibraryPage, snapshot: LibrarySnapshot) {
         let active = snapshot.media.filter(\.existsInSource)
         let source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
         self.source = source
@@ -1164,7 +1071,6 @@ private struct MediaTile: View {
     let media: Media
     let revision: Int
     let selected: Bool
-    let showPath: Bool
     let checked: Bool
 
     var body: some View {
@@ -1196,13 +1102,6 @@ private struct MediaTile: View {
                 .font(.caption.weight(selected ? .semibold : .regular))
                 .foregroundStyle(selected ? Color.ipreviewAccent : Color.libraryInk.opacity(0.72))
                 .lineLimit(1)
-            if showPath {
-                Text(media.directories.joined(separator: " / "))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
         }
         .contentShape(Rectangle())
     }

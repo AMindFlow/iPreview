@@ -93,22 +93,25 @@ public struct SearchIndex: Sendable {
         .map(\.media)
     }
 
-    public func globalSearch(_ query: String, mode: MatchMode, directories: Bool, files: Bool) -> [GlobalSearchResult] {
+    public func globalSearch(_ query: String, mode: MatchMode, directories: Bool, files: Bool,
+                             including include: (GlobalSearchResult) -> Bool = { _ in true }) -> [GlobalSearchResult] {
         let query = normalize(query)
         guard !query.isEmpty, directories || files else { return [] }
         let lookup = Name.Query(text: query)
         var matches: [(rank: Int, order: Int, result: GlobalSearchResult)] = []
         if directories {
             for (index, folder) in folders.enumerated() {
-                if let rank = folder.name.rank(lookup, mode: mode) {
-                    matches.append((rank, index, .directory(folder.directory)))
+                let result = GlobalSearchResult.directory(folder.directory)
+                if include(result), let rank = folder.name.rank(lookup, mode: mode) {
+                    matches.append((rank, index, result))
                 }
             }
         }
         if files {
             for (index, entry) in entries.enumerated() {
-                if let rank = entry.file.rank(lookup, mode: mode, isFile: true) {
-                    matches.append((rank, folders.count + index, .file(entry.media)))
+                let result = GlobalSearchResult.file(entry.media)
+                if include(result), let rank = entry.file.rank(lookup, mode: mode, isFile: true) {
+                    matches.append((rank, folders.count + index, result))
                 }
             }
         }

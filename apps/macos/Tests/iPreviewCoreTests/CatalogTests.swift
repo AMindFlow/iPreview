@@ -403,6 +403,11 @@ struct CatalogChecks {
             if case .file(let item) = hit { item } else { nil }
         }
         try verify(Set(globalFiles.map { $0.source.name }) == ["Library", "Elsewhere"])
+        let scopedFiles = index.globalSearch(exactTerm.text, mode: exactTerm.mode, directories: true, files: true) {
+            if case .file(let media) = $0 { return media.source.name == "Library" }
+            return false
+        }
+        try verify(scopedFiles == local.map(GlobalSearchResult.file))
         try verify(index.globalSearch("2", mode: .exact, directories: false, files: true).count == 2)
         try verify(index.globalSearch("2.jpg", mode: .exact, directories: false, files: true).isEmpty)
         try verify(index.globalSearch("frame.v2", mode: .exact, directories: false, files: true).count == 1)
@@ -414,6 +419,10 @@ struct CatalogChecks {
             throw CheckFailure(location: "global search must return the matching directory")
         }
         try verify(directory.components == ["Library", "Summer Library"])
+        try verify(index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false) {
+            if case .directory(let folder) = $0 { return folder.source.name == "Elsewhere" }
+            return false
+        }.isEmpty)
     }
 }
 
