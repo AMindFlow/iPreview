@@ -38,34 +38,38 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="12" RowSpacing="4">
+                <Grid RowSpacing="7">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
-                                VerticalAlignment="Center" Margin="0,0,9,0"
+                                VerticalAlignment="Top" Margin="0,2,9,0"
                                 AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
                             <FontIcon Glyph="&#xE72B;" FontSize="14" />
                         </Button>
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="SemiBold"
                                        Foreground="#18202D" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="CountLabel" Foreground="#576375" FontSize="12" />
                         </StackPanel>
                     </Grid>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <AutoSuggestBox x:Name="Query" Width="236" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
+                    <Grid Grid.Row="1" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4*" MaxWidth="236" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <AutoSuggestBox x:Name="Query" MinWidth="0" QueryIcon="Find" PlaceholderText="搜索目录或文件名"
                                         QuerySubmitted="SearchSubmitted" TextChanged="SearchEdited" AutomationProperties.Name="搜索媒体库" />
-                        <Button ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
+                        <Button Grid.Column="1" ToolTipService.ToolTip="搜索选项" AutomationProperties.Name="搜索选项">
                             <FontIcon Glyph="&#xE71C;" FontSize="16" />
                             <Button.Flyout>
                                 <Flyout Placement="BottomEdgeAlignedRight">
@@ -81,22 +85,20 @@
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
-                        <Button x:Name="ImportButton" Click="ChooseSource" Style="{StaticResource AccentButtonStyle}"
+                        <Button x:Name="ImportButton" Grid.Column="2" Click="ChooseSource" Style="{StaticResource AccentButtonStyle}"
                                 AutomationProperties.Name="导入文件夹">
                             <StackPanel Orientation="Horizontal" Spacing="7">
                                 <FontIcon Glyph="&#xE898;" FontSize="14" />
                                 <TextBlock Text="导入" />
                             </StackPanel>
                         </Button>
-                    </StackPanel>
-                    <TextBlock x:Name="CountLabel" Grid.Row="1" VerticalAlignment="Center"
-                               Foreground="#576375" FontSize="12" />
-                    <ComboBox x:Name="ViewModePicker" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Right" SelectedIndex="0" SelectionChanged="ChangeBrowseMode"
-                              AutomationProperties.Name="浏览视图" ToolTipService.ToolTip="浏览视图">
-                        <ComboBoxItem Content="图标" />
-                        <ComboBoxItem Content="列表" />
-                        <ComboBoxItem Content="画廊" />
-                    </ComboBox>
+                        <ComboBox x:Name="ViewModePicker" Grid.Column="4" SelectedIndex="0" SelectionChanged="ChangeBrowseMode"
+                                  AutomationProperties.Name="浏览视图" ToolTipService.ToolTip="浏览视图">
+                            <ComboBoxItem Content="图标" />
+                            <ComboBoxItem Content="列表" />
+                            <ComboBoxItem Content="画廊" />
+                        </ComboBox>
+                    </Grid>
                 </Grid>
 
                 <InfoBar x:Name="Notice" Grid.Row="1" IsClosable="True" />
