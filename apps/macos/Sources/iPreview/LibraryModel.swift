@@ -158,6 +158,17 @@ final class LibraryModel {
         }
     }
 
+    func move(mediaID: Int64, in album: VirtualAlbum, to index: Int) async {
+        await change(rebuildSearch: false) { catalog in
+            do {
+                try await catalog.move(mediaID: mediaID, in: album.id, to: index, expectedOrder: album.mediaIDs)
+            } catch AlbumOrderError.changed {
+                try await refresh(catalog, rebuildSearch: false)
+                throw AlbumOrderError.changed
+            }
+        }
+    }
+
     @discardableResult
     private func change(rebuildSearch: Bool = true, _ action: (Catalog) async throws -> Void) async -> Bool {
         guard let catalog, !isWorking else { return false }

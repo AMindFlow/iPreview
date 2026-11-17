@@ -33,7 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try await checkPersistence()
-        try await checkBatchReferenceRemoval()
+        try await checkOrderingAndBatchReferenceRemoval()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -119,7 +119,7 @@ struct CatalogChecks {
         try verify(removed.albums.first?.mediaIDs == [memberIDs[1]])
     }
 
-    static func checkBatchReferenceRemoval() async throws {
+    static func checkOrderingAndBatchReferenceRemoval() async throws {
         let fixtures = try Fixtures()
         for path in ["First/01.png", "First/02.png", "Second/03.mov", "Second/04.png"] {
             try fixtures.file(path)
@@ -143,11 +143,19 @@ struct CatalogChecks {
         let bytes = try paths.map { try Data(contentsOf: $0) }
         let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
 
+        try await catalog.move(mediaID: mediaIDs[3], in: albumID, to: 2, expectedOrder: order)
+        let reordered = try await catalog.snapshot()
+        try verify(reordered.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[0], mediaIDs[1], mediaIDs[3], mediaIDs[2]])
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        try await expectAsyncError(AlbumOrderError.self) {
+            try await otherWindow.move(mediaID: mediaIDs[0], in: albumID, to: 0, expectedOrder: order)
+        }
+
         try await catalog.remove(mediaIDs: selectedIDs, from: albumID)
 
         let reopened = try Catalog(directory: fixtures.databaseDirectory)
         let after = try await reopened.snapshot()
-        try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[3], mediaIDs[1]])
+        try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[1], mediaIDs[3]])
         try verify(after.albums.first { $0.id == otherAlbumID }?.mediaIDs == selectedIDs)
         try verify(after.media == before.media)
         let afterBytes = try paths.map { try Data(contentsOf: $0) }

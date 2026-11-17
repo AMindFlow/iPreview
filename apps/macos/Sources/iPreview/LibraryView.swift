@@ -20,6 +20,7 @@ struct LibraryView: View {
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
+    @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
@@ -587,18 +588,21 @@ struct LibraryView: View {
             let layout = browseMode.layout(gridColumns: grid.count)
             ScrollViewReader { reader in
                 mediaBrowser(items, album: album, grid: grid, layout: layout)
+                    .albumOrderOverlay(albumOrder, revision: model.revision)
                     .focusable()
                     .focusEffectDisabled()
                     .focused($focus, equals: .browser)
                     .onKeyPress(keys: [.space, .return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
                                 phases: [.down, .repeat]) { press in
                         if press.key == .escape {
+                            if albumOrder.cancel() { return .handled }
                             if removalSelection != nil {
                                 if press.phase == .down, !model.isWorking { removalSelection = nil }
                                 return .handled
                             }
                             return backKey(press, sourceLayout: sourceLayout)
                         }
+                        if albumOrder.drag != nil { return .handled }
 
                         let index = items.firstIndex(where: { $0.id == selected }) ?? 0
                         if press.key == .space {
@@ -664,6 +668,7 @@ struct LibraryView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
+            .albumOrderViewport(albumOrder, album: album)
         case .list:
             VStack(spacing: 0) {
                 MediaListColumns {
@@ -682,8 +687,7 @@ struct LibraryView: View {
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(items.indices, id: \.self) { index in
-                            let item = items[index]
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             browseItem(item, among: items, album: album, layout: layout) {
                                 MediaListRow(media: item, revision: model.revision, selected: isMediaSelected(item.id),
                                              shaded: !index.isMultiple(of: 2), showPath: searching,
@@ -694,6 +698,7 @@ struct LibraryView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 6)
                 }
+                .albumOrderViewport(albumOrder, album: album)
             }
         case .gallery:
             VStack(spacing: 10) {
@@ -714,15 +719,17 @@ struct LibraryView: View {
                     .padding(.vertical, 5)
                 }
                 .frame(height: searching ? 101 : 88)
+                .albumOrderViewport(albumOrder, album: album)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
         }
     }
 
+    @ViewBuilder
     private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, layout: BrowseLayout,
                                         @ViewBuilder label: () -> Label) -> some View {
-        label()
+        let cell = label()
             .overlay {
                 if removalSelection != nil, selected == item.id, focus == .browser {
                     RoundedRectangle(cornerRadius: 6)
@@ -765,6 +772,32 @@ struct LibraryView: View {
                 }
             }
             .id(item.id)
+        if let album, album.mediaIDs.count > 1 {
+            let enabled = removalSelection == nil && !model.isWorking && !searching
+            AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, enabled: enabled,
+                           content: cell) {
+                selected = item.id
+                focus = .browser
+            } commit: { expected, position in
+                Task { await model.move(mediaID: item.id, in: expected, to: position) }
+            }
+            .accessibilityActions {
+                if enabled {
+                    if item.id != album.mediaIDs.first {
+                        Button("上移") {
+                            Task { await model.move(mediaID: item.id, in: album.id, by: -1) }
+                        }
+                    }
+                    if item.id != album.mediaIDs.last {
+                        Button("下移") {
+                            Task { await model.move(mediaID: item.id, in: album.id, by: 1) }
+                        }
+                    }
+                }
+            }
+        } else {
+            cell
+        }
     }
 
     private func isMediaSelected(_ mediaID: Int64) -> Bool {

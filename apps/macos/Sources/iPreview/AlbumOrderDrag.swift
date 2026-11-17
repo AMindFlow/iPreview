@@ -1,0 +1,203 @@
+import SwiftUI
+import iPreviewCore
+
+private let albumOrderSpace = "album-order"
+
+@MainActor @Observable
+final class AlbumOrderDrag {
+    struct Drag {
+        let album: VirtualAlbum
+        let item: Media
+        let indices: [Int64: Int]
+        let sourceIndex: Int
+    }
+
+    private(set) var drag: Drag?
+    private(set) var destination: Int?
+    private(set) var pointer: CGPoint?
+    @ObservationIgnored private var frames: [Int64: CGRect] = [:]
+    @ObservationIgnored private var viewport: CGRect = .null
+    @ObservationIgnored private var cancelledID: Int64?
+
+    func record(_ frame: CGRect?, for item: Media) {
+        frames[item.id] = frame
+    }
+
+    func recordViewport(_ frame: CGRect) {
+        if viewport.size != frame.size { cancel() }
+        viewport = frame
+    }
+
+    func update(_ point: CGPoint, item: Media, album: VirtualAlbum) {
+        guard cancelledID != item.id else { return }
+        if drag == nil, let index = album.mediaIDs.firstIndex(of: item.id) {
+            let indices = Dictionary(uniqueKeysWithValues: album.mediaIDs.enumerated().map { ($1, $0) })
+            drag = Drag(album: album, item: item, indices: indices, sourceIndex: index)
+        }
+        guard let drag, drag.item.id == item.id else { return }
+        guard viewport.contains(point) else {
+            pointer = nil
+            destination = nil
+            return
+        }
+        pointer = point
+        destination = frames
+            .compactMap { id, frame -> (index: Int, score: CGFloat)? in
+                guard let index = drag.indices[id], frame.intersects(viewport) else { return nil }
+                let x = (point.x - frame.midX) / max(1, frame.width / 2)
+                let y = (point.y - frame.midY) / max(1, frame.height / 2)
+                return (index, x * x + y * y)
+            }
+            .min { $0.score == $1.score ? $0.index < $1.index : $0.score < $1.score }?.index
+    }
+
+    func displacement(for id: Int64) -> CGSize {
+        guard let drag, let destination, let index = drag.indices[id] else { return .zero }
+        let movedIndex: Int
+        if index == drag.sourceIndex {
+            movedIndex = destination
+        } else if drag.sourceIndex < index, index <= destination {
+            movedIndex = index - 1
+        } else if destination <= index, index < drag.sourceIndex {
+            movedIndex = index + 1
+        } else {
+            return .zero
+        }
+        guard let source = frames[id], let target = frames[drag.album.mediaIDs[movedIndex]] else { return .zero }
+        return CGSize(width: target.minX - source.minX, height: target.minY - source.minY)
+    }
+
+    @discardableResult
+    func cancel() -> Bool {
+        guard let drag else { return false }
+        clear()
+        cancelledID = drag.item.id
+        return true
+    }
+
+    func endGesture(for id: Int64) {
+        if cancelledID == id { cancelledID = nil }
+        if drag?.item.id == id { clear() }
+    }
+
+    private func clear() {
+        drag = nil
+        destination = nil
+        pointer = nil
+    }
+}
+
+extension View {
+    func albumOrderOverlay(_ order: AlbumOrderDrag, revision: Int) -> some View {
+        overlay(alignment: .topLeading) {
+            if let drag = order.drag, let point = order.pointer, let destination = order.destination {
+                VStack(alignment: .leading, spacing: 5) {
+                    MediaThumbnail(media: drag.item, revision: revision)
+                        .frame(height: 65)
+                        .clipShape(.rect(cornerRadius: 7))
+                    Text(drag.item.name).font(.caption).lineLimit(1)
+                    Text("位置 \(destination + 1)").font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(width: 115, alignment: .leading)
+                .padding(8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.12)))
+                .shadow(color: .black.opacity(0.24), radius: 9, y: 4)
+                .offset(x: point.x + 13, y: point.y + 10)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+        .coordinateSpace(name: albumOrderSpace)
+    }
+
+    func albumOrderViewport(_ order: AlbumOrderDrag, album: VirtualAlbum?) -> some View {
+        onGeometryChange(for: CGRect.self) { geometry in
+            album == nil ? .null : geometry.frame(in: .named(albumOrderSpace))
+        } action: { frame in
+            if album != nil { order.recordViewport(frame) }
+        }
+    }
+}
+
+struct AlbumOrderItem<Content: View>: View {
+    let order: AlbumOrderDrag
+    let album: VirtualAlbum
+    let item: Media
+    let mode: MediaBrowseMode
+    let enabled: Bool
+    let content: Content
+    let start: () -> Void
+    let commit: (VirtualAlbum, Int) -> Void
+
+    @GestureState private var tracking = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let placeholder = order.drag?.item.id == item.id && order.destination != nil
+        let alignment: Alignment = mode == .list ? .trailing : .bottomTrailing
+
+        ZStack {
+            content
+                .opacity(placeholder ? 0.22 : 1)
+                .overlay {
+                    if placeholder {
+                        RoundedRectangle(cornerRadius: mode == .list ? 6 : 12)
+                            .fill(Color.accentColor.opacity(0.10))
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .offset(order.displacement(for: item.id))
+        }
+        .overlay(alignment: alignment) {
+            if enabled {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 23, height: 22)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.primary.opacity(0.15)))
+                    .contentShape(Rectangle())
+                    .pointerStyle(tracking ? .grabActive : .grabIdle)
+                    .highPriorityGesture(gesture)
+                    .accessibilityHidden(true)
+                    .help("拖动排序")
+                    .padding(.trailing, mode == .list ? 2 : 5)
+                    .padding(.bottom, mode == .list ? 0 : 18)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: order.destination)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(albumOrderSpace)) } action: {
+            order.record($0, for: item)
+        }
+        .onChange(of: tracking) {
+            if !tracking { order.endGesture(for: item.id) }
+        }
+        .onDisappear {
+            order.record(nil, for: item)
+            order.endGesture(for: item.id)
+        }
+    }
+
+    private var gesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(albumOrderSpace))
+            .updating($tracking) { _, tracking, _ in tracking = true }
+            .onChanged { value in
+                let wasActive = order.drag != nil
+                order.update(value.location, item: item, album: album)
+                if !wasActive, order.drag != nil { start() }
+            }
+            .onEnded { value in
+                guard order.drag?.item.id == item.id else {
+                    order.endGesture(for: item.id)
+                    return
+                }
+                order.update(value.location, item: item, album: album)
+                if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
+                    commit(drag.album, target)
+                }
+                order.endGesture(for: item.id)
+            }
+    }
+}
