@@ -105,28 +105,20 @@
                 <InfoBar x:Name="Notice" Grid.Row="1" IsClosable="True" />
                 <Grid Grid.Row="2">
                     <Grid.Resources>
-                        <ResourceDictionary>
-                            <ResourceDictionary.ThemeDictionaries>
-                                <ResourceDictionary x:Key="Light">
-                                    <SolidColorBrush x:Key="MediaSelectionFill" Color="{StaticResource SystemAccentColorDark1}" />
-                                    <SolidColorBrush x:Key="MediaSelectionOutline" Color="#576783" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedPointerOverBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedPressedBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxPointerOverBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                    <StaticResource x:Key="ListViewItemCheckBoxPressedBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedPointerOverBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedPressedBrush" ResourceKey="MediaSelectionFill" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxPointerOverBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                    <StaticResource x:Key="GridViewItemCheckBoxPressedBorderBrush" ResourceKey="MediaSelectionOutline" />
-                                </ResourceDictionary>
-                            </ResourceDictionary.ThemeDictionaries>
-                        </ResourceDictionary>
+                        <SolidColorBrush x:Key="AlbumSelectionMarkFill" Color="{StaticResource SystemAccentColorDark1}" />
+                        <DataTemplate x:Key="AlbumSelectionMark">
+                            <Grid Width="17" Height="17">
+                                <Border Background="{ThemeResource SystemControlBackgroundAltHighBrush}" BorderThickness="1.5"
+                                        BorderBrush="{ThemeResource SystemControlForegroundBaseHighBrush}" CornerRadius="4" />
+                                <Border Background="{StaticResource AlbumSelectionMarkFill}" CornerRadius="4"
+                                        Visibility="{Binding AlbumRemovalTickVisibility}">
+                                    <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
                     </Grid.Resources>
-                    <GridView x:Name="Gallery" SelectionMode="Single" Margin="-5,0" Padding="0,0,4,0"
+                    <GridView x:Name="Gallery" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                              Margin="-5,0" Padding="0,0,4,0"
                               DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                               SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体项目">
                         <GridView.ItemsPanel>
@@ -149,6 +141,10 @@
                                                     HorizontalAlignment="Left" VerticalAlignment="Bottom">
                                                 <TextBlock Text="{Binding Label}" Foreground="White" FontSize="11" />
                                             </Border>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
+                                                            Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
+                                                            IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
+                                                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" />
                                         </Grid>
                                     </Border>
                                     <TextBlock Grid.Row="1" Text="{Binding FileName}" Foreground="#374458" FontSize="12"
@@ -175,7 +171,8 @@
                                        HorizontalAlignment="Right" />
                             <TextBlock Grid.Column="3" Text="种类" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </Grid>
-                        <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" SingleSelectionFollowsFocus="True"
+                        <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                                  SingleSelectionFollowsFocus="True"
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -200,13 +197,19 @@
                                         </Grid.ColumnDefinitions>
                                         <Grid ColumnSpacing="7">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <Border Width="20" Height="17" Background="#E4EAF4" CornerRadius="3">
-                                                <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
-                                                       DataContextChanged="UpdateThumbnail" />
-                                            </Border>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
+                                                                Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
+                                                                IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
+                                                                Margin="0,0,7,0" />
+                                                <Border Width="20" Height="17" Background="#E4EAF4" CornerRadius="3">
+                                                    <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
+                                                           DataContextChanged="UpdateThumbnail" />
+                                                </Border>
+                                            </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                        FontSize="12" VerticalAlignment="Center" />
                                         </Grid>
@@ -233,7 +236,8 @@
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
-                        <ListView x:Name="Filmstrip" Grid.Row="1" SelectionMode="Single" SingleSelectionFollowsFocus="True"
+                        <ListView x:Name="Filmstrip" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                                  SingleSelectionFollowsFocus="True"
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="画廊缩略图"
                                   ScrollViewer.HorizontalScrollMode="Enabled"
@@ -259,8 +263,14 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Border Background="#E4EAF4" CornerRadius="5">
-                                            <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
-                                                   DataContextChanged="UpdateThumbnail" />
+                                            <Grid>
+                                                <Image Stretch="UniformToFill" Loaded="LoadThumbnail"
+                                                       DataContextChanged="UpdateThumbnail" />
+                                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
+                                                                Visibility="{Binding AlbumRemovalMarkVisibility}" IsHitTestVisible="False"
+                                                                IsTabStop="False" AutomationProperties.AccessibilityView="Raw"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" />
+                                            </Grid>
                                         </Border>
                                         <TextBlock Grid.Row="1" Text="{Binding FileName}" FontSize="11"
                                                    TextTrimming="CharacterEllipsis" />

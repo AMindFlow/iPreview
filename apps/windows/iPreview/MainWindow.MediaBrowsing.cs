@@ -28,8 +28,20 @@ public sealed partial class MainWindow
         public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : "图像")}";
         public TileDetails Details { get; private set; } = TileDetails.Unavailable;
         public Task<TileDetails>? DetailsRequest { get; set; }
+        private bool? albumRemovalSelection;
+        public Visibility AlbumRemovalMarkVisibility => albumRemovalSelection.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility AlbumRemovalTickVisibility => albumRemovalSelection == true ? Visibility.Visible : Visibility.Collapsed;
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void SetAlbumRemovalSelection(bool? marked)
+        {
+            if (albumRemovalSelection == marked)
+                return;
+            albumRemovalSelection = marked;
+            PropertyChanged?.Invoke(this, new(nameof(AlbumRemovalMarkVisibility)));
+            PropertyChanged?.Invoke(this, new(nameof(AlbumRemovalTickVisibility)));
+        }
 
         public void SetDetails(TileDetails details)
         {
@@ -84,8 +96,13 @@ public sealed partial class MainWindow
             if (SelectingAlbumMembers)
             {
                 browser.SelectedItems.Clear();
-                foreach (var tile in tiles.Where(tile => albumRemovalIds.Contains(tile.Media.Id)))
-                    browser.SelectedItems.Add(tile);
+                foreach (var tile in tiles)
+                {
+                    var marked = albumRemovalIds.Contains(tile.Media.Id);
+                    tile.SetAlbumRemovalSelection(marked);
+                    if (marked)
+                        browser.SelectedItems.Add(tile);
+                }
             }
             else
             {

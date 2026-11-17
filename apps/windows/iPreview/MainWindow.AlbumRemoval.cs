@@ -43,6 +43,11 @@ public sealed partial class MainWindow
 
     private void ClearAlbumSelection()
     {
+        if (SelectingAlbumMembers)
+        {
+            foreach (var tile in tiles)
+                tile.SetAlbumRemovalSelection(null);
+        }
         selectionAlbum = null;
         selectionBeforeAlbumRemoval = null;
         albumRemovalIds.Clear();

@@ -593,11 +593,13 @@ public sealed partial class MainWindow : Window
             foreach (var tile in args.RemovedItems.OfType<Tile>())
             {
                 albumRemovalIds.Remove(tile.Media.Id);
+                tile.SetAlbumRemovalSelection(false);
                 changed = tile;
             }
             foreach (var tile in args.AddedItems.OfType<Tile>())
             {
                 albumRemovalIds.Add(tile.Media.Id);
+                tile.SetAlbumRemovalSelection(true);
                 changed = tile;
             }
         }
