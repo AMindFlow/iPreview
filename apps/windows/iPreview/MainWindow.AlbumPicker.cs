@@ -22,6 +22,7 @@ public sealed partial class MainWindow
             Title = $"添加到「{current.Label}」",
             PrimaryButtonText = "确认添加",
             CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false
         };
         staged.CanAddChanged += canAdd => dialog.IsPrimaryButtonEnabled = canAdd;
