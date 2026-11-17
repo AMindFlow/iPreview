@@ -7,10 +7,22 @@ struct PreviewRequest {
     let layout: BrowseLayout
 }
 
+struct PreviewOriginKey: PreferenceKey {
+    static let defaultValue: [Int64: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [Int64: Anchor<CGRect>], nextValue: () -> [Int64: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
 struct MediaPreview: View {
     let request: PreviewRequest
+    let sourceFrame: (Int64) -> CGRect?
     let close: (Int64) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewState private var expanded = false
+    @ViewState private var closingSelection: Int64?
     @ViewState private var index: Int
     @ViewState private var video = VideoPlayback()
     @ViewState private var scrubPosition: Double?
@@ -24,8 +36,9 @@ struct MediaPreview: View {
 
     private var media: Media { request.items[index] }
 
-    init(request: PreviewRequest, close: @escaping (Int64) -> Void) {
+    init(request: PreviewRequest, sourceFrame: @escaping (Int64) -> CGRect?, close: @escaping (Int64) -> Void) {
         self.request = request
+        self.sourceFrame = sourceFrame
         self.close = close
         _index = ViewState(initialValue: request.items.firstIndex(where: { $0.id == request.selection })!)
     }
@@ -33,28 +46,40 @@ struct MediaPreview: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
+            let window = CGRect(origin: .zero, size: size)
+            let destination = window.insetBy(dx: size.width * 0.12, dy: size.height * 0.14)
+            let thumbnail = sourceFrame(closingSelection ?? request.selection)?.intersection(window)
+            let origin = thumbnail.flatMap { $0.width >= 8 && $0.height >= 8 ? $0 : nil }
+            let fallback = destination.insetBy(dx: size.width * 0.10, dy: size.height * 0.10)
+            let frame = expanded || reduceMotion ? destination : origin ?? fallback
             ZStack {
                 Color(red: 0.050, green: 0.058, blue: 0.074)
+                    .opacity(expanded ? 1 : 0)
                     .onTapGesture { focus = .canvas }
                 neighbors(in: size)
+                    .opacity(expanded ? 1 : 0)
                 stage
-                    .frame(width: size.width * 0.76, height: size.height * 0.72)
-                    .clipShape(.rect(cornerRadius: 12))
                     .id(media.id)
+                    .frame(width: frame.width, height: frame.height)
+                    .clipShape(.rect(cornerRadius: expanded ? 12 : min(12, frame.height * 0.12)))
+                    .position(x: frame.midX, y: frame.midY)
+                    .opacity(expanded || (!reduceMotion && origin != nil) ? 1 : 0)
                     .accessibilityLabel(media.name)
                     .onTapGesture { focus = .canvas }
                 navigation
+                    .opacity(expanded ? 1 : 0)
             }
             .focusable()
             .focusEffectDisabled()
             .focused($focus, equals: .canvas)
             .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
-            .overlay(alignment: .top) { topControls }
+            .overlay(alignment: .top) { topControls.opacity(expanded ? 1 : 0) }
             .overlay(alignment: .bottom) {
                 if media.kind == .video, video.message == nil {
                     playerControls
                         .frame(width: min(size.width * 0.65, 620))
                         .padding(.bottom, 22)
+                        .opacity(expanded ? 1 : 0)
                 }
             }
         }
@@ -62,9 +87,12 @@ struct MediaPreview: View {
         .foregroundStyle(.white)
         .task {
             await Task.yield()
+            guard closingSelection == nil else { return }
             focus = .canvas
+            withAnimation(transitionAnimation) { expanded = true }
         }
         .task(id: media.id) {
+            guard closingSelection == nil else { return }
             scrubPosition = nil
             scrubbing = false
             if media.kind == .video {
@@ -77,16 +105,33 @@ struct MediaPreview: View {
             if message != nil { focus = .canvas }
         }
         .onDisappear { video.stop() }
+        .allowsHitTesting(closingSelection == nil)
         .accessibilityIdentifier("media-preview")
     }
 
+    private var transitionAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.24)
+    }
+
+    private func dismiss(returningTo selection: Int64) {
+        guard closingSelection == nil else { return }
+        closingSelection = selection
+        video.player.pause()
+        withAnimation(transitionAnimation, completionCriteria: .logicallyComplete) {
+            expanded = false
+        } completion: {
+            close(selection)
+        }
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        if closingSelection != nil { return .handled }
         switch press.key {
         case .escape:
-            if press.phase == .down { close(request.selection) }
+            if press.phase == .down { dismiss(returningTo: request.selection) }
         case .space:
             guard focus == .canvas else { return .ignored }
-            if press.phase == .down { close(media.id) }
+            if press.phase == .down { dismiss(returningTo: media.id) }
         case .tab:
             guard media.kind == .video, video.message == nil, video.duration > 0 else { return .ignored }
             if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
@@ -104,12 +149,12 @@ struct MediaPreview: View {
     private var topControls: some View {
         HStack {
             Button {
-                close(request.selection)
+                dismiss(returningTo: request.selection)
             } label: {
                 Image(systemName: "xmark")
                     .font(.callout.weight(.semibold))
                     .frame(width: 35, height: 35)
-                    .background(.thinMaterial, in: Circle())
+                    .previewGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
@@ -122,7 +167,7 @@ struct MediaPreview: View {
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .frame(height: 34)
-                .background(.thinMaterial, in: Capsule())
+                .previewGlass(in: Capsule())
                 .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, 19)
@@ -171,7 +216,7 @@ struct MediaPreview: View {
                 Image(systemName: icon)
                     .font(.body.weight(.medium))
                     .frame(width: 34, height: 34)
-                    .background(.thinMaterial, in: Circle())
+                    .previewGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
@@ -263,11 +308,22 @@ struct MediaPreview: View {
         .font(.caption)
         .padding(.horizontal, 15)
         .frame(height: 42)
-        .background(.regularMaterial, in: Capsule())
+        .previewGlass(in: Capsule(), interactive: true)
     }
 
     private func time(_ seconds: Double) -> String {
         let rounded = Int(seconds)
         return String(format: "%d:%02d", rounded / 60, rounded % 60)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func previewGlass(in shape: some Shape, interactive: Bool = false) -> some View {
+        if #available(macOS 26, *) {
+            glassEffect(.regular.interactive(interactive), in: shape)
+        } else {
+            background(.regularMaterial, in: shape)
+        }
     }
 }

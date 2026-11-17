@@ -21,3 +21,9 @@
 ## 设计决定
 
 - macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement。实际媒体暴露格式缺口时，优先用对应样例验证 LibVLC 双端嵌入、打包和许可证。libmpv 是备选，FFprobe 可用于元信息读取。新增随包分发的生产依赖需要批准，按具体二进制及组件核对许可与 codec 专利。
+
+## PRE-009 macOS Quick Look 式过渡
+
+- **要求** Space 打开媒体预览时，从浏览位置展开到预览画布。Space 关闭缩回当前媒体所在的位置，Esc 缩回原选中项的位置，遵从 [PRE-007](#pre-007-space-打开和关闭预览) 的选中规则。系统启用「减少动态效果」时改用淡入淡出。
+- **来源** [macOS 图库体验 #29](https://github.com/AMindFlow/iPreview/issues/29)，Finder 快速查看参考。
+- **验收** 从图标、列表、画廊各打开一次，核对放大与缩回的位置。在预览中切换媒体后分别用 Space 和 Esc 退出，核对焦点和选中项。复验视频方向键和进度条焦点。

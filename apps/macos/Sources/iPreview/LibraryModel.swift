@@ -104,10 +104,10 @@ final class LibraryModel {
         }
     }
 
-    func createAlbum(named name: String, with mediaID: Int64?) async -> Int64? {
+    func createAlbum(named name: String) async -> Int64? {
         var created: Int64?
         await change(rebuildSearch: false) { catalog in
-            let id = try await catalog.createAlbum(named: name, mediaID: mediaID)
+            let id = try await catalog.createAlbum(named: name)
             created = id
         }
         return created
@@ -128,10 +128,6 @@ final class LibraryModel {
                                                       expectedFolderMemberID: edit.expectedFolderMemberID)
         try await refresh(catalog, rebuildSearch: true)
         return path
-    }
-
-    func add(mediaID: Int64, to albumID: Int64) async {
-        await add(mediaIDs: [mediaID], to: albumID)
     }
 
     @discardableResult
@@ -158,6 +154,17 @@ final class LibraryModel {
         }
     }
 
+    func move(mediaID: Int64, in album: VirtualAlbum, to index: Int) async {
+        await change(rebuildSearch: false) { catalog in
+            do {
+                try await catalog.move(mediaID: mediaID, in: album.id, to: index, expectedOrder: album.mediaIDs)
+            } catch AlbumOrderError.changed {
+                try await refresh(catalog, rebuildSearch: false)
+                throw AlbumOrderError.changed
+            }
+        }
+    }
+
     @discardableResult
     private func change(rebuildSearch: Bool = true, _ action: (Catalog) async throws -> Void) async -> Bool {
         guard let catalog, !isWorking else { return false }
@@ -177,7 +184,7 @@ final class LibraryModel {
         let loaded = try await catalog.snapshot()
         if rebuildSearch {
             let media = loaded.media.filter(\.existsInSource)
-            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media) }.value
+            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media, sources: loaded.sources) }.value
             revision += 1
         }
         cachedScope = nil
