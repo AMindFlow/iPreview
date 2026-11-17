@@ -18,16 +18,16 @@ struct LibraryView: View {
     @ViewState private var revealSearchResult: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var editSourceName: SourceNameEdit?
-    @ViewState private var editDirectoryTitle: SourceNameEdit?
-    @ViewState private var directoryName = ""
-    @ViewState private var directoryNameSelection: TextSelection?
+    @ViewState private var titleEdit: LibraryTitleEdit?
+    @ViewState private var titleDraft = ""
+    @ViewState private var titleSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, albumTitle, directoryTitle }
+    enum Focus: Hashable { case browser, search, globalSearchQuery, globalSearchResults, title }
     private var searching: Bool {
         page != .library && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -331,55 +331,39 @@ struct LibraryView: View {
     @ViewBuilder
     private func browserTitle(_ scope: ContentScope) -> some View {
         Group {
-            if let album = scope.virtualAlbum {
-                VirtualAlbumTitle(album: album, disabled: model.isWorking || removalSelection != nil, focus: $focus,
-                                  rename: { name in await model.rename(albumID: album.id, to: name) },
-                                  finished: focusBrowser)
-                    .id(album.id)
-            } else if !searching, let source = scope.source, let folder = page.indexedDirectory {
-                if editDirectoryTitle?.folder == folder {
-                    TextField("文件夹名称", text: $directoryName, selection: $directoryNameSelection)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($focus, equals: .directoryTitle)
-                        .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
-                        .accessibilityIdentifier("source-directory-name")
-                        .background {
-                            RenameClickBoundary(onOutsideClick: finishDirectoryTitle)
-                                .allowsHitTesting(false)
-                        }
-                        .task {
-                            await Task.yield()
-                            focus = .directoryTitle
-                        }
-                        .onSubmit {
-                            finishDirectoryTitle()
-                            focusBrowser()
-                        }
-                        .onKeyPress(.escape) {
-                            editDirectoryTitle = nil
-                            focusBrowser()
-                            return .handled
-                        }
-                } else if !model.isWorking, source.isAvailable {
-                    let start = {
-                        let member = scope.items.first(where: \.isAvailable)
-                            ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
-                        let edit = SourceNameEdit(folder: folder, source: source, expectedMember: member)
-                        directoryName = edit.name
-                        directoryNameSelection = TextSelection(range: directoryName.startIndex..<directoryName.endIndex)
-                        editDirectoryTitle = edit
+            if let edit = titleEdit, page == edit.page {
+                TextField(edit.placeholder, text: $titleDraft, selection: $titleSelection)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($focus, equals: .title)
+                    .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
+                    .accessibilityIdentifier(edit.controlID + "-name")
+                    .background {
+                        RenameClickBoundary { finishTitleEdit(edit) }
+                            .allowsHitTesting(false)
                     }
-                    Text(scope.title)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2, perform: start)
-                        .accessibilityAddTraits([.isHeader, .isButton])
-                        .accessibilityAction { start() }
-                        .accessibilityHint("双击标题重命名文件夹")
-                        .accessibilityIdentifier("source-directory-title")
-                        .help("双击标题重命名文件夹")
-                } else {
-                    Text(scope.title)
-                        .accessibilityAddTraits(.isHeader)
+                    .task {
+                        await Task.yield()
+                        focus = .title
+                    }
+                    .onSubmit {
+                        finishTitleEdit(edit)
+                        focusBrowser()
+                    }
+                    .onKeyPress(.escape) {
+                        titleEdit = nil
+                        focusBrowser()
+                        return .handled
+                    }
+            } else if !model.isWorking, let album = scope.virtualAlbum, removalSelection == nil {
+                editableTitle(scope.title, controlID: "virtual-album", hint: "双击标题重命名虚拟专辑") {
+                    beginTitleEdit(.album(album))
+                }
+            } else if !model.isWorking, !searching, let source = scope.source, source.isAvailable,
+                      let folder = page.indexedDirectory {
+                editableTitle(scope.title, controlID: "source-directory", hint: "双击标题重命名文件夹") {
+                    let member = scope.items.first(where: \.isAvailable)
+                        ?? scope.folders.first(where: { $0.cover.isAvailable })?.cover
+                    beginTitleEdit(.directory(SourceNameEdit(folder: folder, source: source, expectedMember: member)))
                 }
             } else {
                 Text(scope.title)
@@ -389,6 +373,18 @@ struct LibraryView: View {
         .font(.system(size: 28, weight: .bold))
         .lineLimit(1)
         .truncationMode(.tail)
+    }
+
+    private func editableTitle(_ title: String, controlID: String, hint: String,
+                               start: @escaping () -> Void) -> some View {
+        Text(title)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: start)
+            .accessibilityAddTraits([.isHeader, .isButton])
+            .accessibilityAction { start() }
+            .accessibilityHint(hint)
+            .accessibilityIdentifier(controlID + "-title")
+            .help(hint)
     }
 
     @ViewBuilder
@@ -897,16 +893,28 @@ struct LibraryView: View {
         return .handled
     }
 
-    private func finishDirectoryTitle() {
-        guard let edit = editDirectoryTitle else { return }
-        editDirectoryTitle = nil
-        let name = directoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func beginTitleEdit(_ target: LibraryTitleEdit.Target) {
+        let edit = LibraryTitleEdit(page: page, target: target)
+        titleDraft = edit.name
+        titleSelection = TextSelection(range: titleDraft.startIndex..<titleDraft.endIndex)
+        titleEdit = edit
+    }
+
+    private func finishTitleEdit(_ edit: LibraryTitleEdit) {
+        guard titleEdit?.id == edit.id else { return }
+        titleEdit = nil
+        let name = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != edit.name else { return }
         Task {
-            do {
-                try await renameSourceItem(edit, to: name)
-            } catch {
-                model.error = error.localizedDescription
+            switch edit.target {
+            case .album(let album):
+                await model.rename(albumID: album.id, to: name)
+            case .directory(let source):
+                do {
+                    try await renameSourceItem(source, to: name)
+                } catch {
+                    model.error = error.localizedDescription
+                }
             }
         }
     }
