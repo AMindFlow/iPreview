@@ -6,11 +6,13 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 
 | 维度 | 生效规格 | 已登记的后续需求 |
 | --- | --- | --- |
-| 本地媒体库 | [LIB-001、LIB-002](../specs/official/library.md) | [旧版图库管理、多工作区、旧库迁移、两种视频作品、音频组织与旧版文件操作](../specs/spike/library.md) |
-| 键盘预览 | [PRE-001](../specs/official/preview.md) | [普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
+| 本地媒体库 | [LIB-001、LIB-002](../specs/official/library.md) | [旧版图库管理、多工作区、旧库迁移、创作者选择、两种视频作品、音频组织与旧版文件操作](../specs/spike/library.md) |
+| 键盘预览 | [PRE-001](../specs/official/preview.md) | [Space 关闭、普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
+| 专辑浏览 | | [图片点击响应、图标／列表／画廊视图](../specs/spike/browsing.md) |
 | 搜索 | [SRCH-001](../specs/official/search.md) | [旧版分类结果及标签搜索](../specs/spike/search.md) |
 | 专辑组织 | [ALB-001](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、批量组织与删除](../specs/spike/virtual-albums.md) |
 | 媒体元信息 | | [从文件提取及修改后写回](../specs/spike/metadata.md) |
+| 应用视觉标识 | | [眼睛主题应用图标](../specs/spike/appearance.md) |
 | 平台与分发 | [平台与技术栈](overview.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
 
 ## 设计要求
@@ -31,7 +33,7 @@ iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式
 
 | 范围 | 旧版路径 |
 | --- | --- |
-| 图片格式与旧版图库 | `src/server/utils.ts`、`docs/specs/official/library-browsing/spec.md` |
+| 图片格式、创作者入口与预览 | `src/server/utils.ts`、`src/web/app.tsx`、`test/e2e/library-browsing.spec.ts`、`docs/specs/official/library-browsing/spec.md` |
 | 专辑组织、搜索、备份 | `docs/specs/official/catalog-organization/spec.md` |
 | 源文件操作及局域网 | `docs/specs/official/safe-file-operations-and-lan/spec.md` |
 | 多工作区、安装及旧数据 | `docs/specs/spike/desktop-distribution/spec.md`、`docs/specs/spike/desktop-usability-followups/spec.md`、`docs/project/current-state.md` |
