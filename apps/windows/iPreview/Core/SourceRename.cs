@@ -9,6 +9,7 @@ internal static class SourceRename
 {
     private const string Kernel = "kernel32.dll";
     private const uint ReadAttributes = 0x80;
+    private const uint TraverseDirectory = 0x20;
     private const uint DeleteAccess = 0x10000;
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
@@ -81,11 +82,15 @@ internal static class SourceRename
         return (oldExists, newExists, otherSpellingExists);
     }
 
-    public static SafeFileHandle Open(Source source, string relativePath, bool isDirectory, bool forRename)
+    public static SafeFileHandle OpenParent(Source source, string relativePath) =>
+        Open(source, SplitPath(relativePath).Parent, isDirectory: true, forRename: false, pinDirectory: true);
+
+    public static SafeFileHandle Open(Source source, string relativePath, bool isDirectory, bool forRename,
+        bool pinDirectory = false)
     {
         var path = MediaFiles.ResolveIndexedPath(source, relativePath, isDirectory);
-        var access = ReadAttributes | (forRename ? DeleteAccess : 0u);
-        var share = FileShare.ReadWrite | (forRename ? FileShare.None : FileShare.Delete);
+        var access = ReadAttributes | (forRename ? DeleteAccess : 0u) | (pinDirectory ? TraverseDirectory : 0u);
+        var share = FileShare.ReadWrite | (forRename || pinDirectory ? FileShare.None : FileShare.Delete);
         var handle = CreateFileW(@"\\?\" + path, access, share, IntPtr.Zero, OpenExisting,
             BackupSemantics | OpenReparsePoint, IntPtr.Zero);
         try
@@ -133,14 +138,17 @@ internal static class SourceRename
         return Identity(handle);
     }
 
-    public static void Move(SafeFileHandle handle, string leaf)
+    public static void Move(SafeFileHandle handle, SafeFileHandle parent, string leaf)
     {
         ValidateName(leaf);
         var name = Encoding.Unicode.GetBytes(leaf);
+        var directoryOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.RootDirectory));
         var lengthOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.NameBytes));
         var nameOffset = (int)Marshal.OffsetOf<RenameInfo>(nameof(RenameInfo.FirstCharacter));
         var buffer = new byte[Math.Max(Marshal.SizeOf<RenameInfo>(), nameOffset + name.Length + sizeof(char))];
-        // A zero-filled header disallows replacement and leaves RootDirectory NULL.
+        // Keep the no-replacement flag zero and resolve the basename against the pinned parent.
+        var directory = parent.DangerousGetHandle();
+        MemoryMarshal.Write(buffer.AsSpan(directoryOffset, IntPtr.Size), in directory);
         BitConverter.TryWriteBytes(buffer.AsSpan(lengthOffset, sizeof(uint)), (uint)name.Length);
         name.CopyTo(buffer, nameOffset);
         if (!SetFileInformationByHandle(handle, FileRenameInfo, buffer, (uint)buffer.Length))

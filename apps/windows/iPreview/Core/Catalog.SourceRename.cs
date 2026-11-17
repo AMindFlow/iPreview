@@ -25,6 +25,7 @@ internal sealed partial class Catalog
             if (!source.Available)
                 throw new IOException("来源离线，无法重命名。");
             SourceRename.RequireStableIdentity(source);
+            using var parent = SourceRename.OpenParent(source, oldPath);
             EnsureRenameLocation(source, oldPath, newPath);
             target = SourceRename.Open(source, oldPath, isDirectory, forRename: true);
             var pending = new PendingRename(sourceId, oldPath, newPath, isDirectory, SourceRename.Identity(target));
@@ -53,7 +54,7 @@ internal sealed partial class Catalog
                     EnsureSeparateRoots(source, pending);
                     EnsureRenameLocation(source, oldPath, newPath);
                     SourceRename.AssertPath(target, source, oldPath, isDirectory);
-                    SourceRename.Move(target, SourceRename.SplitPath(newPath).Leaf);
+                    SourceRename.Move(target, parent, SourceRename.SplitPath(newPath).Leaf);
                     moved = true;
                     var location = SourceRename.Inspect(source, oldPath, newPath);
                     if (location != (false, true, false))
@@ -67,7 +68,7 @@ internal sealed partial class Catalog
             {
                 try
                 {
-                    database.InTransaction(() => ReverseSourceRename(source, pending, target, moved));
+                    database.InTransaction(() => ReverseSourceRename(source, pending, target, parent, moved));
                 }
                 catch (Exception recovery) when (RenameFailure(recovery))
                 {
@@ -200,7 +201,8 @@ internal sealed partial class Catalog
         }
     }
 
-    private void ReverseSourceRename(Source source, PendingRename pending, SafeFileHandle target, bool moved)
+    private void ReverseSourceRename(Source source, PendingRename pending, SafeFileHandle target, SafeFileHandle parent,
+        bool moved)
     {
         if (ReadPendingRename() != pending)
             return;
@@ -209,7 +211,7 @@ internal sealed partial class Catalog
         if (moved && location == (false, true, false))
         {
             SourceRename.AssertPath(target, source, pending.After, pending.Directory);
-            SourceRename.Move(target, SourceRename.SplitPath(pending.Before).Leaf);
+            SourceRename.Move(target, parent, SourceRename.SplitPath(pending.Before).Leaf);
             location = SourceRename.Inspect(source, pending.Before, pending.After);
         }
         if (!location.OldExists || moved && (location.NewExists || location.OtherSpellingExists))
