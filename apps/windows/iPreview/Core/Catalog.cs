@@ -84,12 +84,15 @@ internal sealed partial class Catalog : IDisposable
         return snapshot!;
     }
 
-    public long Import(string path, Layout layout, List<ScannedMedia> files)
+    public long DataVersion => database.Query("PRAGMA data_version;", row => row.Number(0)).Single();
+
+    public long Import(string path, Layout layout, List<ScannedMedia> files, long? scanVersion = null)
     {
         CheckSourcePath(path);
         long id = 0;
         database.InTransaction(() =>
         {
+            EnsureCurrentScan(scanVersion);
             EnsureImportOutsidePendingRename(path);
             var existing = database.Query("SELECT id, path FROM sources;", row => (row.Number(0), row.Text(1)))
                 .Find(source => StringComparer.OrdinalIgnoreCase.Equals(source.Item2, path));
@@ -109,10 +112,11 @@ internal sealed partial class Catalog : IDisposable
         return id;
     }
 
-    public void Rescan(long source, List<ScannedMedia>? files)
+    public void Rescan(long source, List<ScannedMedia>? files, long? scanVersion = null)
     {
         database.InTransaction(() =>
         {
+            EnsureCurrentScan(scanVersion);
             if (HasPendingRename(source))
                 throw new InvalidOperationException("此来源有待恢复的重命名，暂时无法重新扫描。");
             if (files is null)
@@ -120,6 +124,12 @@ internal sealed partial class Catalog : IDisposable
             else
                 ReplaceScan(source, files);
         });
+    }
+
+    private void EnsureCurrentScan(long? scanVersion)
+    {
+        if (scanVersion is long version && version != DataVersion)
+            throw new InvalidOperationException("另一个 iPreview 窗口在扫描期间修改了媒体库，请重试。");
     }
 
     private void ReplaceScan(long source, List<ScannedMedia> files)

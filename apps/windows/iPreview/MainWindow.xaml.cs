@@ -354,6 +354,7 @@ public sealed partial class MainWindow : Window
             if (folder is null)
                 return;
             Database.CheckSourcePath(folder.Path);
+            var scanVersion = Database.DataVersion;
             var summary = await Task.Run(() => MediaFiles.Probe(folder.Path));
             if (summary.Options.Count == 0)
             {
@@ -387,7 +388,7 @@ public sealed partial class MainWindow : Window
 
             if (result == ContentDialogResult.Primary)
             {
-                var imported = Database.Import(summary.Path, layout, summary.Options[layout]);
+                var imported = Database.Import(summary.Path, layout, summary.Options[layout], scanVersion);
                 searching = false;
                 Query.Text = "";
                 current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
@@ -425,6 +426,7 @@ public sealed partial class MainWindow : Window
                     continue;
                 }
                 List<ScannedMedia>? scan = null;
+                var scanVersion = Database.DataVersion;
                 try
                 {
                     scan = await Task.Run(() => MediaFiles.Scan(source.Path, source.Layout));
@@ -433,7 +435,7 @@ public sealed partial class MainWindow : Window
                 {
                     offline.Add(source.Name);
                 }
-                Database.Rescan(source.Id, scan);
+                Database.Rescan(source.Id, scan, scanVersion);
             }
             if (pending.Count > 0)
             {

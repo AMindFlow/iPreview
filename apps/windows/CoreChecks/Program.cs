@@ -185,7 +185,14 @@ static void CheckSourceRename(string work)
         Check(renamed == "Maker/Album/Front.jpg" &&
             Directory.EnumerateFiles(Path.Combine(sourcePath, "Maker/Album")).Any(item => Path.GetFileName(item) == "Front.jpg"),
             "case-only rename preserves exact disk spelling and extension");
-        renamed = catalog.RenameSourceItem(sourceId, renamed, "新版封面", false);
+        using (var replica = new Catalog(data))
+        {
+            var staleVersion = replica.DataVersion;
+            var staleFiles = MediaFiles.Scan(sourcePath, Layout.MultiCreator);
+            renamed = catalog.RenameSourceItem(sourceId, renamed, "新版封面", false);
+            Reject<InvalidOperationException>(() => replica.Rescan(sourceId, staleFiles, staleVersion),
+                "a scan collected before another window renames cannot reinsert obsolete paths");
+        }
         Check(File.ReadAllText(Path.Combine(sourcePath, renamed)) == "fixture", "file bytes preserved");
         Check(catalog.RenameSourceItem(sourceId, "Maker/Album", "New Album", true) == "Maker/New Album",
             "indexed album folder renamed");
