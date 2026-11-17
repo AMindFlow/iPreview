@@ -14,7 +14,8 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TreeView x:Name="NavTree" Grid.RowSpan="2" SelectionMode="Single" ItemInvoked="Navigate" />
+                <TreeView x:Name="NavTree" Grid.RowSpan="2" SelectionMode="Single" ItemInvoked="Navigate"
+                          PreviewKeyDown="NavigationTreeKeyDown" />
                 <StackPanel Grid.Row="2" Spacing="6">
                     <Button x:Name="CreateAlbumButton" Click="CreateAlbum" HorizontalAlignment="Stretch" AutomationProperties.Name="新建虚拟专辑">
                         <StackPanel Orientation="Horizontal" Spacing="7">

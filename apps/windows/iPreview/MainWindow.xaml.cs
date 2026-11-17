@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window
             dataDirectory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPreview");
             catalog = new Catalog(dataDirectory);
             Reload();
+            if (catalog.RenameRecoveryNotice is { } warning)
+                ShowNotice("有待恢复的重命名", warning, InfoBarSeverity.Warning);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -188,7 +190,7 @@ public sealed partial class MainWindow : Window
             NavigateFromContent(target);
     }
 
-    private void SourceFoldersKeyDown(object sender, KeyRoutedEventArgs args)
+    private async void SourceFoldersKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key is VirtualKey.Left or VirtualKey.Right)
         {
@@ -202,30 +204,37 @@ public sealed partial class MainWindow : Window
                 NavigateToSourceParent();
             return;
         }
-        if (args.Key != VirtualKey.Enter)
+        if (args.Key is not (VirtualKey.Enter or VirtualKey.Space))
             return;
         args.Handled = true;
         if (!args.KeyStatus.WasKeyDown &&
             FocusManager.GetFocusedElement(Root.XamlRoot) is ListViewItem item &&
             SourceFolders.ItemFromContainer(item) is Navigation target)
-            NavigateFromContent(target);
+        {
+            if (args.Key == VirtualKey.Space)
+                NavigateFromContent(target);
+            else
+                await RenameIndexedFolder(target, fromSidebar: false);
+        }
     }
 
-    private Source? MultiCreatorSource => !searching && current.Source is long id &&
-        sources[id] is { Layout: Layout.MultiCreator } source ? source : null;
+    private Source? VisibleSource => !searching && current.Source is long id ? sources[id] : null;
 
     private void GoBackToSourceFolder(object sender, RoutedEventArgs args) => NavigateToSourceParent();
 
     private void NavigateToSourceParent()
     {
-        if (MultiCreatorSource is not { } source || current.Folder is not { } path)
+        if (VisibleSource is not { } source || current.Folder is not { } path)
             return;
-        var separator = path.IndexOf('/');
-        var creator = path[..separator];
-        var target = separator == path.Length - 1
+        var (parent, _) = SourceRename.SplitPath(path.TrimEnd('/'));
+        var target = parent.Length == 0
             ? new Navigation(source.Name, Source: source.Id)
-            : new Navigation(creator, Source: source.Id, Folder: path[..(separator + 1)]);
-        NavigateFromContent(target, restoringFolder: path);
+            : new Navigation(SourceRename.SplitPath(parent).Leaf, Source: source.Id, Folder: parent + "/");
+        NavigateTo(target);
+        if (browsingFolders)
+            FocusSourceFolder(path);
+        else
+            FocusSidebarFolder(source.Id, path);
     }
 
     private void NavigateFromContent(Navigation target, string? restoringFolder = null)
@@ -246,11 +255,16 @@ public sealed partial class MainWindow : Window
 
     private bool ShowSourceFolders()
     {
-        var isMultiCreator = MultiCreatorSource is not null;
+        var source = VisibleSource;
         var path = current.Folder;
         var atAlbum = path is not null && path.IndexOf('/') != path.Length - 1;
-        var browseFolders = isMultiCreator && !atAlbum;
-        BackToSourceFolder.Visibility = isMultiCreator && path is not null ? Visibility.Visible : Visibility.Collapsed;
+        var browseFolders = source?.Layout switch
+        {
+            Layout.MultiCreator => !atAlbum,
+            Layout.Creator => path is null,
+            _ => false
+        };
+        BackToSourceFolder.Visibility = source is not null && path is not null ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.Visibility = browseFolders ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.ItemsSource = browseFolders
             ? FindNavigationNode(NavTree.RootNodes, current)?.Children.Select(node => (Navigation)node.Content).ToList()
@@ -287,8 +301,9 @@ public sealed partial class MainWindow : Window
         tiles = items.Select((item, index) => new Tile(item, index)).ToList();
         RefreshMediaBrowser(selected);
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
-            ? $"{SourceFolders.Items.Count}{(current.Folder is null ? " 位创作者" : " 个专辑")}"
+            ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
             : $"{tiles.Count} 项" + (current.Source is null && current.Album is null && !searching
                 ? $" · {sources.Count} 个来源" : "");
         if (!searching && current.Source is long source && !sources[source].Available)
@@ -298,7 +313,7 @@ public sealed partial class MainWindow : Window
             ? "从媒体库选取图片或视频，加入此专辑。" : sources.Count == 0
                 ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
         if (browsingFolders)
-            EmptyLabel.Text = current.Folder is null ? "没有已索引的创作者。" : "没有已索引的专辑。";
+            EmptyLabel.Text = choosingCreator ? "没有已索引的创作者。" : "没有已索引的专辑。";
         var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
         EmptyLabel.Visibility = visibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
@@ -345,6 +360,7 @@ public sealed partial class MainWindow : Window
             if (folder is null)
                 return;
             Database.CheckSourcePath(folder.Path);
+            var scanVersion = Database.DataVersion;
             var summary = await Task.Run(() => MediaFiles.Probe(folder.Path));
             if (summary.Options.Count == 0)
             {
@@ -378,7 +394,7 @@ public sealed partial class MainWindow : Window
 
             if (result == ContentDialogResult.Primary)
             {
-                var imported = Database.Import(summary.Path, layout, summary.Options[layout]);
+                var imported = Database.Import(summary.Path, layout, summary.Options[layout], scanVersion);
                 searching = false;
                 Query.Text = "";
                 current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
@@ -407,9 +423,16 @@ public sealed partial class MainWindow : Window
         {
             List<Source> scanSources = current.Source is long id ? [sources[id]] : sources.Values.ToList();
             var offline = new List<string>();
+            var pending = new List<string>();
             foreach (var source in scanSources)
             {
+                if (Database.HasPendingRename(source.Id))
+                {
+                    pending.Add(source.Name);
+                    continue;
+                }
                 List<ScannedMedia>? scan = null;
+                var scanVersion = Database.DataVersion;
                 try
                 {
                     scan = await Task.Run(() => MediaFiles.Scan(source.Path, source.Layout));
@@ -418,9 +441,16 @@ public sealed partial class MainWindow : Window
                 {
                     offline.Add(source.Name);
                 }
-                Database.Rescan(source.Id, scan);
+                Database.Rescan(source.Id, scan, scanVersion);
             }
-            if (offline.Count == 0)
+            if (pending.Count > 0)
+            {
+                var warning = $"待恢复重命名：{string.Join("、", pending)}";
+                if (offline.Count > 0)
+                    warning += $"。离线：{string.Join("、", offline)}";
+                ShowNotice("部分来源暂未重扫", warning, InfoBarSeverity.Warning);
+            }
+            else if (offline.Count == 0)
                 Notice.IsOpen = false;
             else
                 ShowNotice("部分来源不可用", string.Join("、", offline), InfoBarSeverity.Warning);
@@ -643,13 +673,21 @@ public sealed partial class MainWindow : Window
     private void PreviewSelected(object sender, RoutedEventArgs args) => OpenPreview();
     private void PreviewDoubleTapped(object sender, DoubleTappedRoutedEventArgs args) => OpenPreview();
 
-    private void GalleryKeyDown(object sender, KeyRoutedEventArgs args)
+    private async void GalleryKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Key == VirtualKey.Escape && MultiCreatorSource is not null && current.Folder is not null)
+        if (args.Key == VirtualKey.Escape && VisibleSource is not null && current.Folder is not null)
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
                 NavigateToSourceParent();
+            return;
+        }
+        if (args.Key == VirtualKey.Enter)
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown && Selection is { } tile)
+                await RenameSourceItem(tile.Media.Source.Id, tile.Media.RelativePath, tile.Media.Available,
+                    isDirectory: false, expectedMediaId: tile.Media.Id);
             return;
         }
         if (args.Key != VirtualKey.Space)
