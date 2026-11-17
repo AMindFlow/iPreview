@@ -104,6 +104,28 @@
 
                 <InfoBar x:Name="Notice" Grid.Row="1" IsClosable="True" />
                 <Grid Grid.Row="2">
+                    <Grid.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Light">
+                                    <SolidColorBrush x:Key="MediaSelectionFill" Color="{StaticResource SystemAccentColorDark1}" />
+                                    <SolidColorBrush x:Key="MediaSelectionOutline" Color="#576783" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedPointerOverBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxSelectedPressedBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxPointerOverBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                    <StaticResource x:Key="ListViewItemCheckBoxPressedBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedPointerOverBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxSelectedPressedBrush" ResourceKey="MediaSelectionFill" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxPointerOverBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                    <StaticResource x:Key="GridViewItemCheckBoxPressedBorderBrush" ResourceKey="MediaSelectionOutline" />
+                                </ResourceDictionary>
+                            </ResourceDictionary.ThemeDictionaries>
+                        </ResourceDictionary>
+                    </Grid.Resources>
                     <GridView x:Name="Gallery" SelectionMode="Single" Margin="-5,0" Padding="0,0,4,0"
                               DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                               SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体项目">
