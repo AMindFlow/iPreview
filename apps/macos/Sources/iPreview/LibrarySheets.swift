@@ -102,18 +102,21 @@ struct SourceNameEdit: Identifiable {
     let source: Source
     let path: String
     let mediaID: Int64?
+    let expectedFolderMemberID: Int64?
     let folder: LibraryPage?
 
     init(media: Media) {
         source = media.source
         path = media.relativePath
         mediaID = media.id
+        expectedFolderMemberID = nil
         folder = nil
     }
 
     init(folder: LibraryFolder) {
         source = folder.cover.source
         mediaID = nil
+        expectedFolderMemberID = folder.cover.isAvailable ? folder.cover.id : nil
         self.folder = folder.page
         switch folder.page {
         case .creator(_, let path), .folder(_, let path):

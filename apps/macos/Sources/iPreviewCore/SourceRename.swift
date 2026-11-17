@@ -44,7 +44,9 @@ struct SourceRename {
 
     private let pendingSQL = "SELECT source_id, old_path, new_path, is_directory, file_identity FROM pending_rename"
 
-    func rename(sourceID: Int64, path: String, mediaID: Int64?, to name: String) throws -> String {
+    func rename(sourceID: Int64, path: String, mediaID: Int64?, to name: String,
+                expectedFolderMemberID: Int64?) throws -> String {
+        let expectedID = mediaID ?? expectedFolderMemberID
         let newName = try validatedName(name)
         let oldParts = path.components(separatedBy: "/")
         guard oldParts.allSatisfy(isSafeComponent) else { throw SourceRenameError.unavailable }
@@ -70,7 +72,7 @@ struct SourceRename {
             }
             let intent = RenameIntent(sourceID: sourceID, oldPath: path, newPath: newPath,
                                       isDirectory: mediaID == nil, identity: identity)
-            _ = try checkedChanges(for: intent, mediaID: mediaID)
+            _ = try checkedChanges(for: intent, expectedID: expectedID)
             if literalEqual(path, newPath) { return nil }
             try checkOverlaps(source: source, intent: intent)
             try parent.checkDestination(old: oldName, new: newLeaf, beingMoved: identity, directory: intent.isDirectory)
@@ -89,7 +91,7 @@ struct SourceRename {
                 let source = try availableSource(id: sourceID)
                 try checkOverlaps(source: source, intent: intent)
                 try parent.verifyLocation(root: source.path, components: oldParts.dropLast())
-                let changes = try checkedChanges(for: intent, mediaID: mediaID)
+                let changes = try checkedChanges(for: intent, expectedID: expectedID)
                 guard try parent.state(of: intent) == .original else { throw SourceRenameError.pending }
                 try parent.checkDestination(old: intent.oldName, new: intent.newName,
                                             beingMoved: intent.identity, directory: intent.isDirectory)
@@ -135,7 +137,7 @@ struct SourceRename {
                 try clear()
             case .final:
                 try checkOverlaps(source: source, intent: intent)
-                let changes = try checkedChanges(for: intent, mediaID: nil)
+                let changes = try checkedChanges(for: intent, expectedID: nil)
                 try parent.synchronize()
                 try update(changes)
                 try clear()
@@ -199,7 +201,7 @@ struct SourceRename {
         }
     }
 
-    private func checkedChanges(for intent: RenameIntent, mediaID: Int64?) throws -> [(id: Int64, path: String)] {
+    private func checkedChanges(for intent: RenameIntent, expectedID: Int64?) throws -> [(id: Int64, path: String)] {
         let rows = try database.select("SELECT id, relative_path, available FROM media WHERE source_id = ?",
                                        [.integer(intent.sourceID)]) { row in
             (id: sqlite3_column_int64(row, 0), path: textColumn(row, 1), available: sqlite3_column_int(row, 2) == 1)
@@ -208,7 +210,7 @@ struct SourceRename {
         let affected = rows.filter { row in
             intent.isDirectory ? row.path.utf8.starts(with: oldPrefix.utf8) : literalEqual(row.path, intent.oldPath)
         }
-        guard affected.contains(where: { $0.available && (mediaID == nil || $0.id == mediaID) }) else {
+        guard affected.contains(where: { $0.available && (expectedID == nil || $0.id == expectedID) }) else {
             throw SourceRenameError.unavailable
         }
         let affectedIDs = Set(affected.map(\.id))

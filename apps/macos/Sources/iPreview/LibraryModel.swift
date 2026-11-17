@@ -124,7 +124,8 @@ final class LibraryModel {
         isWorking = true
         defer { isWorking = false }
         let path = try await catalog.renameSourceItem(sourceID: edit.source.id, path: edit.path,
-                                                      mediaID: edit.mediaID, to: name)
+                                                      mediaID: edit.mediaID, to: name,
+                                                      expectedFolderMemberID: edit.expectedFolderMemberID)
         try await refresh(catalog, rebuildSearch: true)
         return path
     }

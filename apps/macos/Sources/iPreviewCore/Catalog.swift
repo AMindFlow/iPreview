@@ -130,8 +130,10 @@ public actor Catalog {
         }
     }
 
-    public func renameSourceItem(sourceID: Int64, path: String, mediaID: Int64?, to name: String) throws -> String {
-        try SourceRename(database: database).rename(sourceID: sourceID, path: path, mediaID: mediaID, to: name)
+    public func renameSourceItem(sourceID: Int64, path: String, mediaID: Int64?, to name: String,
+                                 expectedFolderMemberID: Int64? = nil) throws -> String {
+        try SourceRename(database: database).rename(sourceID: sourceID, path: path, mediaID: mediaID, to: name,
+                                                    expectedFolderMemberID: expectedFolderMemberID)
     }
 
     @discardableResult

@@ -36,6 +36,7 @@ struct CatalogChecks {
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
+        try await checkStaleFolderAnchor()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
     }
@@ -250,6 +251,28 @@ struct CatalogChecks {
                                                mediaID: media.id, to: "Future")
         }
         try verify(FileManager.default.fileExists(atPath: root.appendingPathComponent("Direct.PNG").path))
+    }
+
+    static func checkStaleFolderAnchor() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("Source/Album/Original.PNG")
+        let root = fixtures.directory("Source")
+        let firstWindow = try Catalog(directory: fixtures.databaseDirectory)
+        let inspection = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+        try await firstWindow.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        let initial = try await firstWindow.snapshot()
+        let original = try required(initial.media.first)
+
+        let secondWindow = try Catalog(directory: fixtures.databaseDirectory)
+        _ = try await secondWindow.renameSourceItem(sourceID: original.source.id, path: "Album", mediaID: nil, to: "Moved")
+        try fixtures.file("Source/Album/Replacement.PNG")
+        try await secondWindow.update(source: original.source, entries: SourceScanner.rescan(original.source))
+        try await expectAsyncError(SourceRenameError.self) {
+            try await firstWindow.renameSourceItem(sourceID: original.source.id, path: "Album", mediaID: nil, to: "Wrong",
+                                                   expectedFolderMemberID: original.id)
+        }
+        try verify(FileManager.default.fileExists(atPath: root.appendingPathComponent("Album/Replacement.PNG").path))
+        try verify(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Wrong").path))
     }
 
     static func checkRenameRecovery() async throws {
