@@ -55,8 +55,8 @@ final class LibraryModel {
                 }
             }
             try await refresh(opened, rebuildSearch: true)
-            if opened.renameRecoveryRequired {
-                error = SourceRenameError.pending.localizedDescription
+            if let notice = opened.renameRecoveryNotice {
+                error = notice
             }
         } catch {
             catalog = nil

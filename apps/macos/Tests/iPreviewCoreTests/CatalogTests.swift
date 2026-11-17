@@ -291,7 +291,7 @@ struct CatalogChecks {
             INSERT INTO pending_rename VALUES (1, \(item.source.id), 'Before.PNG', 'After.PNG', 0, '\(identity)');
             """)
         let unchanged = try Catalog(directory: fixtures.databaseDirectory)
-        try verify(!unchanged.renameRecoveryRequired)
+        try verify(unchanged.renameRecoveryNotice == nil)
         let unchangedSnapshot = try await unchanged.snapshot()
         try verify(unchangedSnapshot.media.first?.name == "Before.PNG")
 
@@ -300,7 +300,7 @@ struct CatalogChecks {
             """)
         try FileManager.default.moveItem(at: original, to: moved)
         let recovered = try Catalog(directory: fixtures.databaseDirectory)
-        try verify(!recovered.renameRecoveryRequired)
+        try verify(recovered.renameRecoveryNotice == nil)
         let recoveredSnapshot = try await recovered.snapshot()
         try verify(recoveredSnapshot.media.first?.name == "After.PNG" && recoveredSnapshot.media.first?.id == item.id)
 
@@ -309,7 +309,8 @@ struct CatalogChecks {
             """)
         try FileManager.default.moveItem(at: moved, to: inspection.root.appendingPathComponent("Third.PNG"))
         let uncertain = try Catalog(directory: fixtures.databaseDirectory)
-        try verify(uncertain.renameRecoveryRequired)
+        let notice = try required(uncertain.renameRecoveryNotice)
+        try verify(notice.contains(inspection.root.path) && notice.contains("After.PNG") && notice.contains("Unknown.PNG"))
         try await expectAsyncError(SourceRenameError.self) {
             try await uncertain.update(source: item.source, entries: SourceScanner.rescan(item.source))
         }

@@ -11,7 +11,7 @@ public enum CatalogResourceError: LocalizedError {
 
 public actor Catalog {
     private let database: Database
-    public nonisolated let renameRecoveryRequired: Bool
+    public nonisolated let renameRecoveryNotice: String?
 
     public init(directory: URL, appBundle: Bundle = .main) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -32,11 +32,12 @@ public actor Catalog {
             }
         }
         self.database = database
+        let rename = SourceRename(database: database)
         do {
-            try SourceRename(database: database).recover()
-            renameRecoveryRequired = false
+            try rename.recover()
+            renameRecoveryNotice = nil
         } catch {
-            renameRecoveryRequired = true
+            renameRecoveryNotice = try rename.recoveryNotice() ?? error.localizedDescription
         }
     }
 

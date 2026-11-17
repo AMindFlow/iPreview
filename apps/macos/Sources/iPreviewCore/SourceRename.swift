@@ -22,7 +22,8 @@ public enum SourceRenameError: LocalizedError {
         case .unsupportedVolume: "此版本的 macOS 源文件重命名需要 APFS 磁盘。"
         case .unsafeFilesystem(let detail): "无法安全重命名源文件或文件夹：\(detail)"
         case .pending: "上次重命名无法自动核对。请检查原名称和目标名称，处理后重新打开 iPreview。"
-        case .uncertain(let oldPath, let newPath): "无法确认重命名结果。请检查「\(oldPath)」和「\(newPath)」，处理后重新打开 iPreview。"
+        case .uncertain(let oldPath, let newPath):
+            "无法确认重命名结果。请核对原路径「\(oldPath)」和目标路径「\(newPath)」。确认文件身份后恢复原名称，再打开 iPreview。"
         case .staleScan: "媒体库在扫描期间已更新。请重新扫描。"
         }
     }
@@ -37,6 +38,8 @@ private struct RenameIntent: Equatable {
 
     var oldName: String { oldPath.components(separatedBy: "/").last! }
     var newName: String { newPath.components(separatedBy: "/").last! }
+
+    var recoveryError: SourceRenameError { .uncertain(oldPath: oldPath, newPath: newPath) }
 }
 
 struct SourceRename {
@@ -115,7 +118,7 @@ struct SourceRename {
                     try clear()
                 }
             } catch {
-                throw SourceRenameError.uncertain(oldPath: intent.oldPath, newPath: intent.newPath)
+                throw intent.recoveryError
             }
             throw operationError
         }
@@ -147,8 +150,14 @@ struct SourceRename {
         }
     }
 
+    func recoveryNotice() throws -> String? {
+        guard let intent = try pending() else { return nil }
+        let root = try source(id: intent.sourceID).path
+        return root + "\n" + intent.recoveryError.localizedDescription
+    }
+
     func blockScan(sourceID: Int64) throws {
-        if try pending()?.sourceID == sourceID { throw SourceRenameError.pending }
+        if let intent = try pending(), intent.sourceID == sourceID { throw intent.recoveryError }
     }
 
     func blockImport(path: String) throws {
