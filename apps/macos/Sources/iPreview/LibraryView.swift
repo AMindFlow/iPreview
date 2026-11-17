@@ -38,32 +38,31 @@ struct LibraryView: View {
             if let matches, matches.request == request { matches.items } else { [] }
         })
 
-        ZStack {
-            NavigationSplitView {
-                sidebar
-                    .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
-            } detail: {
-                VStack(alignment: .leading, spacing: 0) {
-                    header(scope)
-                    content(scope)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: chooseFolder) {
-                            Label("导入", systemImage: "folder.badge.plus")
-                        }
-                        .keyboardShortcut("o", modifiers: .command)
-                        .disabled(model.isWorking || preview != nil || globalSearchShown)
-                        .help("导入本地媒体目录")
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+        } detail: {
+            VStack(alignment: .leading, spacing: 0) {
+                header(scope)
+                content(scope)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: chooseFolder) {
+                        Label("导入", systemImage: "folder.badge.plus")
                     }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .disabled(model.isWorking || preview != nil || globalSearchShown)
+                    .help("导入本地媒体目录")
                 }
             }
-            .navigationSplitViewStyle(.balanced)
-            .allowsHitTesting(preview == nil && !globalSearchShown)
-            .accessibilityHidden(preview != nil || globalSearchShown)
-
+        }
+        .navigationSplitViewStyle(.balanced)
+        .allowsHitTesting(preview == nil && !globalSearchShown)
+        .accessibilityHidden(preview != nil || globalSearchShown)
+        .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
                                   mode: $mode, directories: $searchDirectories, files: $searchFiles,
