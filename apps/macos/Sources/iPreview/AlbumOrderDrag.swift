@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import iPreviewCore
 
@@ -26,6 +27,15 @@ final class AlbumOrderDrag {
     func recordViewport(_ frame: CGRect) {
         if viewport.size != frame.size { cancel() }
         viewport = frame
+    }
+
+    func pointInBrowser(_ point: CGPoint, from item: Media, mode: MediaBrowseMode) -> CGPoint? {
+        guard let frame = frames[item.id] else { return nil }
+        let x = frame.maxX - AlbumOrderHandle.trailingInset(mode) - AlbumOrderHandle.size.width
+        let y = mode == .list
+            ? frame.midY - AlbumOrderHandle.size.height / 2
+            : frame.maxY - AlbumOrderHandle.bottomInset(mode) - AlbumOrderHandle.size.height
+        return CGPoint(x: x + point.x, y: y + point.y)
     }
 
     func update(_ point: CGPoint, item: Media, album: VirtualAlbum) {
@@ -130,7 +140,6 @@ struct AlbumOrderItem<Content: View>: View {
     let start: () -> Void
     let commit: (VirtualAlbum, Int) -> Void
 
-    @GestureState private var tracking = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -155,24 +164,21 @@ struct AlbumOrderItem<Content: View>: View {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 23, height: 22)
+                    .frame(width: AlbumOrderHandle.size.width, height: AlbumOrderHandle.size.height)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.primary.opacity(0.15)))
-                    .contentShape(Rectangle())
-                    .pointerStyle(tracking ? .grabActive : .grabIdle)
-                    .highPriorityGesture(gesture)
+                    .overlay {
+                        AlbumOrderHandle(update: updateDrag, finish: finishDrag)
+                    }
                     .accessibilityHidden(true)
                     .help("拖动排序")
-                    .padding(.trailing, mode == .list ? 2 : 5)
-                    .padding(.bottom, mode == .list ? 0 : 18)
+                    .padding(.trailing, AlbumOrderHandle.trailingInset(mode))
+                    .padding(.bottom, AlbumOrderHandle.bottomInset(mode))
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: order.destination)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(albumOrderSpace)) } action: {
             order.record($0, for: item)
-        }
-        .onChange(of: tracking) {
-            if !tracking { order.endGesture(for: item.id) }
         }
         .onDisappear {
             order.record(nil, for: item)
@@ -180,24 +186,88 @@ struct AlbumOrderItem<Content: View>: View {
         }
     }
 
-    private var gesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named(albumOrderSpace))
-            .updating($tracking) { _, tracking, _ in tracking = true }
-            .onChanged { value in
-                let wasActive = order.drag != nil
-                order.update(value.location, item: item, album: album)
-                if !wasActive, order.drag != nil { start() }
+    private func updateDrag(_ location: CGPoint) {
+        guard let point = order.pointInBrowser(location, from: item, mode: mode) else { return }
+        let wasActive = order.drag != nil
+        order.update(point, item: item, album: album)
+        if !wasActive, order.drag != nil { start() }
+    }
+
+    private func finishDrag(_ location: CGPoint?) {
+        defer { order.endGesture(for: item.id) }
+        guard order.drag?.item.id == item.id, let location else { return }
+        updateDrag(location)
+        if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
+            commit(drag.album, target)
+        }
+    }
+}
+
+private struct AlbumOrderHandle: NSViewRepresentable {
+    static let size = CGSize(width: 23, height: 22)
+    static func trailingInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 2 : 5 }
+    static func bottomInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 0 : 18 }
+
+    let update: (CGPoint) -> Void
+    let finish: (CGPoint?) -> Void
+
+    func makeNSView(context: Context) -> Surface { Surface() }
+
+    func updateNSView(_ view: Surface, context: Context) {
+        view.updateDrag = update
+        view.finishDrag = finish
+    }
+
+    // Claim mouse-down just on the grip so the surrounding scroll view cannot take the drag.
+    final class Surface: NSView {
+        var updateDrag: ((CGPoint) -> Void)?
+        var finishDrag: ((CGPoint?) -> Void)?
+        private var anchor: CGPoint?
+        private var dragging = false
+
+        override var isFlipped: Bool { true }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .openHand)
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let event = NSApp.currentEvent, event.type == .leftMouseDown,
+                  !event.modifierFlags.contains(.control) else { return nil }
+            return super.hitTest(point)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            anchor = event.locationInWindow
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let anchor else { return }
+            let point = event.locationInWindow
+            if !dragging {
+                guard hypot(point.x - anchor.x, point.y - anchor.y) >= 4 else { return }
+                dragging = true
+                NSCursor.closedHand.set()
             }
-            .onEnded { value in
-                guard order.drag?.item.id == item.id else {
-                    order.endGesture(for: item.id)
-                    return
-                }
-                order.update(value.location, item: item, album: album)
-                if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
-                    commit(drag.album, target)
-                }
-                order.endGesture(for: item.id)
-            }
+            updateDrag?(convert(point, from: nil))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            let point = window?.isKeyWindow == true ? convert(event.locationInWindow, from: nil) : nil
+            endDrag(at: point)
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil { endDrag(at: nil) }
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        private func endDrag(at point: CGPoint?) {
+            anchor = nil
+            guard dragging else { return }
+            dragging = false
+            NSCursor.openHand.set()
+            finishDrag?(point)
+        }
     }
 }
