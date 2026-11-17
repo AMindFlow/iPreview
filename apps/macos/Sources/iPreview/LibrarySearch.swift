@@ -71,7 +71,6 @@ struct GlobalSearchPanel: View {
         let request = request
         ZStack {
             Color.black.opacity(0.18)
-                .ignoresSafeArea()
                 .onTapGesture(perform: dismiss)
                 .accessibilityHidden(true)
             surface

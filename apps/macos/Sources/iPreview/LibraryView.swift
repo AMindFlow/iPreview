@@ -52,7 +52,7 @@ struct LibraryView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button(action: chooseFolder) {
-                            Label("导入", systemImage: "square.and.arrow.up")
+                            Label("导入", systemImage: "folder.badge.plus")
                         }
                         .keyboardShortcut("o", modifiers: .command)
                         .disabled(model.isWorking || preview != nil || globalSearchShown)
