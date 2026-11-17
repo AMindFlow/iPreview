@@ -17,15 +17,15 @@ enum MediaImages {
         ] as CFDictionary)
     }
 
-    static func thumbnail(for media: Media) async -> CGImage? {
+    static func thumbnail(for media: Media, limit: Int = 420) async -> CGImage? {
         guard let url = try? media.readableURL() else { return nil }
         if media.kind == .image {
-            return image(at: url, limit: 420)
+            return image(at: url, limit: limit)
         }
 
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 420, height: 420)
+        generator.maximumSize = CGSize(width: limit, height: limit)
         return try? await generator.image(at: .zero).image
     }
 }

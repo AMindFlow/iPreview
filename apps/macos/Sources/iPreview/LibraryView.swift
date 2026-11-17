@@ -6,6 +6,7 @@ struct LibraryView: View {
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
     @ViewState private var selected: Int64?
+    @ViewState private var browseMode = MediaBrowseMode.icons
     @ViewState private var query = ""
     @ViewState private var mode = MatchMode.fuzzy
     @ViewState private var searchDirectories = true
@@ -255,6 +256,20 @@ struct LibraryView: View {
                         .buttonStyle(.borderless)
                         .disabled(model.isWorking)
                     }
+                    if !scope.items.isEmpty {
+                        Picker("浏览视图", selection: $browseMode) {
+                            ForEach(MediaBrowseMode.allCases) { view in
+                                Image(systemName: view.symbol)
+                                    .help(view.title)
+                                    .accessibilityLabel(view.title)
+                                    .tag(view)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 114)
+                    }
                     if let media = scope.items.first(where: { $0.id == selected }) {
                         Menu {
                             mediaActions(media, in: scope.virtualAlbum)
@@ -398,59 +413,135 @@ struct LibraryView: View {
 
     private func mediaGallery(_ items: [Media], in album: VirtualAlbum?) -> some View {
         GeometryReader { geometry in
-            let columns = columns(for: geometry.size.width)
+            let grid = columns(for: geometry.size.width)
+            let columnCount = browseMode == .icons ? grid.count : 1
             ScrollViewReader { reader in
-                ScrollView {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-                        ForEach(items) { item in
+                mediaBrowser(items, album: album, grid: grid, columnCount: columnCount)
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($focus, equals: .gallery)
+                    .onKeyPress(keys: [.space, .leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                        let index = items.firstIndex(where: { $0.id == selected }) ?? 0
+                        if press.key == .space {
+                            if press.phase == .down { open(items[index], among: items, columns: columnCount) }
+                        } else {
+                            let next = moveIndex(index, key: press.key, columns: columnCount, count: items.count)
+                            selected = items[next].id
+                            reader.scrollTo(items[next].id, anchor: .center)
+                        }
+                        return .handled
+                    }
+                    .onChange(of: preview == nil) { _, closed in
+                        if closed, let selected {
+                            reader.scrollTo(selected)
+                        }
+                    }
+                    .onChange(of: items, initial: true) { _, updated in
+                        if let selected, updated.contains(where: { $0.id == selected }) { return }
+                        selected = updated.first?.id
+                    }
+                    .onChange(of: browseMode) {
+                        if let selected {
+                            Task { @MainActor in
+                                await Task.yield()
+                                reader.scrollTo(selected, anchor: .center)
+                            }
+                        }
+                        focusGallery()
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mediaBrowser(_ items: [Media], album: VirtualAlbum?, grid: [GridItem], columnCount: Int) -> some View {
+        switch browseMode {
+        case .icons:
+            ScrollView {
+                LazyVGrid(columns: grid, alignment: .leading, spacing: 16) {
+                    ForEach(items) { item in
+                        browseItem(item, among: items, album: album, columns: columnCount) {
                             MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
-                                .overlay {
-                                    MediaTileClick { clickCount in
-                                        selected = item.id
-                                        focus = .gallery
-                                        if clickCount == 2 {
-                                            open(item, among: items, columns: columns.count)
-                                        }
-                                    }
-                                    .accessibilityHidden(true)
-                                }
-                                .contextMenu { mediaActions(item, in: album) }
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(item.name)
-                                .accessibilityValue(item.isAvailable ? item.directories.joined(separator: "，") : "不可用")
-                                .accessibilityAddTraits(selected == item.id ? [.isButton, .isSelected] : .isButton)
-                                .accessibilityAction { open(item, among: items, columns: columns.count) }
-                                .id(item.id)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        case .list:
+            VStack(spacing: 0) {
+                MediaListColumns {
+                    Text("名称").padding(.leading, 33)
+                } modified: {
+                    Text("修改日期")
+                } size: {
+                    Text("大小")
+                } kind: {
+                    Text("种类")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(height: 25)
+                .padding(.horizontal, 24)
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(items.indices, id: \.self) { index in
+                            let item = items[index]
+                            browseItem(item, among: items, album: album, columns: columnCount) {
+                                MediaListRow(media: item, revision: model.revision, selected: selected == item.id,
+                                             shaded: !index.isMultiple(of: 2))
+                            }
                         }
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-                }
-                .focusable()
-                .focusEffectDisabled()
-                .focused($focus, equals: .gallery)
-                .onKeyPress(keys: [.space, .leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
-                    let index = items.firstIndex(where: { $0.id == selected }) ?? 0
-                    if press.key == .space {
-                        if press.phase == .down { open(items[index], among: items, columns: columns.count) }
-                    } else {
-                        let next = moveIndex(index, key: press.key, columns: columns.count, count: items.count)
-                        selected = items[next].id
-                        reader.scrollTo(items[next].id, anchor: .center)
-                    }
-                    return .handled
-                }
-                .onChange(of: preview == nil) { _, closed in
-                    if closed, let selected {
-                        reader.scrollTo(selected)
-                    }
-                }
-                .onChange(of: items.map(\.id), initial: true) { _, ids in
-                    if let selected, ids.contains(selected) { return }
-                    selected = ids.first
+                    .padding(.vertical, 6)
                 }
             }
+        case .gallery:
+            VStack(spacing: 10) {
+                if let item = items.first(where: { $0.id == selected }) ?? items.first {
+                    InlineGalleryImage(media: item, revision: model.revision)
+                        .id(item.id)
+                }
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 9) {
+                        ForEach(items) { item in
+                            browseItem(item, among: items, album: album, columns: columnCount) {
+                                MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: false)
+                                    .frame(width: 94)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 5)
+                }
+                .frame(height: 88)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
         }
+    }
+
+    private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, columns: Int,
+                                        @ViewBuilder label: () -> Label) -> some View {
+        label()
+            .overlay {
+                MediaTileClick { clickCount in
+                    selected = item.id
+                    focus = .gallery
+                    if clickCount == 2 {
+                        open(item, among: items, columns: columns)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+            .contextMenu { mediaActions(item, in: album) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(item.name)
+            .accessibilityValue(item.isAvailable ? item.directories.joined(separator: "，") : "不可用")
+            .accessibilityAddTraits(selected == item.id ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { open(item, among: items, columns: columns) }
+            .id(item.id)
     }
 
     @ViewBuilder
