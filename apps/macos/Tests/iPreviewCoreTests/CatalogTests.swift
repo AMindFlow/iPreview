@@ -370,6 +370,7 @@ struct CatalogChecks {
         try fixtures.file("Library/Summer Library/2.png")
         try fixtures.file("Library/Summer Library/10.png")
         try fixtures.file("Elsewhere/2.png")
+        try fixtures.file("Elsewhere/Frame.v2.jpg")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
@@ -379,7 +380,9 @@ struct CatalogChecks {
         let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
         try verify(index.search("旅行.ＰＮＧ", mode: .exact, directories: false, files: true).map(\.name) == ["旅行.PNG"])
-        try verify(index.search("旅行", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.search("旅行", mode: .exact, directories: false, files: true).map(\.name) == ["旅行.PNG"])
+        try verify(index.search("旅行.jpg", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.search("旅行.pn", mode: .exact, directories: false, files: true).isEmpty)
         try verify(index.search("beijing", mode: .fuzzy, directories: true, files: false).map(\.name) == ["旅行.PNG"])
         try verify(index.search("bj", mode: .fuzzy, directories: true, files: false).map(\.name) == ["旅行.PNG"])
         try verify(index.search("beijing", mode: .fuzzy, directories: false, files: true).isEmpty)
@@ -389,10 +392,22 @@ struct CatalogChecks {
 
         let local = index.search("2.png", mode: .exact, directories: false, files: true) { $0.source.name == "Library" }
         try verify(local.map(\.directories) == [["Library", "Summer Library"]])
-        let globalFiles = index.globalSearch("2.png", mode: .exact, directories: false, files: true).compactMap { hit -> Media? in
+        let barePrefix = GlobalSearchTerm("@")
+        try verify(barePrefix.mode == .fuzzy && barePrefix.text == "@")
+        let joinedPrefix = GlobalSearchTerm("@2.png")
+        try verify(joinedPrefix.mode == .fuzzy && joinedPrefix.text == "@2.png")
+        let pendingExact = GlobalSearchTerm("@ ")
+        try verify(pendingExact.mode == .exact && pendingExact.text.isEmpty)
+        let exactTerm = GlobalSearchTerm("  ＠　2.png ")
+        let globalFiles = index.globalSearch(exactTerm.text, mode: exactTerm.mode, directories: false, files: true).compactMap { hit -> Media? in
             if case .file(let item) = hit { item } else { nil }
         }
         try verify(Set(globalFiles.map { $0.source.name }) == ["Library", "Elsewhere"])
+        try verify(index.globalSearch("2", mode: .exact, directories: false, files: true).count == 2)
+        try verify(index.globalSearch("2.jpg", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.globalSearch("frame.v2", mode: .exact, directories: false, files: true).count == 1)
+        try verify(index.globalSearch("frame.v2.png", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.globalSearch("Summer", mode: .exact, directories: true, files: false).isEmpty)
         let globalFolders = index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false)
         try verify(globalFolders.count == 1)
         guard case .directory(let directory) = globalFolders[0] else {

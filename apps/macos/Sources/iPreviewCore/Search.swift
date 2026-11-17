@@ -7,6 +7,19 @@ public enum MatchMode: String, Sendable, CaseIterable, Identifiable {
     public var title: String { self == .exact ? "精确" : "模糊" }
 }
 
+public struct GlobalSearchTerm: Sendable {
+    public let text: String
+    public let mode: MatchMode
+
+    public init(_ input: String) {
+        let candidate = input.drop(while: \.isWhitespace)
+        let remainder = candidate.dropFirst()
+        let exact = (candidate.first == "@" || candidate.first == "＠") && remainder.first?.isWhitespace == true
+        text = (exact ? remainder : candidate).trimmingCharacters(in: .whitespacesAndNewlines)
+        mode = exact ? .exact : .fuzzy
+    }
+}
+
 public struct IndexedDirectory: Hashable, Sendable {
     public let source: Source
     public let relativePath: String
@@ -72,9 +85,9 @@ public struct SearchIndex: Sendable {
         let lookup = Name.Query(text: query)
         return entries.enumerated().compactMap { index, entry -> (rank: Int, index: Int, media: Media)? in
             guard include(entry.media) else { return nil }
-            var candidates = directories ? entry.directories : []
-            if files { candidates.append(entry.file) }
-            return candidates.compactMap { $0.rank(lookup, mode: mode) }.min().map { ($0, index, entry.media) }
+            let directoryRank = directories ? entry.directories.compactMap { $0.rank(lookup, mode: mode) }.min() : nil
+            let fileRank = files ? entry.file.rank(lookup, mode: mode, isFile: true) : nil
+            return [directoryRank, fileRank].compactMap { $0 }.min().map { ($0, index, entry.media) }
         }
         .sorted { ($0.rank, $0.index) < ($1.rank, $1.index) }
         .map(\.media)
@@ -94,7 +107,7 @@ public struct SearchIndex: Sendable {
         }
         if files {
             for (index, entry) in entries.enumerated() {
-                if let rank = entry.file.rank(lookup, mode: mode) {
+                if let rank = entry.file.rank(lookup, mode: mode, isFile: true) {
                     matches.append((rank, folders.count + index, .file(entry.media)))
                 }
             }
@@ -133,10 +146,16 @@ private struct Name: Sendable {
         let text: String
         let compact: String
         let limit: Int
+        let hasSuffix: Bool
 
         init(text: String) {
             self.text = text
             compact = text.filter { !$0.isWhitespace }
+            if let dot = fileSuffixIndex(in: text) {
+                hasSuffix = MediaKind(extension: String(text[text.index(after: dot)...])) != nil
+            } else {
+                hasSuffix = false
+            }
             switch text.count {
             case 0...2: limit = 0
             case 3...6: limit = 1
@@ -145,9 +164,13 @@ private struct Name: Sendable {
         }
     }
 
-    func rank(_ query: Query, mode: MatchMode) -> Int? {
+    func rank(_ query: Query, mode: MatchMode, isFile: Bool = false) -> Int? {
         if text == query.text { return 0 }
-        guard mode == .fuzzy else { return nil }
+        if mode == .exact {
+            guard isFile, !query.hasSuffix, let suffix = fileSuffixIndex(in: text),
+                  text[..<suffix] == query.text else { return nil }
+            return 0
+        }
         if text.hasPrefix(query.text) { return 1 }
         if text.contains(query.text) { return 2 }
         if pinyin.contains(query.compact) { return 3 }
@@ -157,6 +180,13 @@ private struct Name: Sendable {
         }
         return nil
     }
+}
+
+private func fileSuffixIndex(in name: String) -> String.Index? {
+    guard let dot = name.lastIndex(of: "."), dot != name.startIndex, name.index(after: dot) != name.endIndex else {
+        return nil
+    }
+    return dot
 }
 
 private func normalize(_ value: String) -> String {

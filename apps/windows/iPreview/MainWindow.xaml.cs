@@ -33,13 +33,15 @@ public sealed partial class MainWindow : Window
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
     private ObservableCollection<Tile> tiles = [];
-    private bool searching;
+    private string submittedQuery = "";
+    private bool searching => submittedQuery.Length != 0;
     private bool busy;
     private int previewIndex = -1;
     private long? initialSelection;
     private List<Tile> previewTiles = [];
     private BrowseLayout previewLayout;
     private int previewGeneration;
+    private bool previewVideoLocked;
     private MediaPlayer? player;
     private MediaSource? videoSource;
     private readonly DispatcherTimer playbackClock = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -75,6 +77,7 @@ public sealed partial class MainWindow : Window
             dataDirectory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPreview");
             catalog = new Catalog(dataDirectory);
             Reload();
+            LibraryHomeButton.Focus(FocusState.Programmatic);
             if (catalog.RenameRecoveryNotice is { } warning)
                 ShowNotice("有待恢复的重命名", warning, InfoBarSeverity.Warning);
         }
@@ -188,8 +191,7 @@ public sealed partial class MainWindow : Window
     private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
-        searching = false;
-        Query.Text = "";
+        ClearScopedSearch();
         Notice.IsOpen = false;
         NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
         ShowItems(selectedMedia);
@@ -297,7 +299,7 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), Query.Text,
+                items = MediaSearch.Find(scopedMedia.Where(item => item.Present), submittedQuery,
                     SearchMode.SelectedIndex == 0, SearchFolders.IsChecked == true, SearchFiles.IsChecked == true);
             }
             catch (Exception error) when (error is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
@@ -316,7 +318,7 @@ public sealed partial class MainWindow : Window
                 albumRemovalIds.IntersectWith(tiles.Select(tile => tile.Media.Id));
         }
         RefreshMediaBrowser(selected);
-        Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
+        Heading.Text = searching ? $"“{submittedQuery}”的搜索结果" : current.Label;
         RefreshTitleEditor();
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
@@ -342,17 +344,25 @@ public sealed partial class MainWindow : Window
 
     private void SearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        searching = !string.IsNullOrWhiteSpace(args.QueryText);
+        if (IsComposingText)
+            return;
+        submittedQuery = args.QueryText.Trim();
         ShowItems();
     }
 
     private void SearchEdited(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (searching && string.IsNullOrWhiteSpace(sender.Text))
+        if (searching && !IsComposingText && args.CheckCurrent() && string.IsNullOrWhiteSpace(sender.Text))
         {
-            searching = false;
+            submittedQuery = "";
             ShowItems();
         }
+    }
+
+    private void ClearScopedSearch()
+    {
+        submittedQuery = "";
+        Query.Text = "";
     }
 
     private void ChangeSearchMode(object sender, SelectionChangedEventArgs args)
@@ -416,8 +426,7 @@ public sealed partial class MainWindow : Window
             if (result == ContentDialogResult.Primary)
             {
                 var imported = Database.Import(summary.Path, layout, summary.Options[layout], scanVersion);
-                searching = false;
-                Query.Text = "";
+                ClearScopedSearch();
                 current = new Navigation(MediaFiles.FolderName(summary.Path), Source: imported);
                 Notice.IsOpen = false;
                 Reload();
@@ -522,8 +531,7 @@ public sealed partial class MainWindow : Window
         try
         {
             current = new(name, Album: Database.CreateAlbum(name));
-            searching = false;
-            Query.Text = "";
+            ClearScopedSearch();
             Reload();
         }
         catch (InvalidOperationException error) { ShowNotice("无法创建专辑", error.Message); }
@@ -676,15 +684,12 @@ public sealed partial class MainWindow : Window
         initialSelection = items[selectedIndex].Media.Id;
         previewTiles = items;
         previewLayout = layout;
-        PreviewHint.Text = (previewLayout.Mode switch
-        {
-            BrowseMode.List => "↑ / ↓ 切换媒体",
-            BrowseMode.Gallery => "← / → 切换媒体",
-            _ => "方向键 切换媒体"
-        }) + "     Space / Esc 退出预览";
+        PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
+        PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
         PreviewOverlay.Visibility = Visibility.Visible;
-        LibraryView.IsHitTestVisible = false;
         var thumbnail = ThumbnailOf(initialSelection);
+        LibraryView.IsHitTestVisible = false;
+        LibraryHost.IsEnabled = false;
         ShowPreview(selectedIndex, thumbnail?.Image);
         AnimatePreview(thumbnail, opening: true, complete: null);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
@@ -724,6 +729,7 @@ public sealed partial class MainWindow : Window
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         PreviewOverlay.Visibility = Visibility.Collapsed;
         previewTiles = [];
+        LibraryHost.IsEnabled = true;
         if (RestoreGlobalSearchAfterPreview(selectedId))
             return;
         LibraryView.IsHitTestVisible = true;
@@ -737,7 +743,32 @@ public sealed partial class MainWindow : Window
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
-            ClosePreview(initialSelection);
+            if (!args.KeyStatus.WasKeyDown)
+                ClosePreview(initialSelection);
+            return;
+        }
+        if (previewIndex < 0 || previewClosing)
+            return;
+        if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
+        {
+            if (ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCloseAction))
+                return;
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+                ChangePreviewVideoLock(!previewVideoLocked);
+            return;
+        }
+        if (previewVideoLocked && args.Key is VirtualKey.Space or VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
+        {
+            args.Handled = true;
+            if (args.KeyStatus.WasKeyDown)
+                return;
+            if (args.Key == VirtualKey.Space)
+                ToggleVideo();
+            else if (args.Key == VirtualKey.Left)
+                SeekVideoBy(-VideoSeekInterval);
+            else if (args.Key == VirtualKey.Right)
+                SeekVideoBy(VideoSeekInterval);
             return;
         }
         if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCanvas))
@@ -760,8 +791,7 @@ public sealed partial class MainWindow : Window
         if (direction is not { } arrow)
             return;
         args.Handled = true;
-        if (!previewMoving && !previewClosing && previewLayout.NeighborOf(previewIndex, previewTiles.Count, arrow) is int next)
-            ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image);
+        MovePreview(arrow);
     }
 
     private async void ShowPreview(int index, BitmapImage? poster)
@@ -775,9 +805,12 @@ public sealed partial class MainWindow : Window
         PreviewError.Visibility = Visibility.Collapsed;
         MainImage.Source = tile.Media.IsVideo ? null : poster;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Opacity = 0;
-        VideoControls.IsEnabled = false;
+        PlayPause.IsEnabled = false;
+        SetPreviewSeekEnabled(false);
+        if (tile.Media.IsVideo)
+            TimeLabel.Text = DurationLabel.Text = "0:00";
         VideoControls.Visibility = tile.Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
+        SetPreviewVideoLock(false);
         LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
         LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
         LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
@@ -832,9 +865,8 @@ public sealed partial class MainWindow : Window
         {
             if (generation != previewGeneration)
                 return;
+            PlayPause.IsEnabled = true;
             UpdateTime();
-            VideoControls.IsEnabled = true;
-            VideoControls.Opacity = 1;
         });
         mediaPlayer.MediaFailed += (_, details) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -880,10 +912,12 @@ public sealed partial class MainWindow : Window
         StopVideo();
         MainImage.Source = null;
         VideoSurface.Visibility = Visibility.Collapsed;
-        VideoControls.Opacity = 0;
-        VideoControls.IsEnabled = false;
+        PlayPause.IsEnabled = false;
+        SetPreviewSeekEnabled(false);
         PreviewError.Text = string.IsNullOrWhiteSpace(detail) ? title : $"{title}\n{detail}";
         PreviewError.Visibility = Visibility.Visible;
+        VideoControls.Visibility = Visibility.Collapsed;
+        SetPreviewVideoLock(false);
         PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
@@ -894,16 +928,74 @@ public sealed partial class MainWindow : Window
         var session = player.PlaybackSession;
         var duration = session.NaturalDuration;
         var position = session.Position;
+        SetPreviewSeekEnabled(session.CanSeek && duration > TimeSpan.Zero);
         settingPosition = true;
         Timeline.Maximum = Math.Max(1, duration.TotalSeconds);
         Timeline.Value = Math.Max(0, Math.Min(position.TotalSeconds, Timeline.Maximum));
         settingPosition = false;
-        TimeLabel.Text = $"{FormatTime(position)} / {FormatTime(duration)}";
+        TimeLabel.Text = FormatTime(position);
+        DurationLabel.Text = FormatTime(duration);
         PlayPause.Content = session.PlaybackState == MediaPlaybackState.Playing ? "暂停" : "播放";
     }
 
     private static string FormatTime(TimeSpan time) =>
         time.ToString(time.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss", CultureInfo.InvariantCulture);
+
+    private const int VideoSeekInterval = 15;
+
+    private void MovePreviewLeft(object sender, RoutedEventArgs args) => MovePreview(BrowseDirection.Left);
+    private void MovePreviewRight(object sender, RoutedEventArgs args) => MovePreview(BrowseDirection.Right);
+    private void MovePreviewUp(object sender, RoutedEventArgs args) => MovePreview(BrowseDirection.Up);
+    private void MovePreviewDown(object sender, RoutedEventArgs args) => MovePreview(BrowseDirection.Down);
+
+    private void MovePreview(BrowseDirection direction)
+    {
+        if (previewIndex < 0 || previewVideoLocked || previewMoving || previewClosing ||
+            previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not int next)
+            return;
+        ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image);
+        PreviewCanvas.Focus(FocusState.Programmatic);
+    }
+
+    private void ToggleVideoLock(object sender, RoutedEventArgs args) => ChangePreviewVideoLock(VideoLock.IsChecked == true);
+
+    private void ChangePreviewVideoLock(bool locked)
+    {
+        SetPreviewVideoLock(locked);
+        PreviewCanvas.Focus(FocusState.Programmatic);
+    }
+
+    private void SetPreviewVideoLock(bool locked)
+    {
+        previewVideoLocked = locked;
+        VideoLock.IsChecked = locked;
+        VideoLock.Content = locked ? "已锁定" : "未锁定";
+
+        UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
+        UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
+        UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
+        UpdateDirection(PreviewDown, NeighborBottom, BrowseDirection.Down);
+
+        if (locked)
+        {
+            PreviewHint.Text = "← / → 跳转 15 秒    Space 播放或暂停    Enter 解锁    Esc 退出";
+            return;
+        }
+        var navigation = previewLayout.Mode switch
+        {
+            BrowseMode.List => "↑ / ↓ 切换媒体",
+            BrowseMode.Gallery => "← / → 切换媒体",
+            _ => "方向键 切换媒体"
+        };
+        var lockHint = VideoControls.Visibility == Visibility.Visible ? "    Enter 锁定" : "";
+        PreviewHint.Text = $"{navigation}    Space / Esc 退出{lockHint}";
+
+        void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
+        {
+            var available = !locked && previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
+            button.Visibility = neighbor.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
 
     private void TogglePlayback(object sender, RoutedEventArgs args) => ToggleVideo();
 
@@ -918,9 +1010,27 @@ public sealed partial class MainWindow : Window
         UpdateTime();
     }
 
+    private void SetPreviewSeekEnabled(bool enabled) => VideoBack.IsEnabled = VideoForward.IsEnabled = Timeline.IsEnabled = enabled;
+
+    private void SeekVideoBack(object sender, RoutedEventArgs args) => SeekVideoBy(-VideoSeekInterval);
+    private void SeekVideoForward(object sender, RoutedEventArgs args) => SeekVideoBy(VideoSeekInterval);
+
+    private void SeekVideoBy(int seconds)
+    {
+        if (player?.PlaybackSession is { } session)
+            SeekVideoTo(session.Position.TotalSeconds + seconds);
+    }
+
     private void Seek(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs args)
     {
-        if (player is not null && !settingPosition && player.PlaybackSession.CanSeek)
-            player.PlaybackSession.Position = TimeSpan.FromSeconds(args.NewValue);
+        if (!settingPosition)
+            SeekVideoTo(args.NewValue);
+    }
+
+    private void SeekVideoTo(double seconds)
+    {
+        if (player?.PlaybackSession is not { CanSeek: true } session || session.NaturalDuration <= TimeSpan.Zero)
+            return;
+        session.Position = TimeSpan.FromSeconds(Math.Clamp(seconds, 0, session.NaturalDuration.TotalSeconds));
     }
 }

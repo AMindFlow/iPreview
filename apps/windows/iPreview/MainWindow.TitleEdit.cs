@@ -47,7 +47,7 @@ public sealed partial class MainWindow
 
     private void TitleEditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (titleEdit is not { } edit || args.Key is not (VirtualKey.Enter or VirtualKey.Escape))
+        if (titleEdit is not { } edit || IsComposingText || args.Key is not (VirtualKey.Enter or VirtualKey.Escape))
             return;
         args.Handled = true;
         if (args.KeyStatus.WasKeyDown)

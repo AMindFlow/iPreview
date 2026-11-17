@@ -74,14 +74,16 @@ public sealed partial class MainWindow
         _ => Gallery
     };
 
-    private void ChangeBrowseMode(object sender, SelectionChangedEventArgs args)
+    private void ChangeBrowseMode(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (catalog is null || sender is not ComboBox { SelectedIndex: >= 0 } picker)
+        if (catalog is null || sender.SelectedItem is not { } item)
             return;
 
         var selected = Selection?.Media.Id ?? selectionBeforeAlbumRemoval;
-        browseMode = (BrowseMode)picker.SelectedIndex;
+        browseMode = (BrowseMode)sender.Items.IndexOf(item);
         RefreshMediaBrowser(selected);
+        if (item.FocusState == FocusState.Keyboard)
+            return;
         if (SelectingAlbumMembers)
             FocusAlbumSelectionItem(selected);
         else
