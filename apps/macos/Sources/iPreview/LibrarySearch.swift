@@ -99,7 +99,9 @@ struct GlobalSearchPanel: View {
     @ViewBuilder
     private var surface: some View {
         if #available(macOS 26, *) {
-            panel.glassEffect(.regular, in: .rect(cornerRadius: 25))
+            panel
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.63), in: .rect(cornerRadius: 25))
+                .glassEffect(.regular, in: .rect(cornerRadius: 25))
         } else {
             panel.background(.regularMaterial, in: .rect(cornerRadius: 25))
                 .overlay {

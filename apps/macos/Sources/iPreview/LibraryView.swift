@@ -54,14 +54,14 @@ struct LibraryView: View {
                         Label("导入", systemImage: "folder.badge.plus")
                     }
                     .keyboardShortcut("o", modifiers: .command)
-                    .disabled(model.isWorking || preview != nil || globalSearchShown)
+                    .disabled(model.isWorking || preview != nil)
                     .help("导入本地媒体目录")
                 }
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .allowsHitTesting(preview == nil && !globalSearchShown)
-        .accessibilityHidden(preview != nil || globalSearchShown)
+        .allowsHitTesting(preview == nil)
+        .accessibilityHidden(preview != nil)
         .overlay {
             if globalSearchShown {
                 GlobalSearchPanel(index: model.searchIndex, revision: model.revision, isPreviewing: preview != nil,
@@ -817,7 +817,7 @@ struct LibraryView: View {
     }
 
     private func chooseFolder() {
-        guard !model.isWorking else { return }
+        guard !model.isWorking, preview == nil, !globalSearchShown else { return }
         let picker = NSOpenPanel()
         picker.title = "导入媒体目录"
         picker.prompt = "扫描"
