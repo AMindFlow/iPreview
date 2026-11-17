@@ -247,7 +247,10 @@ struct AlbumMediaPicker: View {
                                 .frame(width: 40, height: 29)
                                 .clipShape(.rect(cornerRadius: 6))
 
-                            Text(item.name).lineLimit(1)
+                            Text(item.name)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .layoutPriority(1)
                                 .help(item.directories.joined(separator: " / ") + " / " + item.name)
                             Spacer(minLength: 0)
 
@@ -274,7 +277,7 @@ struct AlbumMediaPicker: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 13)
-        .frame(width: 174)
+        .frame(width: 190)
         .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
