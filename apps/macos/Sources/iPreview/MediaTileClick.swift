@@ -38,6 +38,8 @@ struct MediaTileClick: NSViewRepresentable {
         var reorder: Reorder?
         var onClick: ((Int) -> Void)?
         private var press: Press?
+        private var mouseMonitor: Any?
+        private var windowObserver: (any NSObjectProtocol)?
 
         override var isFlipped: Bool { true }
 
@@ -51,11 +53,15 @@ struct MediaTileClick: NSViewRepresentable {
         override func mouseDown(with event: NSEvent) {
             cancelPress()
             press = Press(anchor: event.locationInWindow, timestamp: event.timestamp)
+            if adjusting, let window { captureAdjustmentPress(in: window) }
         }
 
         override func mouseDragged(with event: NSEvent) {
+            updateDrag(at: event.locationInWindow)
+        }
+
+        private func updateDrag(at point: CGPoint) {
             guard adjusting, var press else { return }
-            let point = event.locationInWindow
             if !press.dragging {
                 guard moved(point, from: press.anchor) else { return }
                 guard reorder != nil else {
@@ -70,13 +76,17 @@ struct MediaTileClick: NSViewRepresentable {
         }
 
         override func mouseUp(with event: NSEvent) {
-            guard let press else { return }
+            guard let initialPress = press else { return }
+            // Some input producers deliver the last position together with the release.
+            if !initialPress.dragging, adjusting, moved(event.locationInWindow, from: initialPress.anchor) {
+                updateDrag(at: event.locationInWindow)
+            }
+            guard let press = takePress() else { return }
             let point = convert(event.locationInWindow, from: nil)
             if press.dragging {
-                finishPress(at: window?.isKeyWindow == true ? point : nil)
+                finishDrag(at: window?.windowNumber == event.windowNumber ? point : nil)
                 return
             }
-            self.press = nil
             guard bounds.contains(point) else { return }
             if adjusting {
                 guard event.timestamp - press.timestamp < Self.holdDuration,
@@ -91,16 +101,48 @@ struct MediaTileClick: NSViewRepresentable {
         }
 
         func cancelPress() {
-            finishPress(at: nil)
+            if takePress()?.dragging == true { finishDrag(at: nil) }
         }
 
-        private func finishPress(at point: CGPoint?) {
-            let dragging = press?.dragging == true
-            press = nil
-            if dragging {
-                NSCursor.arrow.set()
-                reorder?.finish(point)
+        private func captureAdjustmentPress(in window: NSWindow) {
+            // Keep the adjustment press together when a ScrollView also tracks mouse drags.
+            mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self, weak window] event in
+                guard let self, let window, self.window === window, self.press != nil else { return event }
+                guard event.windowNumber == window.windowNumber else {
+                    if event.type == .leftMouseUp { self.cancelPress() }
+                    return event
+                }
+                if event.type == .leftMouseDragged {
+                    self.mouseDragged(with: event)
+                } else {
+                    self.mouseUp(with: event)
+                }
+                return nil
             }
+            windowObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.cancelPress() }
+            }
+        }
+
+        private func takePress() -> Press? {
+            let previous = press
+            press = nil
+            if let mouseMonitor {
+                self.mouseMonitor = nil
+                NSEvent.removeMonitor(mouseMonitor)
+            }
+            if let windowObserver {
+                self.windowObserver = nil
+                NotificationCenter.default.removeObserver(windowObserver)
+            }
+            return previous
+        }
+
+        private func finishDrag(at point: CGPoint?) {
+            NSCursor.arrow.set()
+            reorder?.finish(point)
         }
 
         private func moved(_ point: CGPoint, from anchor: CGPoint) -> Bool {
