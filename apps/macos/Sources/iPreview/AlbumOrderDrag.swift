@@ -14,17 +14,28 @@ final class AlbumOrderDrag {
         let sourceSize: CGSize
         let grabOffset: CGPoint
         let avatar: AnyView
+        let mode: MediaBrowseMode
+        let owner: UUID
+    }
+
+    private struct Slot {
+        let frame: CGRect
+        let owner: UUID
     }
 
     private(set) var drag: Drag?
     private(set) var destination: Int?
     private(set) var pointer: CGPoint?
-    @ObservationIgnored private var frames: [Int64: CGRect] = [:]
+    @ObservationIgnored private var slots: [MediaBrowseMode: [Int64: Slot]] = [:]
     @ObservationIgnored private var viewport: CGRect = .null
-    @ObservationIgnored private var cancelledID: Int64?
+    @ObservationIgnored private var cancelledOwner: UUID?
 
-    func record(_ frame: CGRect?, for item: Media) {
-        frames[item.id] = frame
+    func record(_ frame: CGRect?, for item: Media, mode: MediaBrowseMode, owner: UUID) {
+        if let frame {
+            slots[mode, default: [:]][item.id] = Slot(frame: frame, owner: owner)
+        } else if slots[mode]?[item.id]?.owner == owner {
+            slots[mode]?[item.id] = nil
+        }
     }
 
     func recordViewport(_ frame: CGRect) {
@@ -32,8 +43,9 @@ final class AlbumOrderDrag {
         viewport = frame
     }
 
-    func pointInBrowser(_ point: CGPoint, from item: Media, mode: MediaBrowseMode) -> CGPoint? {
-        guard let frame = frames[item.id] else { return nil }
+    func pointInBrowser(_ point: CGPoint, from item: Media, mode: MediaBrowseMode, owner: UUID) -> CGPoint? {
+        guard let slot = slots[mode]?[item.id], slot.owner == owner else { return nil }
+        let frame = slot.frame
         let x = frame.maxX - AlbumOrderHandle.trailingInset(mode) - AlbumOrderHandle.size.width
         let y = mode == .list
             ? frame.midY - AlbumOrderHandle.size.height / 2
@@ -41,18 +53,20 @@ final class AlbumOrderDrag {
         return CGPoint(x: x + point.x, y: y + point.y)
     }
 
-    func begin(_ item: Media, album: VirtualAlbum, grabbedAt point: CGPoint, avatar: AnyView) -> Bool {
-        guard drag == nil, cancelledID != item.id, let frame = frames[item.id],
+    func begin(_ item: Media, album: VirtualAlbum, mode: MediaBrowseMode, owner: UUID,
+               grabbedAt point: CGPoint, avatar: AnyView) -> Bool {
+        guard drag == nil, cancelledOwner != owner, let slot = slots[mode]?[item.id], slot.owner == owner,
               let index = album.mediaIDs.firstIndex(of: item.id) else { return false }
         let indices = Dictionary(uniqueKeysWithValues: album.mediaIDs.enumerated().map { ($1, $0) })
+        let frame = slot.frame
         let offset = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
         drag = Drag(album: album, item: item, indices: indices, sourceIndex: index,
-                    sourceSize: frame.size, grabOffset: offset, avatar: avatar)
+                    sourceSize: frame.size, grabOffset: offset, avatar: avatar, mode: mode, owner: owner)
         return true
     }
 
-    func update(_ point: CGPoint, item: Media) {
-        guard let drag, drag.item.id == item.id else { return }
+    func update(_ point: CGPoint, owner: UUID) {
+        guard let drag, drag.owner == owner else { return }
         guard viewport.contains(point) else {
             pointer = nil
             destination = nil
@@ -61,8 +75,9 @@ final class AlbumOrderDrag {
         pointer = point
         let center = CGPoint(x: point.x - drag.grabOffset.x + drag.sourceSize.width / 2,
                              y: point.y - drag.grabOffset.y + drag.sourceSize.height / 2)
-        destination = frames
-            .compactMap { id, frame -> (index: Int, score: CGFloat)? in
+        destination = slots[drag.mode, default: [:]]
+            .compactMap { id, slot -> (index: Int, score: CGFloat)? in
+                let frame = slot.frame
                 guard let index = drag.indices[id], frame.intersects(viewport) else { return nil }
                 let x = (center.x - frame.midX) / max(1, frame.width / 2)
                 let y = (center.y - frame.midY) / max(1, frame.height / 2)
@@ -83,7 +98,9 @@ final class AlbumOrderDrag {
         } else {
             return .zero
         }
-        guard let source = frames[id], let target = frames[drag.album.mediaIDs[movedIndex]] else { return .zero }
+        let modeSlots = slots[drag.mode, default: [:]]
+        guard let source = modeSlots[id]?.frame,
+              let target = modeSlots[drag.album.mediaIDs[movedIndex]]?.frame else { return .zero }
         return CGSize(width: target.minX - source.minX, height: target.minY - source.minY)
     }
 
@@ -91,13 +108,13 @@ final class AlbumOrderDrag {
     func cancel() -> Bool {
         guard let drag else { return false }
         clear()
-        cancelledID = drag.item.id
+        cancelledOwner = drag.owner
         return true
     }
 
-    func endGesture(for id: Int64) {
-        if cancelledID == id { cancelledID = nil }
-        if drag?.item.id == id { clear() }
+    func endGesture(for owner: UUID) {
+        if cancelledOwner == owner { cancelledOwner = nil }
+        if drag?.owner == owner { clear() }
     }
 
     private func clear() {
@@ -144,6 +161,7 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
     let start: () -> Void
     let commit: (VirtualAlbum, Int) -> Void
 
+    @ViewState private var owner = UUID()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -182,26 +200,29 @@ struct AlbumOrderItem<Content: View, Avatar: View>: View {
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: order.destination)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(albumOrderSpace)) } action: {
-            order.record($0, for: item)
+            order.record($0, for: item, mode: mode, owner: owner)
         }
         .onDisappear {
-            order.record(nil, for: item)
-            order.endGesture(for: item.id)
+            order.record(nil, for: item, mode: mode, owner: owner)
+            order.endGesture(for: owner)
         }
     }
 
     private func updateDrag(_ location: CGPoint, _ origin: CGPoint) {
-        guard let point = order.pointInBrowser(location, from: item, mode: mode),
-              let grabbedAt = order.pointInBrowser(origin, from: item, mode: mode) else { return }
-        if order.drag == nil, order.begin(item, album: album, grabbedAt: grabbedAt, avatar: AnyView(avatar)) { start() }
-        order.update(point, item: item)
+        guard let point = order.pointInBrowser(location, from: item, mode: mode, owner: owner),
+              let grabbedAt = order.pointInBrowser(origin, from: item, mode: mode, owner: owner) else { return }
+        if order.drag == nil,
+           order.begin(item, album: album, mode: mode, owner: owner, grabbedAt: grabbedAt, avatar: AnyView(avatar)) {
+            start()
+        }
+        order.update(point, owner: owner)
     }
 
     private func finishDrag(_ location: CGPoint?) {
-        defer { order.endGesture(for: item.id) }
-        guard order.drag?.item.id == item.id, let location,
-              let point = order.pointInBrowser(location, from: item, mode: mode) else { return }
-        order.update(point, item: item)
+        defer { order.endGesture(for: owner) }
+        guard order.drag?.owner == owner, let location,
+              let point = order.pointInBrowser(location, from: item, mode: mode, owner: owner) else { return }
+        order.update(point, owner: owner)
         if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
             commit(drag.album, target)
         }
