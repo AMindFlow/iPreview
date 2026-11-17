@@ -16,22 +16,21 @@
       <stop offset=".52" stop-color="#6cdef9" stop-opacity=".29"/>
       <stop offset="1" stop-color="#c8f5ff" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="outer-orbit" x1="172" y1="498" x2="842" y2="365" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#60b7ee"/>
-      <stop offset=".31" stop-color="#a8e0f8"/>
-      <stop offset=".58" stop-color="#a4edfc"/>
-      <stop offset="1" stop-color="#5dd9f2"/>
+    <linearGradient id="outer-orbit" x1="166" y1="510" x2="844" y2="450" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#59a9ee"/>
+      <stop offset=".42" stop-color="#8ecdf6"/>
+      <stop offset=".73" stop-color="#9ce9fa"/>
+      <stop offset="1" stop-color="#56cce9"/>
     </linearGradient>
-    <linearGradient id="front-orbit" x1="235" y1="653" x2="804" y2="541" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#69b8f1"/>
-      <stop offset=".36" stop-color="#83d4f8"/>
-      <stop offset=".7" stop-color="#baf3ff"/>
-      <stop offset="1" stop-color="#5bd8f0"/>
+    <linearGradient id="inner-orbit" x1="199" y1="402" x2="822" y2="562" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#77b9f2"/>
+      <stop offset=".53" stop-color="#b0e7fb"/>
+      <stop offset="1" stop-color="#6ed9ed"/>
     </linearGradient>
-    <linearGradient id="orbit-glint" x1="215" y1="603" x2="822" y2="543" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#effbff" stop-opacity=".22"/>
-      <stop offset=".55" stop-color="#f0ffff" stop-opacity=".95"/>
-      <stop offset="1" stop-color="#e8fbff" stop-opacity=".46"/>
+    <linearGradient id="orbit-glint" x1="182" y1="483" x2="828" y2="483" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#effbff" stop-opacity=".2"/>
+      <stop offset=".59" stop-color="#f0ffff" stop-opacity=".78"/>
+      <stop offset="1" stop-color="#e8fbff" stop-opacity=".35"/>
     </linearGradient>
     <radialGradient id="nebula" cx=".64" cy=".43" r=".72" fx=".62" fy=".43">
       <stop stop-color="#121e6e"/>
@@ -115,24 +114,46 @@
     <clipPath id="sphere-clip">
       <circle cx="510" cy="493" r="170"/>
     </clipPath>
-    <path id="foreground-track" d="M 813 476 C 788 548 715 610 609 652 C 489 700 310 727 215 688 C 151 661 204 599 369 529"/>
+    <ellipse id="outer-ring" cx="510" cy="493" rx="354" ry="183" transform="rotate(-24 510 493)"/>
+    <ellipse id="inner-ring" cx="510" cy="493" rx="313" ry="145" transform="rotate(11 510 493)"/>
+    <clipPath id="outer-near">
+      <rect x="146" y="493" width="728" height="193" transform="rotate(-24 510 493)"/>
+    </clipPath>
+    <clipPath id="inner-near">
+      <rect x="187" y="493" width="646" height="155" transform="rotate(11 510 493)"/>
+    </clipPath>
+    <clipPath id="outer-under-crossings">
+      <circle cx="216.4" cy="493" r="38"/>
+      <circle cx="409.2" cy="338.6" r="44"/>
+    </clipPath>
+    <clipPath id="inner-under-crossings">
+      <circle cx="803.6" cy="493" r="38"/>
+      <circle cx="610.8" cy="647.4" r="44"/>
+    </clipPath>
+    <mask id="outer-crossing-depth" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <use href="#inner-ring" clip-path="url(#outer-under-crossings)" fill="none" stroke="#000" stroke-width="24"/>
+    </mask>
+    <mask id="inner-crossing-depth" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <use href="#outer-ring" clip-path="url(#inner-under-crossings)" fill="none" stroke="#000" stroke-width="27"/>
+    </mask>
+    <g id="outer-orbit-art" fill="none" mask="url(#outer-crossing-depth)">
+      <use href="#outer-ring" stroke="url(#outer-orbit)" stroke-width="16"/>
+      <use href="#outer-ring" stroke="url(#orbit-glint)" stroke-width="3"/>
+    </g>
+    <g id="inner-orbit-art" fill="none" mask="url(#inner-crossing-depth)">
+      <use href="#inner-ring" stroke="url(#inner-orbit)" stroke-width="13"/>
+      <use href="#inner-ring" stroke="url(#orbit-glint)" stroke-width="2"/>
+    </g>
   </defs>
 
   <rect x="89" y="92" width="846" height="846" rx="216" fill="#6d8aa8" opacity=".11" filter="url(#soft-glint)"/>
   <rect x="91" y="91" width="842" height="842" rx="213" fill="url(#tile)" stroke="url(#tile-rim)" stroke-width="2"/>
   <ellipse cx="510" cy="715" rx="303" ry="110" transform="rotate(5 510 715)" fill="url(#orbit-reflection)"/>
 
-  <g id="back-orbit" fill="none" stroke-linecap="round">
-    <path d="M 382 556 C 248 582 151 529 165 471 C 188 367 425 270 602 273 C 751 268 847 317 845 398 C 845 436 827 466 813 485"
-          stroke="url(#outer-orbit)" stroke-width="19"/>
-    <path d="M 380 551 C 246 572 163 521 172 475 C 191 373 429 275 602 277 C 749 272 843 320 840 398 C 840 438 827 462 813 480"
-          stroke="#f3fdff" stroke-opacity=".62" stroke-width="3"/>
-  </g>
-
-  <g id="foreground-orbit" fill="none" stroke-linecap="round">
-    <use href="#foreground-track" stroke="url(#front-orbit)" stroke-width="21"/>
-    <use href="#foreground-track" transform="translate(0 -3)" stroke="url(#orbit-glint)" stroke-width="4"/>
-  </g>
+  <use href="#outer-orbit-art"/>
+  <use href="#inner-orbit-art"/>
 
   <g id="nebula-sphere">
     <circle cx="510" cy="493" r="170" fill="url(#nebula)"/>
@@ -164,13 +185,18 @@
     <circle cx="510" cy="493" r="169" fill="none" stroke="url(#sphere-rim)" stroke-width="2"/>
   </g>
 
-  <g id="orbiting-planets" fill="url(#satellite)" stroke="#d9faff" stroke-width="1.4">
-    <circle cx="201" cy="522" r="12"/>
-    <circle cx="683" cy="279" r="16"/>
-    <circle cx="585" cy="661" r="20"/>
+  <g clip-path="url(#sphere-clip)">
+    <use href="#outer-orbit-art" clip-path="url(#outer-near)"/>
+    <use href="#inner-orbit-art" clip-path="url(#inner-near)"/>
   </g>
 
-  <g id="photo-stack" transform="translate(285 321) rotate(-20)">
+  <g id="orbiting-planets" fill="url(#satellite)" stroke="#d9faff" stroke-width="1.4">
+    <circle cx="186.6" cy="637" r="12"/>
+    <circle cx="623.7" cy="274.4" r="16"/>
+    <circle cx="434.6" cy="624.2" r="20"/>
+  </g>
+
+  <g id="photo-stack" transform="translate(310.5 398.8) rotate(-20)">
     <rect x="-59" y="-39" width="116" height="97" rx="17" fill="#25b8ec" opacity=".37" filter="url(#soft-cloud)"/>
     <rect x="-63" y="-49" width="106" height="94" rx="14" fill="#75d3f2" stroke="#d4f8ff" stroke-width="1.5" transform="rotate(-9)"/>
     <rect x="-54" y="-43" width="108" height="94" rx="14" fill="url(#glass-edge)" stroke="#d4f8ff" stroke-width="1.5" transform="rotate(-4)"/>
@@ -180,7 +206,7 @@
     <path d="M -28 31 L -7 9 Q -2 4 3 9 L 18 22 L 31 10 Q 36 6 41 11 L 49 19 V 33 Q 49 38 44 38 H -23 Q -30 38 -28 31 Z" fill="url(#glass-glyph)"/>
   </g>
 
-  <g id="video-cassette" transform="translate(302 670) rotate(17) skewX(-9)">
+  <g id="video-cassette" transform="translate(287.8 706.8) rotate(17) skewX(-9)">
     <rect x="-63" y="-34" width="128" height="74" rx="13" fill="#209ddb" opacity=".27" filter="url(#soft-glint)"/>
     <rect x="-61" y="-33" width="123" height="72" rx="12" fill="#177fb5" stroke="#83ddfb" stroke-width="1.8"/>
     <rect x="-61" y="-39" width="123" height="73" rx="11" fill="url(#glass-edge)" stroke="#ddfaff" stroke-width="1.4"/>
@@ -198,7 +224,7 @@
     <path d="M -14 9 H 15 M -14 13 H 8" stroke="#54b1d0" stroke-width="1.4" stroke-linecap="round"/>
   </g>
 
-  <g id="optical-disc" transform="translate(786 517) rotate(-8) skewX(-12)">
+  <g id="optical-disc" transform="translate(759.1 617.5) rotate(-8) skewX(-12)">
     <rect x="-52" y="-42" width="103" height="88" rx="12" fill="#259ddb" opacity=".26" filter="url(#soft-glint)"/>
     <rect x="-51" y="-44" width="102" height="87" rx="11" fill="url(#glass-edge)" stroke="#c8f6ff" stroke-width="1.6"/>
     <rect x="-43" y="-46" width="94" height="87" rx="10" fill="url(#glass-face)" stroke="#e2fcff" stroke-width="2"/>
