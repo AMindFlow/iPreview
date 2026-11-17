@@ -83,7 +83,7 @@ final class LibraryModel {
 
     func register(_ inspection: SourceInspection, candidate: ImportCandidate) async {
         self.inspection = nil
-        let version = inspectionVersion!
+        guard let version = inspectionVersion else { return }
         inspectionVersion = nil
         await change { catalog in
             try await catalog.importSource(root: inspection.root, candidate: candidate, expectedVersion: version)
