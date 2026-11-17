@@ -361,10 +361,14 @@ struct CatalogChecks {
         try fixtures.file("Library/北京/旅行.PNG")
         try fixtures.file("Library/Summer Library/2.png")
         try fixtures.file("Library/Summer Library/10.png")
+        try fixtures.file("Elsewhere/2.png")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
-        let index = SearchIndex(media: try await catalog.snapshot().media)
+        let elsewhere = try SourceScanner.inspect(fixtures.directory("Elsewhere"), dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: elsewhere.root, candidate: try required(elsewhere.candidates.first))
+        let snapshot = try await catalog.snapshot()
+        let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
         try verify(index.search("旅行.ＰＮＧ", mode: .exact, directories: false, files: true).map(\.name) == ["旅行.PNG"])
         try verify(index.search("旅行", mode: .exact, directories: false, files: true).isEmpty)
@@ -374,6 +378,19 @@ struct CatalogChecks {
         try verify(index.search("lvxing", mode: .fuzzy, directories: false, files: true).map(\.name) == ["旅行.PNG"])
         try verify(index.search("sumer", mode: .fuzzy, directories: true, files: false).map(\.name) == ["2.png", "10.png"])
         try verify(index.search("北京", mode: .exact, directories: false, files: false).isEmpty)
+
+        let local = index.search("2.png", mode: .exact, directories: false, files: true) { $0.source.name == "Library" }
+        try verify(local.map(\.directories) == [["Library", "Summer Library"]])
+        let globalFiles = index.globalSearch("2.png", mode: .exact, directories: false, files: true).compactMap { hit -> Media? in
+            if case .file(let item) = hit { item } else { nil }
+        }
+        try verify(Set(globalFiles.map { $0.source.name }) == ["Library", "Elsewhere"])
+        let globalFolders = index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false)
+        try verify(globalFolders.count == 1)
+        guard case .directory(let directory) = globalFolders[0] else {
+            throw CheckFailure(location: "global search must return the matching directory")
+        }
+        try verify(directory.components == ["Library", "Summer Library"])
     }
 }
 

@@ -177,7 +177,7 @@ final class LibraryModel {
         let loaded = try await catalog.snapshot()
         if rebuildSearch {
             let media = loaded.media.filter(\.existsInSource)
-            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media) }.value
+            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media, sources: loaded.sources) }.value
             revision += 1
         }
         cachedScope = nil
