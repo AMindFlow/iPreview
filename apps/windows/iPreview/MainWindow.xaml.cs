@@ -299,6 +299,13 @@ public sealed partial class MainWindow : Window
         }
 
         tiles = items.Select((item, index) => new Tile(item, index)).ToList();
+        if (selectionAlbum is long selectedAlbum)
+        {
+            if (current.Album != selectedAlbum || searching || tiles.Count == 0)
+                ClearAlbumSelection();
+            else
+                albumRemovalIds.IntersectWith(tiles.Select(tile => tile.Media.Id));
+        }
         RefreshMediaBrowser(selected);
         Heading.Text = searching ? $"“{Query.Text.Trim()}”的搜索结果" : current.Label;
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
@@ -312,6 +319,7 @@ public sealed partial class MainWindow : Window
         var isEmptyAlbum = showAlbum && tiles.Count == 0;
         AlbumTools.Visibility = showAlbum ? Visibility.Visible : Visibility.Collapsed;
         AlbumPickerButton.Visibility = showAlbum && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
+        SelectAlbumMembersButton.Visibility = AlbumPickerButton.Visibility;
         EmptyAlbumPicker.Visibility = isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
         EmptyLabel.Text = searching ? "没有匹配项。" : sources.Count == 0
                 ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
@@ -560,18 +568,6 @@ public sealed partial class MainWindow : Window
         catch (InvalidOperationException error) { ShowNotice("无法添加媒体", error.Message); }
     }
 
-    private void RemoveFromAlbum(object sender, RoutedEventArgs args)
-    {
-        if (current.Album is not long album || Selection is not Tile tile)
-            return;
-        try
-        {
-            Database.RemoveFromAlbum(album, tile.Media.Id);
-            Reload();
-        }
-        catch (InvalidOperationException error) { ShowNotice("无法移除引用", error.Message); }
-    }
-
     private void MoveEarlier(object sender, RoutedEventArgs args) => MoveMember(-1);
     private void MoveLater(object sender, RoutedEventArgs args) => MoveMember(1);
 
@@ -591,15 +587,32 @@ public sealed partial class MainWindow : Window
     {
         if (updatingBrowser || !ReferenceEquals(sender, ActiveMediaBrowser))
             return;
+        Tile? changed = null;
+        if (SelectingAlbumMembers)
+        {
+            foreach (var tile in args.RemovedItems.OfType<Tile>())
+            {
+                albumRemovalIds.Remove(tile.Media.Id);
+                tile.SetAlbumRemovalSelection(false);
+                changed = tile;
+            }
+            foreach (var tile in args.AddedItems.OfType<Tile>())
+            {
+                albumRemovalIds.Add(tile.Media.Id);
+                tile.SetAlbumRemovalSelection(true);
+                changed = tile;
+            }
+        }
         UpdateSelection();
-        UpdateFilmstripPreview();
+        UpdateFilmstripPreview(changed);
     }
 
     private void UpdateSelection()
     {
         if (OpenButton is null || AddButton is null || MoveUpButton is null ||
-            MoveDownButton is null || RemoveButton is null)
+            MoveDownButton is null || RemoveButton is null || AlbumSelectionTools is null)
             return;
+        UpdateAlbumSelectionTools();
         OpenButton.IsEnabled = Selection is not null;
         AddButton.IsEnabled = Selection is not null;
         RemoveButton.IsEnabled = Selection is not null;
@@ -678,6 +691,12 @@ public sealed partial class MainWindow : Window
 
     private async void GalleryKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (SelectingAlbumMembers)
+        {
+            if (args.Key == VirtualKey.Enter || (args.Key == VirtualKey.Space && args.KeyStatus.WasKeyDown))
+                args.Handled = true;
+            return;
+        }
         if (args.Key == VirtualKey.Escape && VisibleSource is not null && current.Folder is not null)
         {
             args.Handled = true;
@@ -703,7 +722,7 @@ public sealed partial class MainWindow : Window
     private void OpenPreview()
     {
         var browser = ActiveMediaBrowser;
-        if (browser.SelectedIndex < 0)
+        if (SelectingAlbumMembers || browser.SelectedIndex < 0)
             return;
         initialSelection = Selection?.Media.Id;
         previewTiles = tiles;

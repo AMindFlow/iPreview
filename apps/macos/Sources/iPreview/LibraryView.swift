@@ -17,6 +17,7 @@ struct LibraryView: View {
     @ViewState private var editAlbum: AlbumEdit?
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var addAlbumMedia: VirtualAlbum?
+    @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var preview: PreviewRequest?
     @FocusState private var focus: Focus?
 
@@ -57,6 +58,7 @@ struct LibraryView: View {
         }
         .background(Color.libraryCanvas)
         .task { await model.start() }
+        .onChange(of: searching) { removalSelection = nil }
         .task(id: SearchRequest(query: query, mode: mode, directories: searchDirectories, files: searchFiles, revision: model.revision)) {
             let index = model.searchIndex
             let request = SearchRequest(query: query, mode: mode, directories: searchDirectories, files: searchFiles, revision: model.revision)
@@ -264,24 +266,7 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let album = scope.virtualAlbum {
-                        if !scope.items.isEmpty {
-                            Button {
-                                addAlbumMedia = album
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("添加媒体")
-                            .help("添加媒体")
-                            .disabled(model.isWorking)
-                        }
-                        Button {
-                            editAlbum = AlbumEdit(album: album)
-                        } label: {
-                            Label("重命名", systemImage: "pencil")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(model.isWorking)
+                        virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
                     }
                     if !scope.items.isEmpty {
                         Picker("浏览视图", selection: $browseMode) {
@@ -297,7 +282,7 @@ struct LibraryView: View {
                         .controlSize(.small)
                         .frame(width: 114)
                     }
-                    if let media = scope.items.first(where: { $0.id == selected }) {
+                    if removalSelection == nil, let media = scope.items.first(where: { $0.id == selected }) {
                         Menu {
                             mediaActions(media, in: scope.virtualAlbum)
                         } label: {
@@ -316,6 +301,60 @@ struct LibraryView: View {
         .padding(.horizontal, 24)
         .padding(.top, 43)
         .padding(.bottom, 21)
+    }
+
+    @ViewBuilder
+    private func virtualAlbumActions(_ album: VirtualAlbum, hasItems: Bool) -> some View {
+        if let removalSelection {
+            Text("已选 \(removalSelection.count) 项")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("取消") {
+                self.removalSelection = nil
+                focusBrowser()
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut(.cancelAction)
+            .disabled(model.isWorking)
+            Button("移除引用", role: .destructive) {
+                let mediaIDs = Array(removalSelection)
+                Task {
+                    if await model.remove(mediaIDs: mediaIDs, from: album.id) {
+                        self.removalSelection = nil
+                        if page == .virtual(album.id), !searching { focusBrowser() }
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(removalSelection.isEmpty || model.isWorking)
+            .help("仅从当前专辑移除所选引用")
+        } else {
+            if hasItems {
+                Button {
+                    addAlbumMedia = album
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("添加媒体")
+                .help("添加媒体")
+                .disabled(model.isWorking)
+                Button("选择") {
+                    removalSelection = []
+                    focusBrowser()
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.isWorking)
+                .help("选择多个媒体引用")
+            }
+            Button {
+                editAlbum = AlbumEdit(album: album)
+            } label: {
+                Label("重命名", systemImage: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isWorking)
+        }
     }
 
     private var searchField: some View {
@@ -512,13 +551,27 @@ struct LibraryView: View {
                     .focused($focus, equals: .browser)
                     .onKeyPress(keys: [.space, .return, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow],
                                 phases: [.down, .repeat]) { press in
-                        if press.key == .escape { return backKey(press, sourceLayout: sourceLayout) }
+                        if press.key == .escape {
+                            if removalSelection != nil {
+                                if press.phase == .down, !model.isWorking { removalSelection = nil }
+                                return .handled
+                            }
+                            return backKey(press, sourceLayout: sourceLayout)
+                        }
 
                         let index = items.firstIndex(where: { $0.id == selected }) ?? 0
                         if press.key == .space {
-                            if press.phase == .down { open(items[index], among: items, layout: layout) }
+                            if press.phase == .down {
+                                if removalSelection == nil {
+                                    open(items[index], among: items, layout: layout)
+                                } else {
+                                    toggleRemoval(items[index].id)
+                                }
+                            }
                         } else if press.key == .return {
-                            if press.phase == .down, selected == items[index].id { beginRename(SourceNameEdit(media: items[index])) }
+                            if press.phase == .down, removalSelection == nil, selected == items[index].id {
+                                beginRename(SourceNameEdit(media: items[index]))
+                            }
                         } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
                             selected = items[destination].id
                             reader.scrollTo(items[destination].id, anchor: .center)
@@ -555,7 +608,8 @@ struct LibraryView: View {
                 LazyVGrid(columns: grid, alignment: .leading, spacing: 16) {
                     ForEach(items) { item in
                         browseItem(item, among: items, album: album, layout: layout) {
-                            MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
+                            MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
+                                      showPath: searching, checked: removalSelection?.contains(item.id))
                         }
                     }
                 }
@@ -565,7 +619,7 @@ struct LibraryView: View {
         case .list:
             VStack(spacing: 0) {
                 MediaListColumns {
-                    Text("名称").padding(.leading, 33)
+                    Text("名称").padding(.leading, removalSelection == nil ? 33 : 58)
                 } modified: {
                     Text("修改日期")
                 } size: {
@@ -583,8 +637,9 @@ struct LibraryView: View {
                         ForEach(items.indices, id: \.self) { index in
                             let item = items[index]
                             browseItem(item, among: items, album: album, layout: layout) {
-                                MediaListRow(media: item, revision: model.revision, selected: selected == item.id,
-                                             shaded: !index.isMultiple(of: 2), showPath: searching)
+                                MediaListRow(media: item, revision: model.revision, selected: isMediaSelected(item.id),
+                                             shaded: !index.isMultiple(of: 2), showPath: searching,
+                                             checked: removalSelection?.contains(item.id))
                             }
                         }
                     }
@@ -602,7 +657,8 @@ struct LibraryView: View {
                     LazyHStack(alignment: .top, spacing: 9) {
                         ForEach(items) { item in
                             browseItem(item, among: items, album: album, layout: layout) {
-                                MediaTile(media: item, revision: model.revision, selected: selected == item.id, showPath: searching)
+                                MediaTile(media: item, revision: model.revision, selected: isMediaSelected(item.id),
+                                          showPath: searching, checked: removalSelection?.contains(item.id))
                                     .frame(width: 94)
                             }
                         }
@@ -620,23 +676,54 @@ struct LibraryView: View {
                                         @ViewBuilder label: () -> Label) -> some View {
         label()
             .overlay {
+                if removalSelection != nil, selected == item.id, focus == .browser {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.ipreviewAccent, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay {
                 MediaTileClick { clickCount in
                     selected = item.id
                     focus = .browser
-                    if clickCount == 2 {
+                    if removalSelection != nil {
+                        if clickCount == 1 { toggleRemoval(item.id) }
+                    } else if clickCount == 2 {
                         open(item, among: items, layout: layout)
                     }
                 }
                 .accessibilityHidden(true)
             }
-            .contextMenu { mediaActions(item, in: album) }
+            .contextMenu {
+                if removalSelection == nil { mediaActions(item, in: album) }
+            }
             .help(item.directories.joined(separator: " / ") + " / " + item.name)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(item.name)
             .accessibilityValue(item.isAvailable ? item.directories.joined(separator: "，") : "不可用")
-            .accessibilityAddTraits(selected == item.id ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { open(item, among: items, layout: layout) }
+            .accessibilityAddTraits(isMediaSelected(item.id) ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction {
+                if removalSelection != nil {
+                    selected = item.id
+                    toggleRemoval(item.id)
+                } else {
+                    open(item, among: items, layout: layout)
+                }
+            }
             .id(item.id)
+    }
+
+    private func isMediaSelected(_ mediaID: Int64) -> Bool {
+        removalSelection?.contains(mediaID) ?? (selected == mediaID)
+    }
+
+    private func toggleRemoval(_ mediaID: Int64) {
+        guard var selection = removalSelection, !model.isWorking else { return }
+        if !selection.insert(mediaID).inserted {
+            selection.remove(mediaID)
+        }
+        removalSelection = selection
     }
 
     @ViewBuilder
@@ -693,6 +780,7 @@ struct LibraryView: View {
 
     private func navigate(_ page: LibraryPage, selecting folder: LibraryPage? = nil) {
         self.page = page
+        removalSelection = nil
         query = ""
         selected = nil
         selectedFolder = folder
@@ -881,6 +969,7 @@ private struct MediaTile: View {
     let revision: Int
     let selected: Bool
     let showPath: Bool
+    let checked: Bool?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -890,6 +979,12 @@ private struct MediaTile: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(selected ? Color.ipreviewAccent : .clear, lineWidth: 2)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let checked {
+                        MediaSelectionMark(isChecked: checked)
+                            .padding(7)
+                    }
                 }
                 .overlay(alignment: .bottomLeading) {
                     if media.kind == .video {

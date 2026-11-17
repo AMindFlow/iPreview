@@ -90,7 +90,7 @@ try
         Check(badBatchFailed, "batch append fails for missing member ID");
         Check(catalog.Read().AlbumMembers[albumId].Select(item => item.Id).SequenceEqual([firstId, secondId, clipId]),
             "failed batch leaves no partial references");
-        catalog.RemoveFromAlbum(albumId, clipId);
+        catalog.RemoveFromAlbum(albumId, [clipId]);
         catalog.MoveInAlbum(albumId, secondId, -1);
         catalog.RenameAlbum(albumId, "海外");
     }
@@ -115,7 +115,26 @@ try
         Check(MediaFiles.OpenPath(online) == Path.Combine(mixed, "Other", "Album", "other.jpg"),
             "preview resolves source-relative media");
 
-        catalog.RemoveFromAlbum(albumId, secondId);
+        var clip = snapshot.Media.Single(item => item.IsVideo);
+        var retainedPhoto = snapshot.Media.Single(item => item.FileName == "城楼10.PNG");
+        var batchAlbum = catalog.CreateAlbum("批量移除");
+        catalog.AppendToAlbum(batchAlbum, [secondId, firstId, clip.Id, retainedPhoto.Id]);
+        var removedFiles = new[] { online, clip }.Select(MediaFiles.OpenPath).ToArray();
+        var originalTimes = removedFiles.Select(File.GetLastWriteTimeUtc).ToArray();
+        catalog.RemoveFromAlbum(batchAlbum, [clip.Id, secondId]);
+        using (var reopened = new Catalog(data))
+        {
+            var members = reopened.Read().AlbumMembers;
+            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([firstId, retainedPhoto.Id]),
+                "batch removal persists remaining album order");
+            Check(members[albumId].Select(item => item.Id).SequenceEqual([secondId, firstId]),
+                "batch removal preserves references in another album");
+        }
+        Check(removedFiles.All(path => File.ReadAllText(path) == "fixture") &&
+              removedFiles.Select(File.GetLastWriteTimeUtc).SequenceEqual(originalTimes),
+            "batch removal preserves original content and modification time");
+
+        catalog.RemoveFromAlbum(albumId, [secondId]);
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
