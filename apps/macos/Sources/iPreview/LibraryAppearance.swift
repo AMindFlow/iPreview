@@ -56,10 +56,11 @@ struct RenameClickBoundary: NSViewRepresentable {
             super.viewDidMoveToWindow()
             removeMonitor()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-                if let self, event.window == window,
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]) { [weak self] event in
+                if let self, let onOutsideClick, event.window == window,
                    !bounds.contains(convert(event.locationInWindow, from: nil)) {
-                    onOutsideClick?()
+                    // Let the clicked control finish handling its mouse event before publishing the rename.
+                    DispatchQueue.main.async { onOutsideClick() }
                 }
                 return event
             }

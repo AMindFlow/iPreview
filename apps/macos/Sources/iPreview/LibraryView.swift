@@ -95,9 +95,6 @@ struct LibraryView: View {
         }
         .task { await model.start() }
         .onChange(of: searching) { removalSelection = nil }
-        .onChange(of: focus) { old, new in
-            if old == .directoryTitle, new != .directoryTitle { finishDirectoryTitle() }
-        }
         .task(id: request) {
             guard let request else {
                 matches = nil
