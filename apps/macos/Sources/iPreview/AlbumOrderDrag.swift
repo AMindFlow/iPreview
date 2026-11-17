@@ -11,6 +11,9 @@ final class AlbumOrderDrag {
         let item: Media
         let indices: [Int64: Int]
         let sourceIndex: Int
+        let sourceSize: CGSize
+        let grabOffset: CGPoint
+        let avatar: AnyView
     }
 
     private(set) var drag: Drag?
@@ -38,12 +41,17 @@ final class AlbumOrderDrag {
         return CGPoint(x: x + point.x, y: y + point.y)
     }
 
-    func update(_ point: CGPoint, item: Media, album: VirtualAlbum) {
-        guard cancelledID != item.id else { return }
-        if drag == nil, let index = album.mediaIDs.firstIndex(of: item.id) {
-            let indices = Dictionary(uniqueKeysWithValues: album.mediaIDs.enumerated().map { ($1, $0) })
-            drag = Drag(album: album, item: item, indices: indices, sourceIndex: index)
-        }
+    func begin(_ item: Media, album: VirtualAlbum, grabbedAt point: CGPoint, avatar: AnyView) -> Bool {
+        guard drag == nil, cancelledID != item.id, let frame = frames[item.id],
+              let index = album.mediaIDs.firstIndex(of: item.id) else { return false }
+        let indices = Dictionary(uniqueKeysWithValues: album.mediaIDs.enumerated().map { ($1, $0) })
+        let offset = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        drag = Drag(album: album, item: item, indices: indices, sourceIndex: index,
+                    sourceSize: frame.size, grabOffset: offset, avatar: avatar)
+        return true
+    }
+
+    func update(_ point: CGPoint, item: Media) {
         guard let drag, drag.item.id == item.id else { return }
         guard viewport.contains(point) else {
             pointer = nil
@@ -51,11 +59,13 @@ final class AlbumOrderDrag {
             return
         }
         pointer = point
+        let center = CGPoint(x: point.x - drag.grabOffset.x + drag.sourceSize.width / 2,
+                             y: point.y - drag.grabOffset.y + drag.sourceSize.height / 2)
         destination = frames
             .compactMap { id, frame -> (index: Int, score: CGFloat)? in
                 guard let index = drag.indices[id], frame.intersects(viewport) else { return nil }
-                let x = (point.x - frame.midX) / max(1, frame.width / 2)
-                let y = (point.y - frame.midY) / max(1, frame.height / 2)
+                let x = (center.x - frame.midX) / max(1, frame.width / 2)
+                let y = (center.y - frame.midY) / max(1, frame.height / 2)
                 return (index, x * x + y * y)
             }
             .min { $0.score == $1.score ? $0.index < $1.index : $0.score < $1.score }?.index
@@ -98,24 +108,17 @@ final class AlbumOrderDrag {
 }
 
 extension View {
-    func albumOrderOverlay(_ order: AlbumOrderDrag, revision: Int) -> some View {
+    func albumOrderOverlay(_ order: AlbumOrderDrag) -> some View {
         overlay(alignment: .topLeading) {
-            if let drag = order.drag, let point = order.pointer, let destination = order.destination {
-                VStack(alignment: .leading, spacing: 5) {
-                    MediaThumbnail(media: drag.item, revision: revision)
-                        .frame(height: 65)
-                        .clipShape(.rect(cornerRadius: 7))
-                    Text(drag.item.name).font(.caption).lineLimit(1)
-                    Text("位置 \(destination + 1)").font(.caption2).foregroundStyle(.secondary)
-                }
-                .frame(width: 115, alignment: .leading)
-                .padding(8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.12)))
-                .shadow(color: .black.opacity(0.24), radius: 9, y: 4)
-                .offset(x: point.x + 13, y: point.y + 10)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            if let drag = order.drag, let point = order.pointer, order.destination != nil {
+                drag.avatar
+                    .frame(width: drag.sourceSize.width, height: drag.sourceSize.height)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.13)))
+                    .shadow(color: .black.opacity(0.24), radius: 9, y: 4)
+                    .offset(x: point.x - drag.grabOffset.x, y: point.y - drag.grabOffset.y)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .coordinateSpace(name: albumOrderSpace)
@@ -130,13 +133,14 @@ extension View {
     }
 }
 
-struct AlbumOrderItem<Content: View>: View {
+struct AlbumOrderItem<Content: View, Avatar: View>: View {
     let order: AlbumOrderDrag
     let album: VirtualAlbum
     let item: Media
     let mode: MediaBrowseMode
     let enabled: Bool
     let content: Content
+    let avatar: Avatar
     let start: () -> Void
     let commit: (VirtualAlbum, Int) -> Void
 
@@ -186,17 +190,18 @@ struct AlbumOrderItem<Content: View>: View {
         }
     }
 
-    private func updateDrag(_ location: CGPoint) {
-        guard let point = order.pointInBrowser(location, from: item, mode: mode) else { return }
-        let wasActive = order.drag != nil
-        order.update(point, item: item, album: album)
-        if !wasActive, order.drag != nil { start() }
+    private func updateDrag(_ location: CGPoint, _ origin: CGPoint) {
+        guard let point = order.pointInBrowser(location, from: item, mode: mode),
+              let grabbedAt = order.pointInBrowser(origin, from: item, mode: mode) else { return }
+        if order.drag == nil, order.begin(item, album: album, grabbedAt: grabbedAt, avatar: AnyView(avatar)) { start() }
+        order.update(point, item: item)
     }
 
     private func finishDrag(_ location: CGPoint?) {
         defer { order.endGesture(for: item.id) }
-        guard order.drag?.item.id == item.id, let location else { return }
-        updateDrag(location)
+        guard order.drag?.item.id == item.id, let location,
+              let point = order.pointInBrowser(location, from: item, mode: mode) else { return }
+        order.update(point, item: item)
         if let drag = order.drag, let target = order.destination, drag.sourceIndex != target {
             commit(drag.album, target)
         }
@@ -208,7 +213,7 @@ private struct AlbumOrderHandle: NSViewRepresentable {
     static func trailingInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 2 : 5 }
     static func bottomInset(_ mode: MediaBrowseMode) -> CGFloat { mode == .list ? 0 : 18 }
 
-    let update: (CGPoint) -> Void
+    let update: (CGPoint, CGPoint) -> Void
     let finish: (CGPoint?) -> Void
 
     func makeNSView(context: Context) -> Surface { Surface() }
@@ -220,7 +225,7 @@ private struct AlbumOrderHandle: NSViewRepresentable {
 
     // Claim mouse-down just on the grip so the surrounding scroll view cannot take the drag.
     final class Surface: NSView {
-        var updateDrag: ((CGPoint) -> Void)?
+        var updateDrag: ((CGPoint, CGPoint) -> Void)?
         var finishDrag: ((CGPoint?) -> Void)?
         private var anchor: CGPoint?
         private var dragging = false
@@ -249,7 +254,7 @@ private struct AlbumOrderHandle: NSViewRepresentable {
                 dragging = true
                 NSCursor.closedHand.set()
             }
-            updateDrag?(convert(point, from: nil))
+            updateDrag?(convert(point, from: nil), convert(anchor, from: nil))
         }
 
         override func mouseUp(with event: NSEvent) {

@@ -588,7 +588,7 @@ struct LibraryView: View {
             let layout = browseMode.layout(gridColumns: grid.count)
             ScrollViewReader { reader in
                 mediaBrowser(items, album: album, grid: grid, layout: layout)
-                    .albumOrderOverlay(albumOrder, revision: model.revision)
+                    .albumOrderOverlay(albumOrder)
                     .focusable()
                     .focusEffectDisabled()
                     .focused($focus, equals: .browser)
@@ -729,7 +729,8 @@ struct LibraryView: View {
     @ViewBuilder
     private func browseItem<Label: View>(_ item: Media, among items: [Media], album: VirtualAlbum?, layout: BrowseLayout,
                                         @ViewBuilder label: () -> Label) -> some View {
-        let cell = label()
+        let avatar = label()
+        let cell = avatar
             .overlay {
                 if removalSelection != nil, selected == item.id, focus == .browser {
                     RoundedRectangle(cornerRadius: 6)
@@ -775,7 +776,7 @@ struct LibraryView: View {
         if let album, album.mediaIDs.count > 1 {
             let enabled = removalSelection == nil && !model.isWorking && !searching
             AlbumOrderItem(order: albumOrder, album: album, item: item, mode: browseMode, enabled: enabled,
-                           content: cell) {
+                           content: cell, avatar: avatar) {
                 selected = item.id
                 focus = .browser
             } commit: { expected, position in
