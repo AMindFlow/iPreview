@@ -76,21 +76,22 @@ public sealed partial class MainWindow
         _ => Gallery
     };
 
-    private void ChangeBrowseMode(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    private void ChangeBrowseMode(object sender, RoutedEventArgs args)
     {
-        if (catalog is null || sender.SelectedItem is not { } item)
-            return;
-
-        SetBrowseMode((BrowseMode)sender.Items.IndexOf(item), item.FocusState == FocusState.Keyboard);
+        var mode = sender == ListModeButton ? BrowseMode.List
+            : sender == GalleryModeButton ? BrowseMode.Gallery : BrowseMode.Icons;
+        SetBrowseMode(mode, sender is Control { FocusState: FocusState.Keyboard });
     }
 
     private void SetBrowseMode(BrowseMode mode, bool keepPickerFocus = false)
     {
+        IconModeButton.IsChecked = mode == BrowseMode.Icons;
+        ListModeButton.IsChecked = mode == BrowseMode.List;
+        GalleryModeButton.IsChecked = mode == BrowseMode.Gallery;
         if (browseMode == mode)
             return;
         var selected = Selection?.Media.Id ?? selectionBeforeAlbumRemoval;
         browseMode = mode;
-        ViewModePicker.SelectedItem = ViewModePicker.Items[(int)mode];
         RefreshMediaBrowser(selected);
         if (keepPickerFocus)
             return;
@@ -124,7 +125,7 @@ public sealed partial class MainWindow
     {
         CancelAlbumAdjustmentPointer();
         var browser = ActiveMediaBrowser;
-        var mediaVisibility = browsingFolders ? Visibility.Collapsed : Visibility.Visible;
+        var mediaVisibility = browsingFolders || tiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         updatingBrowser = true;
         try
         {
