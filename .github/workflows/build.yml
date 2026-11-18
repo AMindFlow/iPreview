@@ -27,10 +27,18 @@ jobs:
         run: swift run iPreviewCoreChecks
       - name: Assemble application
         run: bash scripts/package-macos.sh "${RUNNER_TEMP}/iPreview-macos-arm64.zip"
+      - name: Assemble disk image
+        run: bash scripts/package-macos-dmg.sh "${RUNNER_TEMP}/iPreview-macos-arm64.zip" "${RUNNER_TEMP}/iPreview-macos-arm64.dmg"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iPreview-macos-arm64
           path: ${{ runner.temp }}/iPreview-macos-arm64.zip
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iPreview-macos-arm64-dmg
+          path: ${{ runner.temp }}/iPreview-macos-arm64.dmg
           if-no-files-found: error
           compression-level: 0
 
