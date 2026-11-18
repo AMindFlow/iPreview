@@ -30,8 +30,9 @@
 
 - **要求** 保留 Windows 原生窗框。图库侧栏、全局搜索和媒体预览使用 WinUI 系统材质，支持系统关闭透明效果时的回退。直属媒体目录用文件夹，单创作者来源用个人，多创作者来源用多人，离线状态保持可见。
 - **要求** Windows 图库沿用 Mac 版的标题、侧栏与工具布局，浏览方式使用紧凑的原生控件。列表列头与项目列对齐，搜索结果内容、状态与底部操作保持一致间距。图库、全局搜索和选片器随系统浅色、深色和对比度主题调整。
-- **来源** [Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)、[预览控制与 Windows 界面对齐 #35](https://github.com/AMindFlow/iPreview/issues/35)及[WinUI 应用内 Acrylic](https://learn.microsoft.com/en-us/windows/apps/develop/ui/in-app-acrylic)。
-- **验收** 在 Windows 11 检查来源图标、离线标识、全局搜索与预览的材质。调整窗口宽度，比较标题、搜索、操作组及列表列头和内容的边缘。核对浅色、深色及回退材质中的可读性和焦点。
+- **设计决定** Windows 采用与 Mac 对应的扁平「源」「合集」侧栏，创作者与专辑在内容区逐级进入。导入与侧栏切换使用紧凑顶部操作，标题、层级摘要、重新扫描、展示切换和合集操作按 Mac 的区域位置排列，移除固定底部工具条。通过统一内容边缘、网格比例、列表列及画廊浏览条对齐现有流程。Windows 保留原生窗框。
+- **来源** [双端布局对齐 #47](https://github.com/AMindFlow/iPreview/issues/47)、[Windows 图库体验 #31](https://github.com/AMindFlow/iPreview/issues/31)、[预览控制与 Windows 界面对齐 #35](https://github.com/AMindFlow/iPreview/issues/35)及[WinUI 应用内 Acrylic](https://learn.microsoft.com/en-us/windows/apps/develop/ui/in-app-acrylic)。
+- **验收** 在 Windows 11 检查来源图标、离线标识、全局搜索与预览的材质。调整窗口宽度，比较标题、搜索、操作组及列表列头和内容的边缘。核对浅色、深色及回退材质中的可读性和焦点。在相近窗口尺寸、同一源和合集中并排对比两端，检查层级方向键、Space 进入、Esc 返回和标题重命名。
 
 ## UI-005 侧栏操作与媒体库用语
 
