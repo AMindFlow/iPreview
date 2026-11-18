@@ -56,6 +56,8 @@ public sealed partial class MainWindow
         Sidebar.Width = width;
         SidebarToolsOffset.X = offset;
         sidebarCollapsed = !sidebarCollapsed;
+        Sidebar.Visibility = Visibility.Visible;
+        Sidebar.IsEnabled = !sidebarCollapsed;
         SidebarToggleGlyph.Glyph = sidebarCollapsed ? "\uE76C" : "\uE76B";
         var label = sidebarCollapsed ? "展开侧边栏" : "收起侧边栏";
         AutomationProperties.SetName(SidebarToggleButton, label);
@@ -66,6 +68,7 @@ public sealed partial class MainWindow
         {
             Sidebar.Width = targetWidth;
             SidebarToolsOffset.X = targetOffset;
+            Sidebar.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             UpdateTitleBarRegions();
             return;
         }
@@ -93,6 +96,7 @@ public sealed partial class MainWindow
             Sidebar.Width = targetWidth;
             SidebarToolsOffset.X = targetOffset;
             animation.Stop();
+            Sidebar.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             if (ReferenceEquals(sidebarAnimation, animation))
                 sidebarAnimation = null;
             UpdateTitleBarRegions();
