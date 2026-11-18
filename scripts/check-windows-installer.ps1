@@ -9,7 +9,7 @@ $installerPath = (Resolve-Path -LiteralPath $Installer).Path
 $publish = (Resolve-Path -LiteralPath $PublishDirectory).Path
 $evidence = (New-Item -ItemType Directory -Force -Path $EvidenceDirectory).FullName
 $install = Join-Path $env:LOCALAPPDATA 'Programs\iPreview'
-$catalog = Join-Path $env:LOCALAPPDATA 'iPreview\catalog.sqlite3'
+$catalog = Join-Path $env:LOCALAPPDATA 'iPreview\library.sqlite3'
 $shortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) 'iPreview.lnk'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\io.github.amindflow.iPreview_is1'
 
