@@ -123,6 +123,8 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
+            <Grid x:Name="AppTitleBar" Grid.ColumnSpan="2" Background="Transparent" Height="32"
+                  Loaded="TitleBarLoaded" SizeChanged="TitleBarSizeChanged" />
             <StackPanel x:Name="SidebarTools" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="4"
                         HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0">
                 <StackPanel.RenderTransform>

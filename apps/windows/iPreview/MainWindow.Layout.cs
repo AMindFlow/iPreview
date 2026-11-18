@@ -1,3 +1,4 @@
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -12,6 +13,39 @@ public sealed partial class MainWindow
 {
     private bool sidebarCollapsed;
     private Storyboard? sidebarAnimation;
+
+    private void InitializeTitleBar()
+    {
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppWindow.TitleBar.LayoutMetricsChanged += (_, _) => UpdateTitleBarRegions();
+        SearchOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
+        PreviewOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
+    }
+
+    private void TitleBarLoaded(object sender, RoutedEventArgs args) => UpdateTitleBarRegions();
+
+    private void TitleBarSizeChanged(object sender, SizeChangedEventArgs args) => UpdateTitleBarRegions();
+
+    private void UpdateTitleBarRegions()
+    {
+        if (!AppTitleBar.IsLoaded)
+            return;
+        var scale = AppTitleBar.XamlRoot.RasterizationScale;
+        var left = AppWindow.TitleBar.LeftInset / scale;
+        var right = Math.Max(left, Root.ActualWidth - AppWindow.TitleBar.RightInset / scale);
+        var overlay = SearchOverlay.Visibility == Visibility.Visible || PreviewOverlay.Visibility == Visibility.Visible;
+        var bounds = overlay ? new Rect(left, 0, right - left, AppTitleBar.ActualHeight)
+            : sidebarAnimation is not null ? new Rect(12, 0, 184, AppTitleBar.ActualHeight)
+            : BoundsInRoot(SidebarTools);
+        var clippedLeft = Math.Max(left, bounds.Left);
+        var clippedRight = Math.Max(clippedLeft, Math.Min(right, bounds.Right));
+        var rectangle = new Windows.Graphics.RectInt32((int)Math.Round(clippedLeft * scale),
+            (int)Math.Round(bounds.Top * scale), (int)Math.Round((clippedRight - clippedLeft) * scale),
+            (int)Math.Round(bounds.Height * scale));
+        InputNonClientPointerSource.GetForWindowId(AppWindow.Id)
+            .SetRegionRects(NonClientRegionKind.Passthrough, [rectangle]);
+    }
 
     private void ToggleSidebar(object sender, RoutedEventArgs args)
     {
@@ -31,6 +65,7 @@ public sealed partial class MainWindow
         {
             Sidebar.Width = targetWidth;
             SidebarToolsOffset.X = targetOffset;
+            UpdateTitleBarRegions();
             return;
         }
 
@@ -59,8 +94,10 @@ public sealed partial class MainWindow
             animation.Stop();
             if (ReferenceEquals(sidebarAnimation, animation))
                 sidebarAnimation = null;
+            UpdateTitleBarRegions();
         };
         sidebarAnimation = animation;
+        UpdateTitleBarRegions();
         animation.Begin();
     }
 
@@ -74,9 +111,9 @@ public sealed partial class MainWindow
     {
         var browser = (GridView)sender;
         UpdateCardMetrics(browser);
-        for (var index = 0; index < browser.Items.Count; index++)
+        if (browser.ItemsPanelRoot is Panel panel)
         {
-            if (browser.ContainerFromIndex(index) is GridViewItem item)
+            foreach (var item in panel.Children.OfType<GridViewItem>())
                 SizeCard(browser, item);
         }
     }
@@ -101,7 +138,7 @@ public sealed partial class MainWindow
             return;
         var width = Math.Max(148, browser.ActualWidth - 4);
         var columns = Math.Max(1, (int)Math.Floor((width + 15) / 230));
-        panel.ItemWidth = width / columns;
+        panel.ItemWidth = Math.Floor(width / columns);
         panel.ItemHeight = CardWidth(browser) / 1.47 + (browser == SourceFolders ? 62 : 41);
     }
 
