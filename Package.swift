@@ -4,7 +4,7 @@ import PackageDescription
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let nonCorePaths = [
-    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "requirements.md", "docs", "scripts",
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md", "requirements.md", "docs", "scripts", "packaging",
     "apps/windows", "apps/macos/Assets", "apps/macos/Info.plist", "apps/macos/Tests",
     "apps/macos/Sources/iPreview",
     "shared/README.md", "shared/assets", "shared/fixtures",
