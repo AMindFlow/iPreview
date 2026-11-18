@@ -21,13 +21,13 @@
                     <Setter Property="CornerRadius" Value="5" />
                 </Style>
                 <Style x:Key="ViewModeButton" TargetType="ToggleButton">
-                    <Setter Property="Width" Value="34" />
-                    <Setter Property="MinWidth" Value="34" />
-                    <Setter Property="Height" Value="22" />
-                    <Setter Property="MinHeight" Value="22" />
+                    <Setter Property="Width" Value="30" />
+                    <Setter Property="MinWidth" Value="30" />
+                    <Setter Property="Height" Value="30" />
+                    <Setter Property="MinHeight" Value="30" />
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="BorderThickness" Value="0" />
-                    <Setter Property="CornerRadius" Value="4" />
+                    <Setter Property="CornerRadius" Value="15" />
                     <Setter Property="Background" Value="Transparent" />
                 </Style>
                 <Style x:Key="SidebarEntryStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
@@ -215,10 +215,11 @@
                             <Button x:Name="RemoveAlbumSelectionButton" Click="RemoveFromAlbum" Content="移除引用"
                                     CornerRadius="7" MinHeight="26" FontSize="12" Padding="9,1" IsEnabled="False" />
                         </StackPanel>
-                        <Border Grid.Column="3" CornerRadius="6" Padding="2" Height="26" VerticalAlignment="Center"
-                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                        <Border Grid.Column="3" CornerRadius="19" Padding="6,3" Height="38" VerticalAlignment="Center"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
                                 Visibility="{Binding Visibility, ElementName=ViewModePicker}">
-                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="1"
+                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="8"
                                         AutomationProperties.Name="浏览视图">
                                 <ToggleButton x:Name="IconModeButton" IsChecked="True" Click="ChangeBrowseMode"
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"

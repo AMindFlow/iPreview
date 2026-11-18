@@ -52,6 +52,7 @@ public sealed partial class MainWindow
         var width = Sidebar.ActualWidth;
         var offset = SidebarToolsOffset.X;
         sidebarAnimation?.Stop();
+        sidebarAnimation = null;
         Sidebar.Width = width;
         SidebarToolsOffset.X = offset;
         sidebarCollapsed = !sidebarCollapsed;

@@ -55,6 +55,8 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelAlbumAdjustmentPointer();
+            sidebarAnimation?.Stop();
+            sidebarAnimation = null;
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();
