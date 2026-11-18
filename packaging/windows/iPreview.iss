@@ -21,6 +21,7 @@ MinVersion=10.0.22000
 OutputBaseFilename=iPreview-{#AppVersion}-windows-x64-setup
 SetupIconFile={#PublishDir}\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\iPreview.exe
+UninstallDisplayName=iPreview
 WizardStyle=modern dynamic windows11
 Compression=lzma2
 SolidCompression=yes
