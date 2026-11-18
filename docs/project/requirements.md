@@ -1,35 +1,55 @@
 # iPreview 完整需求
 
-iPreview 重启并升级 picosmic。产品承接本地图片库、Quick Look 式键盘预览、合集和多工作区，逐步支持旧版全部图片格式及常见视频、音频格式。[首版 Issue #1](https://github.com/AMindFlow/iPreview/issues/1)记录首个交付切片，[总体需求 #3](https://github.com/AMindFlow/iPreview/issues/3)追踪完整范围。
+iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流、图片、常见视频和音频、多工作区、旧库迁移与媒体元信息。0.1.0 是其中已验收的图片／基础视频桌面交付，不代表全部产品目标完成。
 
-所有提出的需求在排期前登记。按下表查阅生效规格和已登记的后续需求，按[路线图](roadmap.md)查阅交付顺序、依赖及待决定的事项。
+- [原始需求快照](requirements-original.md)保存用户提供的最初文档；其中路径与旧产品名称属于原文。下表逐项映射原始范围。
+- [一期验收登记册](releases/0.1.0.md)登记已交付功能、后续细化及 PR，实际行为由 `official/` 规格定义。
+- [未完成需求](backlog.md)单独登记部分完成、待实施、待决策和待验收项，使用原规格编号追踪。
+- [路线图](roadmap.md)记录先后依赖；[分工与 DAG](phase-1-collaboration.md)记录一期实际工作包。[总体 Issue #3](https://github.com/AMindFlow/iPreview/issues/3)追踪整个产品，[一期收尾 #51](https://github.com/AMindFlow/iPreview/issues/51)追踪本轮归档。
 
-| 维度 | 生效规格 | 已登记的后续需求 |
+## 原始需求逐项对应
+
+下表的 `ORIG-*` 是原文追溯行号；功能规范继续使用 `LIB/PRE/ALB/SRCH/META/UI/PLAT/BRW` 编号。已完成仅针对表中写明的范围。
+
+| 原文追溯 | 最初需求 | 一期状态与规格去向 |
 | --- | --- | --- |
-| 本地媒体库 | [LIB-001、LIB-002、LIB-009、LIB-010、LIB-011、LIB-012](../specs/official/library.md) | [旧版图库管理、多工作区、旧库迁移、两种视频作品、音频组织与待定旧版文件操作](../specs/spike/library.md) |
-| 键盘预览 | [PRE-001、PRE-007、PRE-008、PRE-009、PRE-010、PRE-011](../specs/official/preview.md) | [普通图片效果、漫画双页、视频影碟与图册、音频封面与 CD 机、常见视频格式](../specs/spike/preview.md) |
-| 专辑浏览 | [图片点击响应](../specs/official/browsing.md#brw-001-图片选中响应)、[图标、列表与画廊](../specs/official/browsing.md#brw-002-图标列表和画廊视图)、[展示快捷键](../specs/official/browsing.md#brw-003-媒体展示快捷键) | |
-| 搜索 | [SRCH-001、SRCH-002](../specs/official/search.md) | [旧版分类结果及标签搜索](../specs/spike/search.md) |
-| 合集与专辑组织 | [ALB-001、ALB-004、ALB-005、ALB-006](../specs/official/virtual-albums.md) | [标签、收藏、评分、封面、Windows 拖动重排与删除](../specs/spike/virtual-albums.md) |
-| 媒体元信息 | | [从文件提取及修改后写回](../specs/spike/metadata.md) |
-| 应用视觉 | [UI-001 应用图标、UI-002 合集选片器、UI-003 macOS 原生液态玻璃、UI-004 Windows 图库材质与来源图标、UI-005 侧栏操作与媒体库用语、UI-006 媒体展示切换器](../specs/official/appearance.md) | |
-| 平台与分发 | [平台与技术栈](overview.md) | [iOS、旧版浏览器与局域网入口、桌面安装升级](../specs/spike/platforms.md) |
+| ORIG-01 | 重启 picosmic，承接原本图库、键盘预览和跨目录虚拟专辑 | 核心已交付：[LIB-001–002](../specs/official/library.md)、[PRE-001、007–011](../specs/official/preview.md)、[ALB-001、004–006](../specs/official/virtual-albums.md)。旧版其余工作流逐项保留在[未完成清单](backlog.md)。产品用语已统一为「合集」。 |
+| ORIG-02 | 旧版所有图片类型 | JPEG/JPG、PNG、WebP、GIF 及 macOS HEIC 已交付；Windows HEIC 依赖系统解码器。[PRE-001](../specs/official/preview.md#pre-001-图片与视频预览)。 |
+| ORIG-03 | 常见视频格式 | 部分完成：系统框架播放 H.264/AAC MP4、MOV；额外容器／编码的实际缺口及成熟播放底座扩展见 [PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展)。 |
+| ORIG-04 | 常见音频格式 | 待设计、审阅与实施：[LIB-007](../specs/spike/library.md#lib-007-音频组织)。 |
+| ORIG-05 | creator → album 自动识别 | 已交付：[LIB-001](../specs/official/library.md#lib-001-目录导入与扫描)。 |
+| ORIG-06 | multi-creators → creator → album 自动识别 | 已交付，先选择创作者、再进入其专辑：[LIB-009、010](../specs/official/library.md)。 |
+| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 待实施：[LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)。官方样张的外部提供方与获取方式待确认。 |
+| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | 待实施，同属 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)。 |
+| ORIG-09 | 音频管理体系由代理设计，用户审阅后做 | 已登记，后置且保留审阅条件：[LIB-007](../specs/spike/library.md#lib-007-音频组织)、[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
+| ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 已交付并按后续确认细化：[PRE-007、008](../specs/official/preview.md)、[LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。 |
+| ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |
+| ORIG-12 | 精确／模糊及文件／目录搜索模式 | 已交付，最终使用居中搜索、快捷键与 `@` 后空格：[SRCH-001、002](../specs/official/search.md)。旧版标签搜索另见 [SRCH-003](../specs/spike/search.md#srch-003-旧版分类结果与标签搜索)。 |
+| ORIG-13 | 从媒体提取清晰度、作者等元信息 | 待实施：[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)。一期列表中的大小、修改时间及种类不代表此项完成。 |
+| ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
+| ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
+| ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
+| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 待实施：[PRE-004](../specs/spike/preview.md#pre-004-视频作品的影碟与图册预览)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
+| ORIG-18 | 音频封面与 CD 机模拟，其他由代理设计 | 待审阅与实施：[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
+| ORIG-19 | 多工作区，分别保存文件夹与专辑管理数据 | 待实施：[LIB-004](../specs/spike/library.md#lib-004-多工作区)。一期只有默认本地库，测试用数据目录不算工作区产品功能。 |
+| ORIG-20 | 跨 macOS／Windows 原生可用并实机测试 | 一期桌面已交付，macOS 15 启动有 CI 验证；实际视觉和辅助功能未全矩阵人工复验，见[一期登记册](releases/0.1.0.md)。 |
+| ORIG-21 | 视觉依次参考液态玻璃、Stitch、本地前端参考 | 当前界面已按后续参考细化：[UI-001–006](../specs/official/appearance.md)。macOS 26+ 原生玻璃，macOS 15 系统材质；Windows 以原生窗框和材质对齐布局。 |
+| ORIG-22 | 美术先用 agy，Hydrogen High／Flex，低速再 Standard | 持续设计约束，见下文；不把全部实现交给 agy。 |
+| ORIG-23 | 新增流程先 ImageGen 两套，先采用一套保留备选 | 持续设计约束；选片器采用用户选定的底部胶片条，备选随版本设计资料保存。 |
+| ORIG-24 | 先 roadmap、分期 specs，仅重大取舍请求决定 | [路线图](roadmap.md)、分维度 `official/spike` 与 [SDD 流程](../workflow/sdd.md)持续执行。 |
+| ORIG-25 | 多 Agent 并行、交付任务 DAG | 已记录[一期分工与任务 DAG](phase-1-collaboration.md)，后续仍按独立 worktree／可独立验收 PR 拆分。 |
+| ORIG-26 | GitHub Flow、禁止直推 main、关注 Codex Review | 已采用 PR、独立审阅与 Merge Queue；见[工作流](../workflow/git.md)及一期 PR 台账。 |
 
-## 设计要求
+## 设计与交付约束
 
-- 界面简洁、现代，以原生侧栏、媒体网格与沉浸式预览承载首版选定的设计语言。视觉参考依次为 macOS 26+ 液态玻璃、Google Stitch 当期风格、用户提供的本地 `clarity-frontend-reference`。保留旧版浅色、深色和跟随系统主题的选择与恢复需求。
-- 美术探索优先由 agy 子代理完成，额度用于设计。优先采用 Hydrogen High 和 Flex，响应速度低于 5 tok/s 时切到 Standard。
-- 旧版没有的页面或流程，在实施前用 ImageGen 出至少两套示例，采用一套并保留备选供审阅。音频设计以及其他会实质影响产品或访问边界的决定按 [SDD 流程](../workflow/sdd.md)确认。
-
-## 交付要求
-
-- 可并行工作使用独立 worktree。按 [GitHub Flow](../workflow/git.md)拆分、审阅和合入，处理 Codex 自动审阅意见。规划各工作包依赖，每阶段交付附任务 DAG。
-- 首版目标包为 Mac ARM64 `.app` ZIP 与 Windows 11 x64 自包含 ZIP。跨平台产品交付基于同一最终提交，在本机 Apple Silicon Mac 与 Windows App 可连接的 Windows 11 实机用同一套样例验收。具备桌面访问时用 Computer Use 自行完成界面操作。iOS 阶段验收见 [PLAT-001](../specs/spike/platforms.md#plat-001-ios-原生体验)。
-- 交付随包附样例、步骤和结果、提交 SHA、PR 和构建产物链接。首版验收覆盖重启恢复、搜索、图片与视频预览、合集、损坏文件、离线及恢复，核对源文件路径、内容和修改时间。见[验收步骤](acceptance.md)。
+- 界面简洁、现代，保留原生侧栏、媒体网格与沉浸预览。参考优先级沿用原文。旧版浅色／深色／跟随系统的显式设置尚待 [UI-007](../specs/spike/appearance.md#ui-007-主题选择与恢复)，已有跟随系统不等于该设置完成。
+- 美术探索优先由 agy 做设计，使用 Hydrogen High／Flex，响应低于 5 tok/s 时可切 Standard。旧版没有的页面流程先出至少两套 ImageGen 方案，保留备选供审阅；音频设计和重大权限／数据决定先由用户确认。
+- 一期交付形式为 Mac ARM64 DMG 与 `.app` ZIP、Windows 11 x64 自包含 EXE 安装器与 ZIP。安装边界见 [PLAT-005](../specs/official/platforms.md#plat-005-首版标准安装包)。不需要安装器的用户仍可使用完整 ZIP。
+- 同一最终源码构建双端，附提交 SHA、SHA-256、合成样例、实际验收、主页截图及 DAG。跨平台实机验收及源文件只读检查见[验收步骤](acceptance.md)；通过 Computer Use 自行操作。版本物料以版本子目录集中保存，过时物料移回收站且不清空。
 
 ## 旧版追溯
 
-旧版基线为本地 picosmic 恢复仓库提交 `cde3952`。下列路径相对于旧仓库，用于追溯已有行为和未完成验证的旧规格。
+旧版基线为 picosmic 恢复仓库提交 `cde3952`。以下为旧仓库相对路径，支持后续补齐旧版需求时核对。
 
 | 范围 | 旧版路径 |
 | --- | --- |
