@@ -7,13 +7,10 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
-    private async void NavigationTreeKeyDown(object sender, KeyRoutedEventArgs args)
+    private void NavigationListKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Key is not (VirtualKey.Enter or VirtualKey.Space or VirtualKey.Escape) ||
-            FocusManager.GetFocusedElement(Root.XamlRoot) is not TreeViewItem control ||
-            NavTree.NodeFromContainer(control)?.Content is not Navigation { Source: not null } target)
+        if (sender is not ListView list || list.SelectedItem is not Navigation target)
             return;
-
         if (args.Key == VirtualKey.Space)
         {
             args.Handled = true;
@@ -26,28 +23,16 @@ public sealed partial class MainWindow
             if (!args.KeyStatus.WasKeyDown)
                 NavigateToSourceParent();
         }
-        else if (args.Key == VirtualKey.Enter && target.Folder is not null)
-        {
-            args.Handled = true;
-            if (!args.KeyStatus.WasKeyDown)
-                await RenameIndexedFolder(target, fromSidebar: true);
-        }
     }
 
-    private void FocusSidebarFolder(long source, string folder)
+    private void FocusSidebarSource(long source)
     {
-        var node = FindNavigationNode(NavTree.RootNodes, new Navigation("", Source: source, Folder: folder));
-        if (node is null)
-            return;
-        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-            parent.IsExpanded = true;
-        NavTree.SelectedNode = node;
-        NavTree.UpdateLayout();
-        if (NavTree.ContainerFromNode(node) is not Control item || !item.Focus(FocusState.Keyboard))
-            NavTree.Focus(FocusState.Keyboard);
+        var item = SourceNavigation.Items.OfType<Navigation>().FirstOrDefault(item => item.Source == source);
+        SourceNavigation.SelectedItem = item;
+        FocusBrowserItem(SourceNavigation, item, FocusState.Keyboard);
     }
 
-    private Task RenameIndexedFolder(Navigation target, bool fromSidebar)
+    private Task RenameIndexedFolder(Navigation target)
     {
         if (target is not { Source: long id, Folder: { } path })
             return Task.CompletedTask;
@@ -59,11 +44,11 @@ public sealed partial class MainWindow
             return Task.CompletedTask;
         }
         return RenameSourceItem(id, path.TrimEnd('/'), sources[id].Available, isDirectory: true,
-            expectedMediaId: anchor.Id, fromSidebar: fromSidebar);
+            expectedMediaId: anchor.Id);
     }
 
     private async Task RenameSourceItem(long sourceId, string path, bool available, bool isDirectory,
-        long expectedMediaId, bool fromSidebar = false)
+        long expectedMediaId)
     {
         if (busy || catalog is null)
             return;
@@ -148,9 +133,7 @@ public sealed partial class MainWindow
         finally
         {
             SetBusy(false);
-            if (fromSidebar)
-                FocusSidebarFolder(sourceId, (renamedPath ?? path) + "/");
-            else if (isDirectory)
+            if (isDirectory)
                 FocusSourceFolder((renamedPath ?? path) + "/");
             else
                 FocusSelectedMedia();

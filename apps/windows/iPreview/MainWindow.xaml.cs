@@ -19,12 +19,10 @@ namespace IPreview;
 public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
-        long? Album = null, string Glyph = "\uE8B7")
+        long? Album = null, string Glyph = "\uE8B7", string Help = "", Tile? Cover = null, string Caption = "")
     {
         public override string ToString() => Label;
     }
-
-    private sealed record NavigationHeading(string Label, string Glyph);
 
     private static readonly Navigation Library = new("媒体库", Glyph: "\uE8B9");
     private Catalog? catalog;
@@ -49,6 +47,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
+        InitializeTitleBar();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
@@ -56,6 +55,8 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelAlbumAdjustmentPointer();
+            sidebarAnimation?.Stop();
+            sidebarAnimation = null;
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();
@@ -90,107 +91,48 @@ public sealed partial class MainWindow : Window
 
     private void Reload(long? selected = null)
     {
-        var expanded = ExpandedSources(NavTree.RootNodes);
         var snapshot = Database.Read();
         sources = snapshot.Sources;
         media = snapshot.Media;
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
 
-        NavTree.RootNodes.Clear();
-        if (sources.Count > 0)
-        {
-            var sourcesNode = new TreeViewNode { Content = new NavigationHeading("源", "\uE8B7"), IsExpanded = true };
-            foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
-            {
-                var label = source.Available ? source.Name : $"{source.Name}（离线）";
-                var glyph = source.Layout switch
+        SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
+            .Select(source => new Navigation(source.Available ? source.Name : $"{source.Name}（离线）",
+                Source: source.Id, Glyph: source.Layout switch
                 {
                     Layout.MultiCreator => "\uE902",
                     Layout.Creator => "\uE77B",
                     _ => "\uE8B7"
-                };
-                var node = new TreeViewNode
-                {
-                    Content = new Navigation(label, Source: source.Id, Glyph: glyph),
-                    IsExpanded = expanded.Contains(source.Id)
-                };
-                AddFolders(node, source.Id, media.Where(item => item.Source.Id == source.Id && item.Present));
-                sourcesNode.Children.Add(node);
-            }
-            NavTree.RootNodes.Add(sourcesNode);
-        }
-
-        if (albums.Count > 0)
-        {
-            var albumsNode = new TreeViewNode { Content = new NavigationHeading("合集", "\uE7B8"), IsExpanded = true };
-            foreach (var album in albums)
-                albumsNode.Children.Add(new TreeViewNode { Content = new Navigation(album.Name, Album: album.Id, Glyph: "\uE7B8") });
-            NavTree.RootNodes.Add(albumsNode);
-        }
+                }, Help: source.Path)).ToList();
+        AlbumNavigation.ItemsSource = albums.Select(album => new Navigation(album.Name, Album: album.Id,
+            Glyph: "\uE7B8")).ToList();
 
         if (current.Album is long albumId)
             current = new(albums.Single(album => album.Id == albumId).Name, Album: albumId);
-        NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
+        UpdateNavigationSelection();
         ShowItems(selected);
     }
 
-    private static TreeViewNode? FindNavigationNode(IEnumerable<TreeViewNode> nodes, Navigation target)
+    private void UpdateNavigationSelection()
     {
-        foreach (var node in nodes)
-        {
-            if (node.Content is Navigation entry && entry.Source == target.Source &&
-                entry.Folder == target.Folder && entry.Album == target.Album)
-                return node;
-            if (FindNavigationNode(node.Children, target) is { } match)
-                return match;
-        }
-        return null;
+        SourceNavigation.SelectedItem = SourceNavigation.Items.OfType<Navigation>()
+            .FirstOrDefault(item => item.Source == current.Source);
+        AlbumNavigation.SelectedItem = AlbumNavigation.Items.OfType<Navigation>()
+            .FirstOrDefault(item => item.Album == current.Album);
     }
 
-    private static HashSet<long> ExpandedSources(IEnumerable<TreeViewNode> roots) =>
-        roots.SelectMany(root => root.Children)
-            .Where(node => node.IsExpanded && node.Content is Navigation { Source: not null })
-            .Select(node => ((Navigation)node.Content).Source!.Value).ToHashSet();
-
-    private static void AddFolders(TreeViewNode node, long source, IEnumerable<Media> items)
+    private void Navigate(object sender, ItemClickEventArgs args)
     {
-        var known = new Dictionary<string, TreeViewNode>(StringComparer.Ordinal);
-        foreach (var item in MediaSearch.ByPath(items))
-        {
-            var labels = item.RelativePath.Split('/');
-            var parent = node;
-            var prefix = "";
-            for (var index = 0; index < labels.Length - 1; index++)
-            {
-                prefix += labels[index] + "/";
-                if (!known.TryGetValue(prefix, out var child))
-                {
-                    child = new TreeViewNode { Content = new Navigation(labels[index], source, prefix) };
-                    known.Add(prefix, child);
-                    parent.Children.Add(child);
-                }
-                parent = child;
-            }
-        }
-    }
-
-    private void Navigate(TreeView sender, TreeViewItemInvokedEventArgs args)
-    {
-        var content = args.InvokedItem is TreeViewNode node ? node.Content : args.InvokedItem;
-        if (content is Navigation target)
-        {
-            NavigateTo(target);
-            if (browsingFolders)
-                FocusSourceFolder();
-        }
+        if (args.ClickedItem is Navigation target)
+            NavigateFromContent(target);
     }
 
     private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
         Notice.IsOpen = false;
-        NavTree.SelectedNode = FindNavigationNode(NavTree.RootNodes, current);
+        UpdateNavigationSelection();
         ShowItems(selectedMedia);
     }
 
@@ -202,9 +144,24 @@ public sealed partial class MainWindow : Window
 
     private async void SourceFoldersKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Key is VirtualKey.Left or VirtualKey.Right)
+        var direction = args.Key switch
+        {
+            VirtualKey.Left => BrowseDirection.Left,
+            VirtualKey.Right => BrowseDirection.Right,
+            VirtualKey.Up => BrowseDirection.Up,
+            VirtualKey.Down => BrowseDirection.Down,
+            _ => (BrowseDirection?)null
+        };
+        if (direction is { } toward)
         {
             args.Handled = true;
+            var index = Math.Max(0, SourceFolders.SelectedIndex);
+            var layout = new BrowseLayout(BrowseMode.Icons, GridColumns(SourceFolders));
+            if (layout.NeighborOf(index, SourceFolders.Items.Count, toward) is int destination)
+            {
+                SourceFolders.SelectedIndex = destination;
+                FocusBrowserItem(SourceFolders, SourceFolders.SelectedItem, FocusState.Keyboard);
+            }
             return;
         }
         if (args.Key == VirtualKey.Escape)
@@ -217,14 +174,12 @@ public sealed partial class MainWindow : Window
         if (args.Key is not (VirtualKey.Enter or VirtualKey.Space))
             return;
         args.Handled = true;
-        if (!args.KeyStatus.WasKeyDown &&
-            FocusManager.GetFocusedElement(Root.XamlRoot) is ListViewItem item &&
-            SourceFolders.ItemFromContainer(item) is Navigation target)
+        if (!args.KeyStatus.WasKeyDown && SourceFolders.SelectedItem is Navigation target)
         {
             if (args.Key == VirtualKey.Space)
                 NavigateFromContent(target);
             else
-                await RenameIndexedFolder(target, fromSidebar: false);
+                await RenameIndexedFolder(target);
         }
     }
 
@@ -244,7 +199,7 @@ public sealed partial class MainWindow : Window
         if (browsingFolders)
             FocusSourceFolder(path);
         else
-            FocusSidebarFolder(source.Id, path);
+            FocusSidebarSource(source.Id);
     }
 
     private void NavigateFromContent(Navigation target, string? restoringFolder = null)
@@ -260,6 +215,7 @@ public sealed partial class MainWindow : Window
     {
         var folders = SourceFolders.Items.OfType<Navigation>();
         var folder = folders.FirstOrDefault(item => item.Folder == restoringFolder) ?? folders.FirstOrDefault();
+        SourceFolders.SelectedItem = folder;
         FocusBrowserItem(SourceFolders, folder, FocusState.Keyboard);
     }
 
@@ -276,9 +232,29 @@ public sealed partial class MainWindow : Window
         };
         BackToSourceFolder.Visibility = source is not null && path is not null ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.Visibility = browseFolders ? Visibility.Visible : Visibility.Collapsed;
-        SourceFolders.ItemsSource = browseFolders
-            ? FindNavigationNode(NavTree.RootNodes, current)?.Children.Select(node => (Navigation)node.Content).ToList()
-            : null;
+        if (!browseFolders)
+        {
+            SourceFolders.ItemsSource = null;
+            return false;
+        }
+        var prefix = path ?? "";
+        var choosingCreator = source?.Layout == Layout.MultiCreator && path is null;
+        var folders = MediaSearch.ByPath(media.Where(item => source is not null && item.Source.Id == source.Id &&
+                item.Present && item.RelativePath.StartsWith(prefix, StringComparison.Ordinal)))
+            .Where(item => item.RelativePath[prefix.Length..].Contains('/'))
+            .GroupBy(item => item.RelativePath[prefix.Length..].Split('/')[0])
+            .Select(group =>
+            {
+                var folder = prefix + group.Key + "/";
+                var count = choosingCreator
+                    ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
+                    : group.Count();
+                return new Navigation(group.Key, Source: source!.Id, Folder: folder,
+                    Cover: new Tile(group.First(), 0), Caption: $"{count} {(choosingCreator ? "个专辑" : "项")}");
+            }).ToList();
+        SourceFolders.ItemsSource = folders;
+        if (SourceFolders.Items.Count > 0)
+            SourceFolders.SelectedIndex = 0;
         return browseFolders;
     }
 
@@ -305,8 +281,9 @@ public sealed partial class MainWindow : Window
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
-            : $"{tiles.Count} 项" + (current.Source is null && current.Album is null
-                ? $" · {sources.Count} 个媒体源" : "");
+            : $"{tiles.Count} 项";
+        if (VisibleSource is { } visibleSource)
+            CountLabel.Text = MediaFiles.Display(visibleSource.Layout) + " · " + CountLabel.Text;
         if (current.Source is long source && !sources[source].Available)
             CountLabel.Text += " · 媒体源离线";
         var showAlbum = current.Album is not null;
@@ -321,6 +298,7 @@ public sealed partial class MainWindow : Window
             EmptyLabel.Text = choosingCreator ? "没有已索引的创作者。" : "没有已索引的专辑。";
         var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
         EmptyLabel.Visibility = visibleItemCount == 0 && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
+        Rescan.Visibility = current.Source is not null ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
     }
 
@@ -508,10 +486,9 @@ public sealed partial class MainWindow : Window
 
     private void UpdateSelection()
     {
-        if (OpenButton is null || AlbumSelectionTools is null)
+        if (AlbumSelectionTools is null)
             return;
         UpdateAlbumSelectionTools();
-        OpenButton.IsEnabled = Selection is not null;
     }
 
     private void ShowNotice(string title, string message, InfoBarSeverity severity = InfoBarSeverity.Error)
@@ -580,7 +557,6 @@ public sealed partial class MainWindow : Window
     private static bool MediaFailure(Exception error) =>
         error is IOException or UnauthorizedAccessException or COMException or ArgumentException;
 
-    private void PreviewSelected(object sender, RoutedEventArgs args) => OpenPreview();
     private void PreviewDoubleTapped(object sender, DoubleTappedRoutedEventArgs args) => OpenPreview();
 
     private async void GalleryKeyDown(object sender, KeyRoutedEventArgs args)
@@ -640,10 +616,7 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
 
-    private int Columns => browseMode == BrowseMode.Icons &&
-        Gallery.ItemsPanelRoot is ItemsWrapGrid { ItemWidth: > 0 } panel
-        ? Math.Max(1, (int)Math.Floor(panel.ActualWidth / panel.ItemWidth))
-        : 1;
+    private int Columns => browseMode == BrowseMode.Icons ? GridColumns(Gallery) : 1;
 
     private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview();
 
