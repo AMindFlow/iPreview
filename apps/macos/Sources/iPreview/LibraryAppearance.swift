@@ -211,6 +211,7 @@ struct LibraryIconButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 5)
                     .fill(.primary.opacity(configuration.isPressed ? 0.14 : 0.08))
                     .opacity(isEnabled && (isHovered || configuration.isPressed) ? 1 : 0)
+                    .frame(minWidth: 26, minHeight: 26)
             }
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(Rectangle())
