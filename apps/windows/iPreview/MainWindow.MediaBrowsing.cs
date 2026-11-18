@@ -78,8 +78,8 @@ public sealed partial class MainWindow
 
     private void ChangeBrowseMode(object sender, RoutedEventArgs args)
     {
-        var mode = sender == ListModeButton ? BrowseMode.List
-            : sender == GalleryModeButton ? BrowseMode.Gallery : BrowseMode.Icons;
+        var mode = ReferenceEquals(sender, ListModeButton) ? BrowseMode.List
+            : ReferenceEquals(sender, GalleryModeButton) ? BrowseMode.Gallery : BrowseMode.Icons;
         SetBrowseMode(mode, sender is Control { FocusState: FocusState.Keyboard });
     }
 

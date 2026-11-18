@@ -61,7 +61,7 @@ public sealed partial class MainWindow
         SidebarToolsOffset.X = offset;
         sidebarCollapsed = !sidebarCollapsed;
         Sidebar.Visibility = Visibility.Visible;
-        Sidebar.IsEnabled = !sidebarCollapsed;
+        Sidebar.IsHitTestVisible = !sidebarCollapsed;
         SidebarToggleGlyph.Glyph = sidebarCollapsed ? "\uE76C" : "\uE76B";
         var label = sidebarCollapsed ? "展开侧边栏" : "收起侧边栏";
         AutomationProperties.SetName(SidebarToggleButton, label);
