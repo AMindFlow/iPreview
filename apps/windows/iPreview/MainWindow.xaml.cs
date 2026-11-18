@@ -616,10 +616,7 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
 
-    private int Columns => browseMode == BrowseMode.Icons &&
-        Gallery.ItemsPanelRoot is ItemsWrapGrid { ItemWidth: > 0 } panel
-        ? Math.Max(1, (int)Math.Floor(panel.ActualWidth / panel.ItemWidth))
-        : 1;
+    private int Columns => browseMode == BrowseMode.Icons ? GridColumns(Gallery) : 1;
 
     private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview();
 

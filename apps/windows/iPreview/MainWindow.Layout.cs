@@ -39,9 +39,13 @@ public sealed partial class MainWindow
         var left = AppWindow.TitleBar.LeftInset / scale;
         var right = Math.Max(left, Root.ActualWidth - AppWindow.TitleBar.RightInset / scale);
         var overlay = SearchOverlay.Visibility == Visibility.Visible || PreviewOverlay.Visibility == Visibility.Visible;
-        var bounds = overlay ? new Rect(left, 0, right - left, AppTitleBar.ActualHeight)
-            : sidebarAnimation is not null ? new Rect(12, 0, 184, AppTitleBar.ActualHeight)
-            : BoundsInRoot(SidebarTools);
+        Rect bounds;
+        if (overlay)
+            bounds = new Rect(left, 0, right - left, AppTitleBar.ActualHeight);
+        else if (sidebarAnimation is not null)
+            bounds = new Rect(12, 0, 184, AppTitleBar.ActualHeight);
+        else
+            bounds = BoundsInRoot(SidebarTools);
         var clippedLeft = Math.Max(left, bounds.Left);
         var clippedRight = Math.Max(clippedLeft, Math.Min(right, bounds.Right));
         var rectangle = new Windows.Graphics.RectInt32((int)Math.Round(clippedLeft * scale),
@@ -152,7 +156,7 @@ public sealed partial class MainWindow
     }
 
     private static double CardWidth(GridView browser) =>
-        Math.Max(148, (browser.ItemsPanelRoot as ItemsWrapGrid)?.ItemWidth - 15 ?? 215);
+        Math.Max(148, ((ItemsWrapGrid)browser.ItemsPanelRoot).ItemWidth - 15);
 
     private static void SizeCard(GridView browser, GridViewItem item)
     {
