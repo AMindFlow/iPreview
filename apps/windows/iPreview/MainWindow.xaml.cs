@@ -36,7 +36,6 @@ public sealed partial class MainWindow : Window
     private ObservableCollection<Tile> tiles = [];
     private bool busy;
     private int previewIndex = -1;
-    private long? initialSelection;
     private List<Tile> previewTiles = [];
     private BrowseLayout previewLayout;
     private int previewGeneration;
@@ -627,13 +626,12 @@ public sealed partial class MainWindow : Window
 
     private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
     {
-        initialSelection = items[selectedIndex].Media.Id;
         previewTiles = items;
         previewLayout = layout;
         PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
         PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
         PreviewOverlay.Visibility = Visibility.Visible;
-        var thumbnail = ThumbnailOf(initialSelection);
+        var thumbnail = ThumbnailOf(items[selectedIndex].Media.Id);
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
         ShowPreview(selectedIndex, thumbnail?.Image);
@@ -647,18 +645,19 @@ public sealed partial class MainWindow : Window
         ? Math.Max(1, (int)Math.Floor(panel.ActualWidth / panel.ItemWidth))
         : 1;
 
-    private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview(initialSelection);
+    private void ClosePreviewButton(object sender, RoutedEventArgs args) => ClosePreview();
 
-    private void ClosePreview(long? selectedId)
+    private void ClosePreview()
     {
         if (previewClosing || PreviewOverlay.Visibility != Visibility.Visible)
             return;
         if (previewMoving)
         {
-            afterPreviewMotion = () => ClosePreview(selectedId);
+            afterPreviewMotion = ClosePreview;
             return;
         }
         previewClosing = true;
+        var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
             player.Pause();
         AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
@@ -718,7 +717,7 @@ public sealed partial class MainWindow : Window
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
-                ClosePreview(initialSelection);
+                ClosePreview();
             return;
         }
         if (previewIndex < 0 || previewClosing)
@@ -751,7 +750,7 @@ public sealed partial class MainWindow : Window
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
-                ClosePreview(previewTiles[previewIndex].Media.Id);
+                ClosePreview();
             return;
         }
         BrowseDirection? direction = args.Key switch

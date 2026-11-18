@@ -32,6 +32,10 @@ struct LibraryView: View {
             && !creatingAlbum && editSourceName == nil && addAlbumMedia == nil
     }
 
+    private var canChangeBrowseMode: Bool {
+        canChooseFolder && titleEdit == nil && model.contentScope(for: page).folders.isEmpty
+    }
+
     private var searchActions: LibrarySearchActions {
         guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum,
               addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
@@ -60,6 +64,7 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(\.libraryBrowseMode, canChangeBrowseMode ? $browseMode : nil)
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
@@ -77,7 +82,8 @@ struct LibraryView: View {
             if let searchDomain {
                 LibrarySearchPanel(index: model.searchIndex, revision: model.revision, page: page,
                                    albumMembers: Set(page.virtualMembers(in: model.snapshot)),
-                                   domain: searchDomain, isPreviewing: preview != nil, focus: $focus,
+                                   domain: searchDomain, isPreviewing: preview != nil,
+                                   closingPreviewSelection: preview?.closingSelection, focus: $focus,
                                    switchDomain: { showSearch(searchDomain == .global ? .current : .global) },
                                    dismiss: dismissSearch, open: openSearchResult) { item, results in
                     open(item, among: results, layout: .list)

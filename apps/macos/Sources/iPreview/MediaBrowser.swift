@@ -30,6 +30,35 @@ enum MediaBrowseMode: String, CaseIterable, Identifiable {
     }
 }
 
+private struct LibraryBrowseModeKey: FocusedValueKey {
+    typealias Value = Binding<MediaBrowseMode>
+}
+
+extension FocusedValues {
+    var libraryBrowseMode: Binding<MediaBrowseMode>? {
+        get { self[LibraryBrowseModeKey.self] }
+        set { self[LibraryBrowseModeKey.self] = newValue }
+    }
+}
+
+struct LibraryBrowseCommands: Commands {
+    @FocusedValue(\.libraryBrowseMode) private var mode
+
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Button("列表") { mode?.wrappedValue = .list }
+                .keyboardShortcut("1", modifiers: .command)
+                .disabled(mode == nil)
+            Button("画廊") { mode?.wrappedValue = .gallery }
+                .keyboardShortcut("2", modifiers: .command)
+                .disabled(mode == nil)
+            Button("图标") { mode?.wrappedValue = .icons }
+                .keyboardShortcut("3", modifiers: .command)
+                .disabled(mode == nil)
+        }
+    }
+}
+
 struct MediaListColumns<Name: View, Modified: View, Size: View, Kind: View>: View {
     @ViewBuilder let name: () -> Name
     @ViewBuilder let modified: () -> Modified

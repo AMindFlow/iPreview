@@ -27,6 +27,7 @@ public sealed partial class MainWindow
     private void LibraryKeyDown(object sender, KeyRoutedEventArgs args)
     {
         FindInLibrary(args);
+        ChangeBrowseModeShortcut(args);
         if (args.Key != VirtualKey.Escape || !SelectingAlbumMembers)
             return;
         args.Handled = true;
