@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
     @ViewState private var sidebarVisibility: NavigationSplitViewVisibility = .all
@@ -152,8 +153,15 @@ struct LibraryView: View {
     private var windowControls: some View {
         HStack(spacing: 4) {
             sidebarToggle
-            sidebarButton("导入文件夹", symbol: "folder.badge.plus", action: chooseFolder)
-                .disabled(!canChooseFolder)
+            Button(action: chooseFolder) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(LibraryIconButtonStyle())
+            .accessibilityLabel("导入文件夹")
+            .help("导入文件夹")
+            .disabled(!canChooseFolder)
         }
         .frame(width: 64, height: 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -163,24 +171,27 @@ struct LibraryView: View {
 
     private var sidebarToggle: some View {
         let collapsed = sidebarVisibility == .detailOnly
-        return sidebarButton(collapsed ? "展开侧边栏" : "收起侧边栏", symbol: "sidebar.left") {
-            sidebarVisibility = collapsed ? .all : .detailOnly
-        }
-        .disabled(libraryOverlayShown)
-    }
-
-    private func sidebarButton(_ title: LocalizedStringKey, symbol: String,
-                               action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
+        let title: LocalizedStringKey = collapsed ? "展开侧边栏" : "收起侧边栏"
+        return Button {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                sidebarVisibility = collapsed ? .all : .detailOnly
+            }
+        } label: {
+            Image(systemName: "sidebar.left")
                 .font(.system(size: 14, weight: .medium))
+                .overlay {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 7, weight: .semibold))
+                        .rotationEffect(.degrees(collapsed ? 180 : 0))
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
+                        .offset(x: 3.5)
+                }
                 .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
+        .buttonStyle(LibraryIconButtonStyle())
         .accessibilityLabel(title)
         .help(title)
+        .disabled(libraryOverlayShown)
     }
 
     private var sidebar: some View {
@@ -194,8 +205,7 @@ struct LibraryView: View {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 27, height: 27)
                     }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(LibraryIconButtonStyle())
                     .accessibilityLabel("全局搜索")
                     .accessibilityIdentifier("show-global-search")
                     .help("搜索所有媒体源（⇧⌘F）")
@@ -231,7 +241,7 @@ struct LibraryView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(LibraryIconButtonStyle())
                         .disabled(model.isWorking)
                         .accessibilityLabel("新建合集")
                         .help("新建合集")
@@ -328,18 +338,7 @@ struct LibraryView: View {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
                     }
                     if !scope.items.isEmpty {
-                        Picker("浏览视图", selection: $browseMode) {
-                            ForEach(MediaBrowseMode.allCases) { view in
-                                Image(systemName: view.symbol)
-                                    .help(view.title)
-                                    .accessibilityLabel(view.title)
-                                    .tag(view)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .controlSize(.small)
-                        .frame(width: 114)
+                        LibraryBrowseModePicker(selection: $browseMode)
                     }
                 }
             }
