@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace IPreview;
 
@@ -79,15 +81,43 @@ public sealed partial class MainWindow
         if (catalog is null || sender.SelectedItem is not { } item)
             return;
 
+        SetBrowseMode((BrowseMode)sender.Items.IndexOf(item), item.FocusState == FocusState.Keyboard);
+    }
+
+    private void SetBrowseMode(BrowseMode mode, bool keepPickerFocus = false)
+    {
+        if (browseMode == mode)
+            return;
         var selected = Selection?.Media.Id ?? selectionBeforeAlbumRemoval;
-        browseMode = (BrowseMode)sender.Items.IndexOf(item);
+        browseMode = mode;
+        ViewModePicker.SelectedItem = ViewModePicker.Items[(int)mode];
         RefreshMediaBrowser(selected);
-        if (item.FocusState == FocusState.Keyboard)
+        if (keepPickerFocus)
             return;
         if (SelectingAlbumMembers)
             FocusAlbumSelectionItem(selected);
         else
             FocusSelectedMedia();
+    }
+
+    private void ChangeBrowseModeShortcut(KeyRoutedEventArgs args)
+    {
+        if (args.Handled || catalog is null || busy || browsingFolders || titleEdit is not null || IsComposingText ||
+            !KeyIsDown(VirtualKey.Control) || KeyIsDown(VirtualKey.Shift) || KeyIsDown(VirtualKey.Menu) ||
+            KeyIsDown(VirtualKey.LeftWindows) || KeyIsDown(VirtualKey.RightWindows))
+            return;
+        BrowseMode? mode = args.Key switch
+        {
+            VirtualKey.Number1 => BrowseMode.List,
+            VirtualKey.Number2 => BrowseMode.Gallery,
+            VirtualKey.Number3 => BrowseMode.Icons,
+            _ => null
+        };
+        if (mode is not { } target)
+            return;
+        args.Handled = true;
+        if (!args.KeyStatus.WasKeyDown)
+            SetBrowseMode(target);
     }
 
     private void RefreshMediaBrowser(long? selected)

@@ -19,8 +19,8 @@ final class PreviewSession {
         index = items.firstIndex { $0.id == selection }!
     }
 
-    func dismiss(returningTo selection: Int64) {
-        if closingSelection == nil { closingSelection = selection }
+    func dismiss() {
+        if closingSelection == nil { closingSelection = media.id }
     }
 }
 
@@ -195,7 +195,7 @@ struct MediaPreview: View {
         if session.closingSelection != nil { return .handled }
         switch press.key {
         case .escape:
-            if press.phase == .down { session.dismiss(returningTo: session.selection) }
+            if press.phase == .down { session.dismiss() }
         case .return, Self.keypadEnter:
             if press.phase == .down, media.kind == .video, video.message == nil {
                 toggleVideoLock()
@@ -205,7 +205,7 @@ struct MediaPreview: View {
                 if press.phase == .down { video.toggle() }
             } else {
                 guard focus == .canvas else { return .ignored }
-                if press.phase == .down { session.dismiss(returningTo: media.id) }
+                if press.phase == .down { session.dismiss() }
             }
         case .tab:
             guard media.kind == .video, video.message == nil, video.duration > 0 else { return .handled }
@@ -427,7 +427,7 @@ private struct PreviewTitleBar: View {
             .background(.regularMaterial)
             .overlay(alignment: .leading) {
                 Button {
-                    session.dismiss(returningTo: session.selection)
+                    session.dismiss()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.callout.weight(.semibold))

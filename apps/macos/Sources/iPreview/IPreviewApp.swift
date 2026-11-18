@@ -11,6 +11,7 @@ struct IPreviewApp: App {
         .defaultSize(width: 1120, height: 740)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
+            LibraryBrowseCommands()
             LibraryImportCommands()
             LibrarySearchCommands()
         }

@@ -46,6 +46,7 @@ struct LibrarySearchPanel: View {
     let albumMembers: Set<Int64>
     let domain: LibrarySearchDomain
     let isPreviewing: Bool
+    let closingPreviewSelection: Int64?
     let focus: FocusState<LibraryView.Focus?>.Binding
     let switchDomain: () -> Void
     let dismiss: () -> Void
@@ -103,6 +104,14 @@ struct LibrarySearchPanel: View {
         }
         .onChange(of: isPreviewing) { _, previewing in
             if !previewing { focus.wrappedValue = .searchResults }
+        }
+        .onChange(of: closingPreviewSelection) { _, mediaID in
+            if let mediaID, let result = results.first(where: {
+                if case .file(let item) = $0 { return item.id == mediaID }
+                return false
+            }) {
+                selection = result
+            }
         }
         .task(id: request) {
             selection = nil
