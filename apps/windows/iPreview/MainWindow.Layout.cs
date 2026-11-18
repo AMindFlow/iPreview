@@ -18,12 +18,16 @@ public sealed partial class MainWindow
     {
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.TitleBar.LayoutMetricsChanged += (_, _) => UpdateTitleBarRegions();
         SearchOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
         PreviewOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
     }
 
-    private void TitleBarLoaded(object sender, RoutedEventArgs args) => UpdateTitleBarRegions();
+    private void TitleBarLoaded(object sender, RoutedEventArgs args)
+    {
+        AppTitleBar.Loaded -= TitleBarLoaded;
+        AppTitleBar.XamlRoot.Changed += (_, _) => UpdateTitleBarRegions();
+        UpdateTitleBarRegions();
+    }
 
     private void TitleBarSizeChanged(object sender, SizeChangedEventArgs args) => UpdateTitleBarRegions();
 
