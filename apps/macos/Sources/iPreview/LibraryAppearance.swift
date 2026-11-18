@@ -127,9 +127,10 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     }
 
     func updateNSView(_ view: AttachmentView, context: Context) {
+        let visibilityChanged = (view.sidebarWidth == nil) != (sidebarWidth == nil)
         view.host.rootView = controls
         view.sidebarWidth = sidebarWidth
-        view.updateWidth()
+        view.updateWidth(animated: visibilityChanged && context.transaction.animation != nil)
     }
 
     static func dismantleNSView(_ view: AttachmentView, coordinator: ()) {
@@ -141,6 +142,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
         var sidebarWidth: CGFloat?
         private let accessory = TitleBarAccessory()
         private weak var installedWindow: NSWindow?
+        private var targetWidth: CGFloat?
 
         init(sidebarWidth: CGFloat?, controls: Controls) {
             self.sidebarWidth = sidebarWidth
@@ -170,11 +172,18 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
             updateWidth()
         }
 
-        func updateWidth() {
+        func updateWidth(animated: Bool = false) {
             guard installedWindow != nil else { return }
             let leading = host.convert(host.bounds, to: nil).minX
             let width = max(64, (sidebarWidth ?? 0) - leading - 8)
-            if abs(host.frame.width - width) > 0.5 {
+            if let targetWidth, abs(targetWidth - width) <= 0.5 { return }
+            targetWidth = width
+            if animated {
+                NSAnimationContext.runAnimationGroup { animation in
+                    animation.duration = 0.24
+                    host.animator().setFrameSize(NSSize(width: width, height: host.frame.height))
+                }
+            } else {
                 host.setFrameSize(NSSize(width: width, height: host.frame.height))
             }
         }
@@ -185,7 +194,31 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
                 window.removeTitlebarAccessoryViewController(at: index)
             }
             installedWindow = nil
+            targetWidth = nil
         }
+    }
+}
+
+struct LibraryTitleBarButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .medium))
+            .frame(width: 26, height: 26)
+            .foregroundStyle(isHovered && isEnabled ? .primary : .secondary)
+            .background {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(.primary.opacity(configuration.isPressed ? 0.14 : 0.08))
+                    .opacity(isEnabled && (isHovered || configuration.isPressed) ? 1 : 0)
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

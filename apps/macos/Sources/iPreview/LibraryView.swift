@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
     @ViewState private var sidebarVisibility: NavigationSplitViewVisibility = .all
@@ -146,8 +147,13 @@ struct LibraryView: View {
     private var windowControls: some View {
         HStack(spacing: 4) {
             sidebarToggle
-            sidebarButton("导入文件夹", symbol: "folder.badge.plus", action: chooseFolder)
-                .disabled(!canChooseFolder)
+            Button(action: chooseFolder) {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(LibraryTitleBarButtonStyle())
+            .accessibilityLabel("导入文件夹")
+            .help("导入文件夹")
+            .disabled(!canChooseFolder)
         }
         .frame(width: 64, height: 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -157,24 +163,25 @@ struct LibraryView: View {
 
     private var sidebarToggle: some View {
         let collapsed = sidebarVisibility == .detailOnly
-        return sidebarButton(collapsed ? "展开侧边栏" : "收起侧边栏", symbol: "sidebar.left") {
-            sidebarVisibility = collapsed ? .all : .detailOnly
+        let title: LocalizedStringKey = collapsed ? "展开侧边栏" : "收起侧边栏"
+        return Button {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                sidebarVisibility = collapsed ? .all : .detailOnly
+            }
+        } label: {
+            Image(systemName: "sidebar.left")
+                .overlay {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 7, weight: .semibold))
+                        .rotationEffect(.degrees(collapsed ? 180 : 0))
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
+                        .offset(x: 3.5)
+                }
         }
-        .disabled(libraryOverlayShown)
-    }
-
-    private func sidebarButton(_ title: LocalizedStringKey, symbol: String,
-                               action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
+        .buttonStyle(LibraryTitleBarButtonStyle())
         .accessibilityLabel(title)
         .help(title)
+        .disabled(libraryOverlayShown)
     }
 
     private var sidebar: some View {
