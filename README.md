@@ -12,16 +12,18 @@ iPreview 是用于本地图片和视频的原生媒体库。可以从已有创�
 
 ## 从源码构建
 
-在仓库根目录运行对应命令。Windows 需要 .NET 10 SDK 和面向 WinUI 的 Windows SDK 构建工具。macOS 可使用 Swift 命令行工具。
+在仓库根目录运行对应命令。Windows 需要 .NET 10 SDK 和面向 WinUI 的 Windows SDK 构建工具；EXE 安装器另需 Inno Setup 6.7.1。macOS 使用 Swift 命令行工具和系统 hdiutil。
 
 ```sh
 swift run iPreviewCoreChecks
 bash scripts/package-macos.sh "$PWD/dist/iPreview-macos-arm64.zip"
+bash scripts/package-macos-dmg.sh "$PWD/dist/iPreview-macos-arm64.zip" "$PWD/dist/iPreview-0.1.0-macos-arm64.dmg"
 ```
 
 ```powershell
 dotnet run --project apps/windows/CoreChecks/CoreChecks.csproj -c Release
 dotnet publish apps/windows/iPreview/iPreview.csproj -c Release -r win-x64 --self-contained true -o dist/iPreview-windows-x64
+./scripts/package-windows.ps1 -PublishDirectory dist/iPreview-windows-x64 -OutputDirectory dist
 ```
 
 [实机验收与样例](docs/project/acceptance.md) · [一期验收登记](docs/project/releases/0.1.0.md) · [未完成清单](docs/project/backlog.md) · [完整需求](docs/project/requirements.md) · [分工 DAG](docs/project/phase-1-collaboration.md)

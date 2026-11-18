@@ -8,9 +8,15 @@ iPreview 0.1.0 的图片与基础视频桌面功能已获用户确认作为一�
 
 - Mac ARM64：macOS15+，提供 DMG 和 `.app` ZIP。macOS26+ 采用原生液态玻璃，15 使用系统材质。
 - Windows11 x64：原生 WinUI3，提供每用户 EXE 安装器和完整自包含 ZIP，无须联网安装 .NET／Windows App SDK。与 Mac 对齐层级、搜索、合集与预览行为，保留 Windows 原生窗框。
-- 双端已安装最新版本并做 Computer Use 复验，原索引和合集可恢复。原始媒体日常只读；真实重命名仅按明确的 [LIB-011](../specs/official/library.md#lib-011-重命名真实目录和媒体)执行。
+- 本期功能基线已通过双端安装和 Computer Use 复验；标准安装包以最终 main 发布附件中的安装记录为准。安装器默认保留资料库的升级／卸载行为由原生 CI 验证。本轮按用户要求主动清理旧本地库后交付正式空库，详见下文。原始媒体日常只读；真实重命名仅按明确的 [LIB-011](../specs/official/library.md#lib-011-重命名真实目录和媒体)执行。
 - 最终版本物料集中在版本子目录：包、样例、提交／哈希、验收结果、主页截图和清理清单。最新提交和下载见 [v0.1.0 Release](https://github.com/AMindFlow/iPreview/releases/tag/v0.1.0)，不把阶段临时目录作为长期交付入口。
 - 标准安装器见 [PLAT-005](../specs/official/platforms.md#plat-005-首版标准安装包)。当前没有发行签名证书，Mac 为 ad hoc 签名且未公证，Windows 安装器未做 Authenticode 签名。
+
+## 本轮最终安装口径
+
+最终 main 的 DMG／EXE 先发布到 GitHub。双端将旧安装、压缩包、构建、QA 和旧本地资料库整目录移入回收站，保留可恢复性，原始 Pictures 等媒体不动；随后从 GitHub 下载最新安装包重新安装。功能验证使用隔离 QA 资料库，复用合成样例集中于各自 `~/Temporary/iPreview/`。正式资料库不导入测试样例，最终主页截图应为空库。
+
+这是本轮清库交付动作，不是安装器自动删除用户数据的行为。标准升级和卸载保留资料库的产品契约继续有效。实际下载、回收、安装及空库结果记录在最终版本附件，不为写入自身提交号重复变更 main。
 
 ## 未完成与验证边界
 

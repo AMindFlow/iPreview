@@ -1,6 +1,6 @@
 # 双端验收步骤
 
-这是可重复执行的验收入口；各版本实际执行了哪些项目、提交与产物 SHA-256、系统版本和未验证项，以[一期登记册](releases/0.1.0.md)及对应版本报告为准。用同一最终源码、相同合成样例在本机 Apple Silicon Mac 与 gigabit Windows11 x64 验证，不把旧提交的结果冒充新包结果。
+这是可重复执行的验收入口；各版本实际执行了哪些项目、提交与产物 SHA-256、系统版本和未验证项，以[一期登记册](releases/0.1.0.md)及对应版本报告为准。用同一最终源码、相同合成样例在本机 Apple Silicon Mac 与 gigabit Windows11 x64 验证，不把旧提交的结果冒充新包结果。功能测试必须用隔离 QA 资料库，正式库保持空白；复用样例集中于各自 `~/Temporary/iPreview/`。
 
 ## 样例和保护边界
 
@@ -10,6 +10,8 @@
 python3 scripts/generate-fixtures.py /tmp/iPreview-fixtures.zip
 ```
 
+该脚本生成最初四类基础目录。最终版本 `samples/iPreview-fixtures.zip` 还保留损坏视频补例；`samples/supplement.zip` 提供长视频15秒跳转、同名不同后缀、长名称、`@` 字面量及多行层级导航等后续样例。两端将基础／补充样例解压到各自 `~/Temporary/iPreview/` 复用，按版本清单核对哈希；验收记录写明使用哪套目录，不假定补充包与脚本输出相同。
+
 | 来源 | 预期导入结果 |
 | --- | --- |
 | 沿海创作者 | 单创作者、2个专辑、8个媒体（含坏图）；隐藏 PNG 和 TXT 忽略。 |
@@ -17,13 +19,29 @@ python3 scripts/generate-fixtures.py /tmp/iPreview-fixtures.zip
 | 层级歧义 | 显示单创作者／多创作者摘要选择，任一选择索引对应分支的1个媒体。 |
 | 直属媒体 | 单个专辑、2个媒体。 |
 
+功能验收前退出全部 iPreview 进程，只给 QA 启动进程设置 `IPREVIEW_DATA_DIR`，不要写入全局环境。它是测试隔离入口，不代表已提供多工作区产品功能。Mac 例如：
+
+```sh
+IPREVIEW_DATA_DIR="$HOME/Temporary/iPreview/qa-catalog" /Applications/iPreview.app/Contents/MacOS/iPreview
+```
+
+Windows 使用实际安装目录；默认安装位置的例子：
+
+```powershell
+$env:IPREVIEW_DATA_DIR = Join-Path $env:USERPROFILE 'Temporary\iPreview\qa-catalog'
+& "$env:LOCALAPPDATA\Programs\iPreview\iPreview.exe"
+$env:IPREVIEW_DATA_DIR = $null
+```
+
+QA 结束后退出应用，不带该变量从正式安装入口启动，核对正式库为空并截图。测试来源和测试库保留在 Temporary，正式库不导入样例。
+
 更名和离线测试仅操作可丢弃副本。先记录源文件快照；结束时恢复样例目录名，再比较路径、大小、修改时间与 SHA-256。集合引用操作不应写入或删除真实文件。
 
 ## 安装与恢复
 
 按 [PLAT-005](../specs/official/platforms.md#plat-005-首版标准安装包)验证：Mac 挂载 DMG、检查应用和 Applications 入口、拖入安装并从安装位置打开；Windows 运行 EXE，确认语言／目录／进度／完成及开始菜单、系统卸载项。安装目录选专用应用目录，覆盖现有安装前退出应用。
 
-用隔离测试资料库检查安装、同版本覆盖升级、卸载后数据保留，再安装后索引与合集恢复。Windows 另检查自选目录内非安装器文件保留，XAML、PRI、图标、.NET及WinUI运行时齐全。最终正常启动核对原用户库可读。首版签名限制见安装规格；不绕过系统安全提示来声称已通过认证。
+用隔离测试资料库检查安装、同版本覆盖升级、卸载后数据保留，再安装后索引与合集恢复。Windows 另检查自选目录内非安装器文件保留，XAML、PRI、图标、.NET及WinUI运行时齐全。本轮最终交付先发布 GitHub，再将旧安装／物料和旧本地库整目录移入回收站（原始媒体不动），从 GitHub 下载重新安装；完成隔离 QA 后启动正式空库并截取主页，不恢复旧源和旧合集。首版签名限制见安装规格；不绕过系统安全提示来声称已通过认证。
 
 干净 Windows11 x64 离线测试必须记录系统版本、运行时预装状态和断网证据；只在已有运行时的 gigabit 断网启动不替代该项。此项尤其是独立瘦身 [PLAT-004](../specs/spike/platforms.md#plat-004-windows-组件包瘦身)的合入条件。
 

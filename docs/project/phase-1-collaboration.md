@@ -16,7 +16,7 @@
 | 搜索与复制 | 文件名复制可独立审阅；搜索双端实现并行，共同键位与精确模式契约后统一验收 | 复制 [#39](https://github.com/AMindFlow/iPreview/pull/39)，统一搜索 [#40](https://github.com/AMindFlow/iPreview/pull/40)。 |
 | 侧栏与用语 | Mac 与 Windows 在不同 worktree 对齐入口和文案；Mac 标题栏位置独立修正 | [#42](https://github.com/AMindFlow/iPreview/pull/42)、[#44](https://github.com/AMindFlow/iPreview/pull/44)。 |
 | 最后一轮体验对齐 | `mac_hover_animation` 负责 Mac hover／动画／玻璃切换器；`selection_shortcuts` 负责两端退出选择与快捷键；`windows_layout` 负责 Windows 布局、标题栏输入区域和网格列数。各独立 worktree／分支／PR | [#48](https://github.com/AMindFlow/iPreview/pull/48)、[#49](https://github.com/AMindFlow/iPreview/pull/49)、[#50](https://github.com/AMindFlow/iPreview/pull/50)；审阅交叉分派，主代理串行操作两个实机并统一包、哈希与截图。 |
-| 一期收尾 | 主代理承担 Mac DMG、双端实机、集成与发布；子 Agent 分别承担 Windows EXE 安装器、需求台账、存储盘点兼独立审阅。安装实现与文档／盘点并行。安装先合入，文档再与其对齐 | [收尾 #51](https://github.com/AMindFlow/iPreview/issues/51)。先安装验收，再冻结最终 main 物料，最后回收旧 worktree／包／验证材料。 |
+| 一期收尾 | 主代理承担 Mac DMG、双端实机、集成与发布；子 Agent 分别承担 Windows EXE 安装器、需求台账、存储盘点兼独立审阅。安装实现与文档／盘点并行。安装先合入，文档再与其对齐 | [收尾 #51](https://github.com/AMindFlow/iPreview/issues/51)。安装器先通过原生 CI 安装校验与审阅后合入，文档再合入；最终 main 构建并发布 GitHub 后回收旧安装、物料及旧本地库，再从 GitHub 安装、隔离 QA 验证，交付正式空库截图。 |
 
 ## 一期功能依赖
 
@@ -65,18 +65,19 @@ flowchart LR
     A --> W[Windows EXE Agent]
     A --> D[需求规格文档 Agent]
     A --> C[旧物料盘点 Agent]
-    M --> R[安装器独立审阅]
+    M --> R[原生CI安装校验与独立审阅]
     W --> R
-    R --> U[主代理实机安装与升级检查]
-    U --> P[安装PR合入]
+    R --> P[安装PR合入]
     P --> D
     D --> V[文档独立审阅与合入]
     V --> B[最终main双端构建]
-    B --> F[版本目录 包 哈希 截图 报告]
-    C --> X[核对保留清单与回收范围]
+    B --> F[GitHub发布 包 哈希 版本物料]
+    C --> X[核对清单 回收旧安装物料及旧本地库]
     F --> X
-    X --> T[过时内容移回收站 不清空]
-    T --> Z[交付版本入口]
+    X --> U[从GitHub下载安装最终DMG和EXE]
+    U --> Q[隔离QA库功能验证 样例集中复用]
+    Q --> H[正式空库启动 双端主页截图]
+    H --> Z[最终验收和回收记录集中归档]
 ```
 
 ## 可供后续审阅的分工结论
@@ -85,5 +86,5 @@ flowchart LR
 - 初版以一个集成 PR 交付，后续按可独立验收行为拆为多个 PR。平台差异大时可拆平台 PR，最终发布仍汇总同源包，避免只在一端完成而误报双端完成。
 - 规格与设计产出、产品实现、独立审阅、实机验收是不同责任。审阅当前提交；实机使用当前包；rebase 或修正后按受影响行为更新证据，不能拿旧 SHA 的 PASS 代替。
 - 两台交互桌面的焦点与 RDP 键盘由主代理串行控制。构建、文档、源码审阅和盘点可并行，多个 Agent 不同时操作同一桌面。此项是一期实际瓶颈，可评估独立桌面会话以缩短等待。
-- 安装与发布会改变最终内容及版本物料，因此先做安装器，再冻结文档和最终构建，最后清理。未验收的独立工作包维持自己的 Issue／PR，不为「一期收尾」强行标完成。
+- 安装与发布会改变最终内容及版本物料，因此先做安装器，再冻结文档和最终构建。按本轮用户最新确认，GitHub 发布后先回收旧安装与旧本地库，再从发布包安装，隔离 QA 后交付正式空库；清库不改变安装器默认保留数据的契约。未验收的独立工作包维持自己的 Issue／PR，不为「一期收尾」强行标完成。
 - 版本目录保留最终包和必要证据，临时 worktree／阶段包不作为长期文档入口；源码与 PR 保存实现过程，报告只写当前结果和剩余边界。
