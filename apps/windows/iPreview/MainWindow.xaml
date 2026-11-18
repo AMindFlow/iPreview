@@ -221,6 +221,36 @@
                                 Visibility="{Binding Visibility, ElementName=ViewModePicker}">
                             <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="8"
                                         AutomationProperties.Name="浏览视图">
+                                <StackPanel.Resources>
+                                    <ResourceDictionary>
+                                        <ResourceDictionary.ThemeDictionaries>
+                                            <ResourceDictionary x:Key="Default">
+                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                            </ResourceDictionary>
+                                            <ResourceDictionary x:Key="Light">
+                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                            </ResourceDictionary>
+                                            <ResourceDictionary x:Key="HighContrast">
+                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SystemControlHighlightAccentBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SystemColorButtonTextColorBrush" />
+                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="SystemControlHighlightAltChromeWhiteBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="SystemColorButtonFaceColorBrush" />
+                                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="SystemColorHighlightColorBrush" />
+                                            </ResourceDictionary>
+                                        </ResourceDictionary.ThemeDictionaries>
+                                    </ResourceDictionary>
+                                </StackPanel.Resources>
                                 <ToggleButton x:Name="IconModeButton" IsChecked="True" Click="ChangeBrowseMode"
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
                                               ToolTipService.ToolTip="图标（Ctrl+3）">
