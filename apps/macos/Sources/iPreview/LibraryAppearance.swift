@@ -199,15 +199,13 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     }
 }
 
-struct LibraryTitleBarButtonStyle: ButtonStyle {
+struct LibraryIconButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .medium))
-            .frame(width: 26, height: 26)
             .foregroundStyle(isHovered && isEnabled ? .primary : .secondary)
             .background {
                 RoundedRectangle(cornerRadius: 5)
@@ -219,6 +217,67 @@ struct LibraryTitleBarButtonStyle: ButtonStyle {
             .onHover { isHovered = $0 }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+struct LibraryBrowseModePicker: View {
+    @Binding var selection: MediaBrowseMode
+
+    var body: some View {
+        Group {
+            if #available(macOS 26, *) {
+                buttons.glassEffect(.regular, in: .capsule)
+            } else {
+                buttons
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(.quaternary)
+                            .allowsHitTesting(false)
+                    }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("浏览视图")
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 3) {
+            ForEach(MediaBrowseMode.allCases) { mode in
+                Button { selection = mode } label: {
+                    Image(systemName: mode.symbol)
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(LibraryBrowseModeButtonStyle(selected: mode == selection))
+                .accessibilityLabel(mode.title)
+                .accessibilityIdentifier(mode.symbol)
+                .accessibilityAddTraits(mode == selection ? .isSelected : [])
+                .help(mode.title)
+            }
+        }
+        .padding(4)
+    }
+}
+
+private struct LibraryBrowseModeButtonStyle: ButtonStyle {
+    let selected: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .background {
+                Circle()
+                    .fill(.primary.opacity(selected ? 0.14 : 0.07))
+                    .opacity(selected || isHovered || configuration.isPressed ? 1 : 0)
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Circle())
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: selected)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
     }
 }
 

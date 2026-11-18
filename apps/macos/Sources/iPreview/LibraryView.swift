@@ -149,8 +149,10 @@ struct LibraryView: View {
             sidebarToggle
             Button(action: chooseFolder) {
                 Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(LibraryTitleBarButtonStyle())
+            .buttonStyle(LibraryIconButtonStyle())
             .accessibilityLabel("导入文件夹")
             .help("导入文件夹")
             .disabled(!canChooseFolder)
@@ -170,6 +172,7 @@ struct LibraryView: View {
             }
         } label: {
             Image(systemName: "sidebar.left")
+                .font(.system(size: 14, weight: .medium))
                 .overlay {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 7, weight: .semibold))
@@ -177,8 +180,9 @@ struct LibraryView: View {
                         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
                         .offset(x: 3.5)
                 }
+                .frame(width: 26, height: 26)
         }
-        .buttonStyle(LibraryTitleBarButtonStyle())
+        .buttonStyle(LibraryIconButtonStyle())
         .accessibilityLabel(title)
         .help(title)
         .disabled(libraryOverlayShown)
@@ -195,8 +199,7 @@ struct LibraryView: View {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 27, height: 27)
                     }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(LibraryIconButtonStyle())
                     .accessibilityLabel("全局搜索")
                     .accessibilityIdentifier("show-global-search")
                     .help("搜索所有媒体源（⇧⌘F）")
@@ -232,7 +235,7 @@ struct LibraryView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(LibraryIconButtonStyle())
                         .disabled(model.isWorking)
                         .accessibilityLabel("新建合集")
                         .help("新建合集")
@@ -329,18 +332,7 @@ struct LibraryView: View {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
                     }
                     if !scope.items.isEmpty {
-                        Picker("浏览视图", selection: $browseMode) {
-                            ForEach(MediaBrowseMode.allCases) { view in
-                                Image(systemName: view.symbol)
-                                    .help(view.title)
-                                    .accessibilityLabel(view.title)
-                                    .tag(view)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .controlSize(.small)
-                        .frame(width: 114)
+                        LibraryBrowseModePicker(selection: $browseMode)
                     }
                 }
             }
