@@ -371,11 +371,15 @@ struct CatalogChecks {
         try fixtures.file("Library/Summer Library/10.png")
         try fixtures.file("Elsewhere/2.png")
         try fixtures.file("Elsewhere/Frame.v2.jpg")
+        try fixtures.file("Teams/远山/湖光/湖光.png")
+        try fixtures.file("Teams/海岛/湖光/海岸.png")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
         let elsewhere = try SourceScanner.inspect(fixtures.directory("Elsewhere"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: elsewhere.root, candidate: try required(elsewhere.candidates.first))
+        let teams = try SourceScanner.inspect(fixtures.directory("Teams"), dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: teams.root, candidate: try required(teams.candidates.first))
         let snapshot = try await catalog.snapshot()
         let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
@@ -419,6 +423,20 @@ struct CatalogChecks {
             throw CheckFailure(location: "global search must return the matching directory")
         }
         try verify(directory.components == ["Library", "Summer Library"])
+        try verify(globalFolders[0].category == .album)
+        try verify(index.globalSearch("Library", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        try verify(index.globalSearch("Elsewhere", mode: .exact, directories: true, files: false).map(\.category) == [.album])
+        try verify(index.globalSearch("Teams", mode: .exact, directories: true, files: false).map(\.category) == [.directory])
+        try verify(index.globalSearch("远山", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        let sameName = index.globalSearch("湖光", mode: .exact, directories: true, files: true)
+        try verify(sameName.map(\.category) == [.album, .album, .file])
+        let scoped = index.globalSearch("湖光", mode: .exact, directories: true, files: true) { result in
+            switch result {
+            case .directory(let directory): directory.relativePath.hasPrefix("远山/")
+            case .file(let item): item.relativePath.hasPrefix("远山/")
+            }
+        }
+        try verify(scoped.map(\.category) == [.album, .file])
         try verify(index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false) {
             if case .directory(let folder) = $0 { return folder.source.name == "Elsewhere" }
             return false

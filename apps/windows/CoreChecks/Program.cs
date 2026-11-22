@@ -66,7 +66,8 @@ try
         Check(ordered.Select(item => item.FileName).SequenceEqual(["城楼2.PNG", "城楼10.PNG"]),
             "natural file ordering");
         Check(MediaSearch.Find(sourceList, items, new("bj", false), GlobalSearchScope.Directories)
-                .Any(result => result.Folder is null && result.Name == "北京"), "directory pinyin initials");
+                .Any(result => result is { Folder: null, Name: "北京", Category: SearchResultCategory.Creator }),
+            "a single-creator source matches its creator name by pinyin initials");
         Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Directories)
                 .Any(result => result.Folder is null && result.Name == "北京"), "directory full pinyin");
         Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Files).Count == 0,
@@ -75,8 +76,20 @@ try
                 .Any(result => result.Folder == "Summer 2/"), "directory typo");
         var directories = MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
             GlobalSearchScope.Directories);
-        Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
+        Check(directories.Count == 1 && directories[0] is
+              { Folder: "Summer 2/", Media: null, Category: SearchResultCategory.Album },
             "global search shows a distinct directory hit");
+        var flatSource = new Source(long.MaxValue, flat, Layout.Flat, true);
+        Check(MediaSearch.Find([flatSource], [], new("flat", true), GlobalSearchScope.Directories)
+                .Single().Category == SearchResultCategory.Album, "a flat source is a single album");
+        Check(MediaSearch.Find(sourceList, items, new("catalog", true), GlobalSearchScope.Directories)
+                .Single().Category == SearchResultCategory.Directory, "multi-creator source root remains a directory");
+        Check(MediaSearch.Find(sourceList, items, new("Album", true), GlobalSearchScope.Directories)
+                .Single() is { Folder: "Other/Album/", Category: SearchResultCategory.Album },
+            "the album under a multi-creator source keeps its full path");
+        Check(MediaSearch.Find(sourceList, items, new("Other", true), GlobalSearchScope.All)
+                .Select(result => result.Category).SequenceEqual([SearchResultCategory.Creator, SearchResultCategory.File]),
+            "same-name creator directory and media keep distinct categories and order");
         Check(GlobalSearchTerm.Parse("@") is { Text: "@", Exact: false }, "an at sign alone keeps fuzzy search");
         Check(GlobalSearchTerm.Parse("@clip") is { Text: "@clip", Exact: false }, "the prefix requires a space");
         Check(GlobalSearchTerm.Parse("@ ") is { Text.Length: 0, Exact: true }, "space activates exact mode before a name");

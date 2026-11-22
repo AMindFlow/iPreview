@@ -588,7 +588,7 @@
                                     <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Location}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                        <TextBlock Text="{Binding Details}" FontSize="12" TextTrimming="CharacterEllipsis"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                 </Grid>
