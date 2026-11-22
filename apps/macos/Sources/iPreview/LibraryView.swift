@@ -14,6 +14,7 @@ struct LibraryView: View {
     @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
+    @ViewState private var albumDeletion: AlbumDeletion?
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var titleEdit: LibraryTitleEdit?
     @ViewState private var titleDraft = ""
@@ -26,11 +27,16 @@ struct LibraryView: View {
 
     enum Focus: Hashable { case browser, searchQuery, searchResults, title }
 
+    private struct AlbumDeletion {
+        let album: VirtualAlbum
+        let dataVersion: Int64
+    }
+
     private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
 
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
-            && !creatingAlbum && editSourceName == nil && addAlbumMedia == nil
+            && !creatingAlbum && albumDeletion == nil && editSourceName == nil && addAlbumMedia == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -38,7 +44,7 @@ struct LibraryView: View {
     }
 
     private var searchActions: LibrarySearchActions {
-        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum,
+        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil,
               addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
@@ -139,6 +145,24 @@ struct LibraryView: View {
         }
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
+        }
+        .alert("删除合集", isPresented: Binding(
+            get: { albumDeletion != nil },
+            set: { if !$0 { albumDeletion = nil } }
+        ), presenting: albumDeletion) { target in
+            Button("取消", role: .cancel) { focusBrowser() }
+                .keyboardShortcut(.defaultAction)
+            Button("删除合集", role: .destructive) {
+                Task {
+                    let albumID = target.album.id
+                    let deleted = await model.delete(albumID: albumID, expectedDataVersion: target.dataVersion)
+                    if page == .virtual(albumID), deleted || !model.snapshot.albums.contains(where: { $0.id == albumID }) {
+                        navigate(.library)
+                    }
+                }
+            }
+        } message: { target in
+            Text("将删除「\(target.album.name)」及其中的媒体引用。原始媒体文件会保留。")
         }
         .alert("无法完成操作", isPresented: Binding(
             get: { model.error != nil },
@@ -433,6 +457,15 @@ struct LibraryView: View {
             .disabled(removalSelection.isEmpty || model.isWorking)
             .help("仅从当前合集移除所选引用")
         } else {
+            Button {
+                albumDeletion = AlbumDeletion(album: album, dataVersion: model.snapshot.dataVersion)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isWorking || titleEdit != nil)
+            .accessibilityLabel("删除合集")
+            .help("删除合集")
             if hasItems {
                 Button {
                     addAlbumMedia = album
