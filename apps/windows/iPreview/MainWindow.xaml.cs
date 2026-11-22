@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SetBrowseMode(browseMode);
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
