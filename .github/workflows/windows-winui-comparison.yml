@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 75f9c62d3127335638984773d737b7bd27b9fc7f
+          ref: 890b317ea2fedb9fc04594e13b2eab1cfb2bff0f
           path: before
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 2051bd53056704cabd0550cf98d4426d0c74324a
+          ref: c23d4e55844352176cc1fb9ac937d574ad765334
           path: after
           persist-credentials: false
       - name: Publish both source trees and record evidence
