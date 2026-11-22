@@ -29,7 +29,10 @@ internal static class MediaSearch
     private static readonly Regex Words = new(@"[\p{L}\p{N}]+");
 
     public static IOrderedEnumerable<Media> ByPath(IEnumerable<Media> items) =>
-        items.OrderBy(item => Normalize(item.DisplayPath), NaturalName).ThenBy(item => item.Id);
+        ByNaturalPath(items, item => item.DisplayPath).ThenBy(item => item.Id);
+
+    internal static IOrderedEnumerable<T> ByNaturalPath<T>(IEnumerable<T> items, Func<T, string> path) =>
+        items.OrderBy(item => Normalize(path(item)), NaturalName);
 
     public static List<GlobalSearchHit> Find(IEnumerable<Source> sources, IEnumerable<Media> items,
                                              GlobalSearchTerm term, GlobalSearchScope scope,

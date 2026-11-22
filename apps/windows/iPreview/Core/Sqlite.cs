@@ -7,6 +7,7 @@ internal sealed class Sqlite : IDisposable
     private const int Ok = 0;
     private const int Row = 100;
     private const int Done = 101;
+    private const int Null = 5;
     private const string Library = "winsqlite3.dll";
     private IntPtr database;
 
@@ -41,7 +42,7 @@ internal sealed class Sqlite : IDisposable
         }
     }
 
-    public void Execute(string sql, params object[] values)
+    public void Execute(string sql, params object?[] values)
     {
         WithStatement(sql, values, statement =>
         {
@@ -52,7 +53,7 @@ internal sealed class Sqlite : IDisposable
         });
     }
 
-    public List<T> Query<T>(string sql, Func<Fields, T> project, params object[] values) =>
+    public List<T> Query<T>(string sql, Func<Fields, T> project, params object?[] values) =>
         WithStatement(sql, values, statement =>
         {
             var rows = new List<T>();
@@ -64,13 +65,21 @@ internal sealed class Sqlite : IDisposable
             return rows;
         });
 
-    public void InTransaction(Action action, bool write = true)
+    public void InTransaction(Action action, bool write = true) =>
+        InTransaction(() =>
+        {
+            action();
+            return true;
+        }, write);
+
+    public T InTransaction<T>(Func<T> action, bool write = true)
     {
         ExecuteScript(write ? "BEGIN IMMEDIATE;" : "BEGIN;");
         try
         {
-            action();
+            var result = action();
             ExecuteScript("COMMIT;");
+            return result;
         }
         catch
         {
@@ -80,7 +89,7 @@ internal sealed class Sqlite : IDisposable
         }
     }
 
-    private T WithStatement<T>(string sql, object[] values, Func<IntPtr, T> action)
+    private T WithStatement<T>(string sql, object?[] values, Func<IntPtr, T> action)
     {
         Check(sqlite3_prepare_v2(database, sql, -1, out var statement, IntPtr.Zero));
         try
@@ -90,6 +99,7 @@ internal sealed class Sqlite : IDisposable
                 var parameter = index + 1;
                 var result = values[index] switch
                 {
+                    null => sqlite3_bind_null(statement, parameter),
                     string text => sqlite3_bind_text(statement, parameter, text, -1, new IntPtr(-1)),
                     long number => sqlite3_bind_int64(statement, parameter, number),
                     int number => sqlite3_bind_int64(statement, parameter, number),
@@ -126,6 +136,7 @@ internal sealed class Sqlite : IDisposable
     public readonly struct Fields(IntPtr statement)
     {
         public long Number(int index) => sqlite3_column_int64(statement, index);
+        public long? NullableNumber(int index) => sqlite3_column_type(statement, index) == Null ? null : Number(index);
         public string Text(int index) => Marshal.PtrToStringUTF8(sqlite3_column_text(statement, index))
             ?? throw new InvalidOperationException("Unexpected NULL in catalog database.");
     }
@@ -176,6 +187,10 @@ internal sealed class Sqlite : IDisposable
 
     [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern int sqlite3_bind_null(IntPtr statement, int index);
+
+    [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int sqlite3_step(IntPtr statement);
 
     [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
@@ -185,6 +200,10 @@ internal sealed class Sqlite : IDisposable
     [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern long sqlite3_column_int64(IntPtr statement, int index);
+
+    [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern int sqlite3_column_type(IntPtr statement, int index);
 
     [DllImport(Library, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
