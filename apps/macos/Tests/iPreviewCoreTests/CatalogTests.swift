@@ -33,6 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try await checkPersistence()
+        try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
         try await checkAlbumDeletion()
         try await checkSearch()
@@ -41,6 +42,106 @@ struct CatalogChecks {
         try await checkStaleFolderAnchor()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
+    }
+
+    static func checkSourceAlbumOrganization() async throws {
+        let fixtures = try Fixtures()
+        let sourceURL = fixtures.directory("Source")
+        for name in ["Maker/Album/Image 2.png", "Maker/Album/Image 10.jpg", "Maker/Album/Clip.mp4", "Maker/Album2/Image.png"] {
+            try fixtures.file("Source/" + name)
+        }
+        let root = sourceURL.path.replacingOccurrences(of: "'", with: "''")
+        let sourceFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let migrations = sourceFile.appendingPathComponent("../../../../shared/migrations").standardizedFileURL
+        try FileManager.default.createDirectory(at: fixtures.databaseDirectory, withIntermediateDirectories: true)
+        try Data().write(to: fixtures.databaseDirectory.appendingPathComponent("catalog.sqlite3"))
+        for migration in ["001-initial.sql", "002-pending-rename.sql"] {
+            try fixtures.sql(String(contentsOf: migrations.appendingPathComponent(migration), encoding: .utf8))
+        }
+        try fixtures.sql("""
+            INSERT INTO sources (id, path, layout) VALUES (4, '\(root)', 'multi-creator');
+            INSERT INTO media (id, source_id, relative_path, kind)
+                VALUES (8, 4, 'Maker/Album/Image 2.png', 'image'), (9, 4, 'Maker/Album/Image 10.jpg', 'image'),
+                       (10, 4, 'Maker/Album/Clip.mp4', 'video'), (11, 4, 'Maker/Album2/Image.png', 'image');
+            INSERT INTO albums (id, name) VALUES (20, '旧版合集');
+            INSERT INTO album_media VALUES (20, 8, 1), (20, 11, 0);
+            """)
+        let originalVersion = try fixtures.scalar("PRAGMA user_version")
+        try verify(originalVersion == 2)
+
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let source = try required(try await catalog.snapshot().sources.first)
+        let album = SourceAlbumKey(sourceID: source.id, relativePath: "Maker/Album")
+        let sibling = SourceAlbumKey(sourceID: source.id, relativePath: "Maker/Album2")
+        let defaultOrganization = try await catalog.sourceAlbumOrganization(for: album)
+        try verify(defaultOrganization.ratingHalf == nil && !defaultOrganization.favorite &&
+                   defaultOrganization.configuredCoverIDs.isEmpty && defaultOrganization.effectiveCoverIDs == [8])
+        try await catalog.setFavorite(true, for: album)
+        try await catalog.setRatingHalf(0, for: album)
+        try await catalog.setRatingHalf(7, for: sibling)
+        let trip = try await catalog.addTag(named: "　 ＴＲＩＰ   图片 ", to: album)
+        let duplicate = try await catalog.addTag(named: "trip 图片", to: sibling)
+        try verify(duplicate == trip && trip.name == "TRIP 图片" && trip.normalizedName == "trip 图片")
+        try verify(SourceAlbumTag.names(from: "ΟΣ İ").normalized == "οσ i\u{0307}")
+        let scenic = try await catalog.addTag(named: "风景", to: album)
+        try await catalog.addTag(trip.id, to: sibling)
+        let tagged = try await catalog.sourceAlbums(tagID: trip.id)
+        try verify(tagged == [album, sibling])
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.renameTag(trip.id, to: scenic.name)
+        }
+        try await catalog.renameTag(trip.id, to: "旅行")
+        try await catalog.replaceCover([9, 8], for: album)
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.replaceCover([9, 11], for: album)
+        }
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.replaceCover([10], for: album)
+        }
+        try fixtures.sql("""
+            CREATE TRIGGER reject_second_cover BEFORE INSERT ON source_album_cover_media
+            WHEN NEW.position = 1 BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+            """)
+        do {
+            try await catalog.replaceCover([8, 9], for: album)
+            throw CheckFailure(location: "封面写入局部失败未报告")
+        } catch {
+            try verify(error.localizedDescription.contains("fixture failure"))
+        }
+        try fixtures.sql("DROP TRIGGER reject_second_cover")
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let persisted = try await reopened.sourceAlbumOrganization(for: album)
+        let persistedSibling = try await reopened.sourceAlbumOrganization(for: sibling)
+        let library = try await reopened.snapshot()
+        try verify(persisted.favorite && persisted.ratingHalf == 0 && persisted.tags.contains { $0.name == "旅行" })
+        try verify(persistedSibling.ratingHalf == 7 && !persistedSibling.favorite)
+        try verify(persisted.configuredCoverIDs == [9, 8] && persisted.effectiveCoverIDs == [9, 8])
+        try verify(library.albums.first?.mediaIDs == [11, 8])
+
+        let removedCover = sourceURL.appendingPathComponent("Maker/Album/Image 10.jpg")
+        let outside = fixtures.directory("Unavailable.jpg")
+        try FileManager.default.moveItem(at: removedCover, to: outside)
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let fallback = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(fallback.configuredCoverIDs == [9, 8] && fallback.effectiveCoverIDs == [8])
+        try FileManager.default.moveItem(at: outside, to: removedCover)
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let recovered = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(recovered.effectiveCoverIDs == [9, 8])
+        try await reopened.markUnavailable(source: source)
+        let offline = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(offline.configuredCoverIDs == [9, 8] && offline.effectiveCoverIDs.isEmpty)
+
+        try await reopened.setRatingHalf(nil, for: album)
+        try await reopened.removeTag(trip.id, from: album)
+        let detached = try await reopened.sourceAlbums(tagID: trip.id)
+        try verify(detached == [sibling])
+        try await reopened.deleteTag(trip.id)
+        let remaining = try await reopened.albumTags()
+        let deletedLinks = try await reopened.sourceAlbums(tagID: trip.id)
+        let cleared = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(remaining == [scenic] && deletedLinks.isEmpty && cleared.ratingHalf == nil && cleared.favorite)
     }
 
     static func checkLayouts() throws {

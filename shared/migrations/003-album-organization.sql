@@ -9,7 +9,7 @@ CREATE TABLE source_album_organization (
 
 CREATE TABLE tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
     normalized_name TEXT NOT NULL UNIQUE CHECK (length(normalized_name) > 0)
 );
 
