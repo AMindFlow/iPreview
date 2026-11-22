@@ -183,6 +183,7 @@ try
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
+    CheckVideoWorks(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -202,6 +203,49 @@ static void Check(bool result, string name)
 {
     if (!result)
         throw new InvalidOperationException("Core check failed: " + name);
+}
+
+static void CheckVideoWorks(string root)
+{
+    foreach (var path in new[]
+    {
+        "Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg",
+        "Complete/附加写真集/写真集 10/封面.png", "Complete/附加写真集/写真集 10/图片.png",
+        "Complete/附加写真集/写真集 2/封面.jpg", "Complete/附加写真集/写真集 2/图片.png",
+        "Compact/影片.MOV", "Compact/官方样张.jpg", "Compact/其他.jpg",
+        "Compact/附加写真集/图片 10.png", "Compact/附加写真集/图片 2.png",
+        "Ordinary/影片.mp4", "Ordinary/其他.jpg",
+    })
+        AddFile(root, path);
+
+    var completeRoot = Path.Combine(root, "Complete");
+    AddFile(completeRoot, "视频/.隐藏.mp4");
+    if (MediaFiles.ProbeVideoWork(completeRoot) is not VideoWorkRecognition.Recognized(var work))
+        throw new InvalidOperationException("Core check failed: complete video work");
+    Check(work.Structure == VideoWorkStructure.Complete && work.Video.RelativePath == "视频/影片.mp4", "complete work video");
+    Check(work.Samples.Select(media => media.RelativePath).SequenceEqual(["官方样张/样张.jpg"]), "complete work samples");
+    Check(work.PhotoSets.Select(book => book.RelativePath).SequenceEqual(["附加写真集/写真集 2", "附加写真集/写真集 10"]),
+        "complete work photo sets");
+    Check(work.PhotoSets[0].Cover?.RelativePath == "附加写真集/写真集 2/封面.jpg" &&
+        work.PhotoSets[1].Photos.Select(media => media.RelativePath).SequenceEqual(["附加写真集/写真集 10/图片.png"]),
+        "complete work cover and photos");
+
+    var compactRoot = Path.Combine(root, "Compact");
+    if (MediaFiles.ProbeVideoWork(compactRoot) is not VideoWorkRecognition.Recognized(var flat))
+        throw new InvalidOperationException("Core check failed: compact video work");
+    Check(flat.Structure == VideoWorkStructure.Compact && flat.Video.RelativePath == "影片.MOV", "compact work video");
+    Check(flat.Samples.Select(media => media.RelativePath).SequenceEqual(["官方样张.jpg"]), "compact work samples");
+    var compactBook = flat.PhotoSets.Single();
+    Check(compactBook.Cover is null && compactBook.Photos.Select(media => media.RelativePath)
+        .SequenceEqual(["附加写真集/图片 2.png", "附加写真集/图片 10.png"]), "compact work flat photo set");
+
+    var ordinary = Path.Combine(root, "Ordinary");
+    Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Unrecognized &&
+        MediaFiles.Probe(ordinary).Options.Keys.Single() == Layout.Flat, "ordinary videos remain in the generic album");
+    AddFile(compactRoot, "第二个影片.mp4");
+    Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
+    AddFile(completeRoot, "附加写真集/写真集 2/封面.png");
+    Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
 }
 
 static void CheckSourceRename(string work)

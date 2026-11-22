@@ -24,7 +24,7 @@ internal sealed record GlobalSearchHit(Source Source, string? Folder, string Nam
 
 internal static class MediaSearch
 {
-    private static readonly StringComparer NaturalName = StringComparer.Create(
+    internal static readonly StringComparer NaturalName = StringComparer.Create(
         CultureInfo.InvariantCulture, CompareOptions.NumericOrdering);
     private static readonly Regex Words = new(@"[\p{L}\p{N}]+");
 

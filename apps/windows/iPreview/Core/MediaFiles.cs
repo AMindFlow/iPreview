@@ -48,6 +48,12 @@ internal static class MediaFiles
         return new(path, options);
     }
 
+    public static VideoWorkRecognition ProbeVideoWork(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        return VideoWork.Recognize(path, ReadDirectoryTree(path).Values.SelectMany(files => files));
+    }
+
     public static List<ScannedMedia> Scan(string root, Layout layout)
     {
         EnsureReadableLocalRoot(root);
