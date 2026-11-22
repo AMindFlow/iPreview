@@ -43,41 +43,27 @@ public enum SourceScanner {
     ]
 
     public static func inspect(_ selected: URL, dataDirectory: URL) throws -> SourceInspection {
-        let root = selected.standardizedFileURL.resolvingSymlinksInPath()
-        let dataPath = dataDirectory.standardizedFileURL.resolvingSymlinksInPath().path
-        if dataPath == root.path || dataPath.hasPrefix(root.path == "/" ? "/" : root.path + "/")
-            || root.path.hasPrefix(dataPath + "/") {
-            throw ScanError.overlappingCatalog
-        }
-
-        let rootChildren = try readRoot(root)
-        var creatorEntries: [ScanEntry] = []
-        var multiEntries: [ScanEntry] = []
-        for (child, values) in rootChildren where values.isDirectory == true {
-            let first = try children(of: child)
-            creatorEntries += entries(in: first, prefix: [child.lastPathComponent])
-            for (grandchild, nestedValues) in first where nestedValues.isDirectory == true {
-                let second = try children(of: grandchild)
-                multiEntries += entries(in: second, prefix: [child.lastPathComponent, grandchild.lastPathComponent])
-            }
-        }
-
+        let root = try validatedRoot(selected, dataDirectory: dataDirectory)
+        let levels = try scanLevels(root)
         var candidates: [ImportCandidate] = []
-        if !creatorEntries.isEmpty {
-            candidates.append(ImportCandidate(layout: .creator, entries: creatorEntries))
+        if !levels.creator.isEmpty {
+            candidates.append(ImportCandidate(layout: .creator, entries: levels.creator))
         }
-        if !multiEntries.isEmpty {
-            candidates.append(ImportCandidate(layout: .multiCreator, entries: multiEntries))
+        if !levels.multiCreator.isEmpty {
+            candidates.append(ImportCandidate(layout: .multiCreator, entries: levels.multiCreator))
         }
-        if candidates.isEmpty {
-            let direct = entries(in: rootChildren, prefix: [])
-            if !direct.isEmpty {
-                candidates.append(ImportCandidate(layout: .flat, entries: direct))
-            }
+        if candidates.isEmpty, !levels.flat.isEmpty {
+            candidates.append(ImportCandidate(layout: .flat, entries: levels.flat))
         }
 
         guard !candidates.isEmpty else { throw ScanError.noSupportedMedia }
         return SourceInspection(root: root, candidates: candidates)
+    }
+
+    public static func inspectVideoWork(_ selected: URL, dataDirectory: URL) throws -> VideoWorkRecognition {
+        let root = try validatedRoot(selected, dataDirectory: dataDirectory)
+        let levels = try scanLevels(root)
+        return VideoWork.recognize(root: root, entries: levels.flat + levels.creator + levels.multiCreator)
     }
 
     public static func rescan(_ source: Source) throws -> [ScanEntry] {
@@ -119,6 +105,31 @@ public enum SourceScanner {
         } catch {
             throw ScanError.inaccessibleRoot(url.lastPathComponent)
         }
+    }
+
+    private static func validatedRoot(_ selected: URL, dataDirectory: URL) throws -> URL {
+        let root = selected.standardizedFileURL.resolvingSymlinksInPath()
+        let dataPath = dataDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        if dataPath == root.path || dataPath.hasPrefix(root.path == "/" ? "/" : root.path + "/")
+            || root.path.hasPrefix(dataPath + "/") {
+            throw ScanError.overlappingCatalog
+        }
+        return root
+    }
+
+    private static func scanLevels(_ root: URL) throws -> (flat: [ScanEntry], creator: [ScanEntry], multiCreator: [ScanEntry]) {
+        let rootChildren = try readRoot(root)
+        var creatorEntries: [ScanEntry] = []
+        var multiEntries: [ScanEntry] = []
+        for (child, values) in rootChildren where values.isDirectory == true {
+            let first = try children(of: child)
+            creatorEntries += entries(in: first, prefix: [child.lastPathComponent])
+            for (grandchild, nestedValues) in first where nestedValues.isDirectory == true {
+                let second = try children(of: grandchild)
+                multiEntries += entries(in: second, prefix: [child.lastPathComponent, grandchild.lastPathComponent])
+            }
+        }
+        return (entries(in: rootChildren, prefix: []), creatorEntries, multiEntries)
     }
 
     private static func children(of directory: URL) throws -> [(URL, URLResourceValues)] {

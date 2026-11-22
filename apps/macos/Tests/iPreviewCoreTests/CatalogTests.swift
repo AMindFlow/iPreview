@@ -33,6 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try await checkMediaSort()
+        try checkVideoWorks()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -209,6 +210,60 @@ struct CatalogChecks {
         try verify(MediaSort(field: .size, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
         try verify(MediaSort(field: .modified).arrange(items).map(\.name) == ["2.png", "10.png", "1.png", "20.png"])
         try verify(MediaSort(field: .modified, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
+    }
+
+    static func checkVideoWorks() throws {
+        let fixtures = try Fixtures()
+        for path in [
+            "Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg",
+            "Complete/附加写真集/写真集 10/封面.png", "Complete/附加写真集/写真集 10/图片.png",
+            "Complete/附加写真集/写真集 2/封面.jpg", "Complete/附加写真集/写真集 2/图片.png",
+            "Compact/影片.MOV", "Compact/官方样张.jpg", "Compact/其他.jpg",
+            "Compact/附加写真集/图片 10.png", "Compact/附加写真集/图片 2.png",
+            "Ordinary/影片.mp4", "Ordinary/其他.jpg",
+        ] {
+            try fixtures.file(path)
+        }
+        let completeRoot = fixtures.directory("Complete")
+        try FileManager.default.createSymbolicLink(
+            at: completeRoot.appendingPathComponent("视频/链接.mp4"),
+            withDestinationURL: fixtures.directory("Ordinary/影片.mp4")
+        )
+        let complete = try SourceScanner.inspectVideoWork(completeRoot, dataDirectory: fixtures.databaseDirectory)
+        guard case .recognized(let work) = complete else {
+            throw CheckFailure(location: "完整作品目录无法识别")
+        }
+        try verify(work.structure == .complete && work.video.relativePath == "视频/影片.mp4")
+        try verify(work.samples.map(\.relativePath) == ["官方样张/样张.jpg"])
+        try verify(work.photoSets.map(\.relativePath) == ["附加写真集/写真集 2", "附加写真集/写真集 10"])
+        try verify(work.photoSets[0].cover?.relativePath == "附加写真集/写真集 2/封面.jpg")
+        try verify(work.photoSets[1].photos.map(\.relativePath) == ["附加写真集/写真集 10/图片.png"])
+
+        let compactRoot = fixtures.directory("Compact")
+        let compact = try SourceScanner.inspectVideoWork(compactRoot, dataDirectory: fixtures.databaseDirectory)
+        guard case .recognized(let flat) = compact else {
+            throw CheckFailure(location: "简化作品目录无法识别")
+        }
+        try verify(flat.structure == .compact && flat.video.relativePath == "影片.MOV")
+        try verify(flat.samples.map(\.relativePath) == ["官方样张.jpg"])
+        try verify(flat.photoSets.count == 1 && flat.photoSets[0].cover == nil)
+        try verify(flat.photoSets[0].photos.map(\.relativePath) == ["附加写真集/图片 2.png", "附加写真集/图片 10.png"])
+
+        let ordinary = fixtures.directory("Ordinary")
+        guard case .unrecognized = try SourceScanner.inspectVideoWork(ordinary, dataDirectory: fixtures.databaseDirectory) else {
+            throw CheckFailure(location: "普通媒体目录被误判为作品")
+        }
+        let normalImport = try SourceScanner.inspect(ordinary, dataDirectory: fixtures.databaseDirectory)
+        try verify(normalImport.candidates.map(\.layout) == [.flat])
+
+        try fixtures.file("Compact/第二个影片.mp4")
+        guard case .ambiguous = try SourceScanner.inspectVideoWork(compactRoot, dataDirectory: fixtures.databaseDirectory) else {
+            throw CheckFailure(location: "多个主视频应报告歧义")
+        }
+        try fixtures.file("Complete/附加写真集/写真集 2/封面.png")
+        guard case .ambiguous = try SourceScanner.inspectVideoWork(completeRoot, dataDirectory: fixtures.databaseDirectory) else {
+            throw CheckFailure(location: "多个封面应报告歧义")
+        }
     }
 
     static func checkPersistence() async throws {
