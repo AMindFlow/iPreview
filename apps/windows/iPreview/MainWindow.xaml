@@ -207,6 +207,10 @@
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
+                                <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
+                                        AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                </Button>
                                 <Button x:Name="AlbumPickerButton" Click="PickAlbumMedia" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="添加媒体" ToolTipService.ToolTip="添加媒体" Visibility="Collapsed">
                                     <FontIcon Glyph="&#xE710;" FontSize="14" />

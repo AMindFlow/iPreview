@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private List<Media> media = [];
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
+    private long libraryDataVersion;
     private ObservableCollection<Tile> tiles = [];
     private bool busy;
     private int previewIndex = -1;
@@ -94,9 +95,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void Reload(long? selected = null)
+    private void Reload(long? selected = null, Navigation? destination = null)
     {
         var snapshot = Database.Read();
+        current = destination ?? current;
+        libraryDataVersion = snapshot.DataVersion;
         sources = snapshot.Sources;
         media = snapshot.Media;
         albums = snapshot.Albums;
@@ -114,7 +117,8 @@ public sealed partial class MainWindow : Window
             Glyph: "\uE7B8")).ToList();
 
         if (current.Album is long albumId)
-            current = new(albums.Single(album => album.Id == albumId).Name, Album: albumId);
+            current = albums.Find(album => album.Id == albumId) is { } album
+                ? new(album.Name, Album: albumId) : Library;
         UpdateNavigationSelection();
         ShowItems(selected);
     }
@@ -431,6 +435,7 @@ public sealed partial class MainWindow : Window
         busy = value;
         ImportButton.IsEnabled = !value && catalog is not null;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
+        DeleteAlbumButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
 
@@ -465,6 +470,50 @@ public sealed partial class MainWindow : Window
             Reload();
         }
         catch (InvalidOperationException error) { ShowNotice("无法创建合集", error.Message); }
+    }
+
+    private async void DeleteAlbum(object sender, RoutedEventArgs args)
+    {
+        if (catalog is null || busy || titleEdit is not null || current.Album is not long album)
+            return;
+
+        var expectedDataVersion = libraryDataVersion;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "删除合集",
+            Content = new TextBlock
+            {
+                Text = $"将删除「{current.Label}」及其中的媒体引用。原始媒体文件会保留。",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "删除合集",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            try
+            {
+                Database.DeleteAlbum(album, expectedDataVersion);
+            }
+            catch (AlbumDeletionChangedException)
+            {
+                Reload(Selection?.Media.Id);
+                throw;
+            }
+            Reload(destination: Library);
+            Notice.IsOpen = false;
+            if (!LibraryHomeButton.Focus(FocusState.Programmatic))
+                FocusSelectedMedia();
+        }
+        catch (InvalidOperationException error)
+        {
+            ShowNotice("无法删除合集", error.Message);
+        }
     }
 
     private void SelectionChanged(object sender, SelectionChangedEventArgs args)
