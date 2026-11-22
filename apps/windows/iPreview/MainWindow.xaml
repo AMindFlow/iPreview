@@ -276,7 +276,7 @@
                                               ToolTipService.ToolTip="画廊（Ctrl+2）">
                                     <FontIcon Glyph="&#xE91B;" FontSize="13" />
                                 </ToggleButton>
-                                <ToggleButton x:Name="IconModeButton" IsChecked="True" Click="ChangeBrowseMode"
+                                <ToggleButton x:Name="IconModeButton" Click="ChangeBrowseMode"
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
                                               ToolTipService.ToolTip="图标（Ctrl+3）">
                                     <FontIcon Glyph="&#xE8A9;" FontSize="13" />

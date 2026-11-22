@@ -64,7 +64,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private BrowseMode browseMode;
+    private BrowseMode browseMode = BrowseMode.List;
     private bool browsingFolders;
     private bool updatingBrowser;
     private int filmstripGeneration;

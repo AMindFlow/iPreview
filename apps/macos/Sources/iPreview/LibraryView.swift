@@ -11,7 +11,7 @@ struct LibraryView: View {
     @ViewState private var sidebarWidth: CGFloat = 200
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
-    @ViewState private var browseMode = MediaBrowseMode.icons
+    @ViewState private var browseMode = MediaBrowseMode.list
     @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
@@ -667,7 +667,7 @@ struct LibraryView: View {
                             }
                         } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
                             selected = items[destination].id
-                            reader.scrollTo(items[destination].id, anchor: .center)
+                            reader.scrollTo(items[destination].id, anchor: browseMode == .list ? nil : .center)
                         }
                         return .handled
                     }

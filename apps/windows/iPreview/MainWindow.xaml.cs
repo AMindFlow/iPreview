@@ -49,6 +49,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SetBrowseMode(browseMode);
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         RestoreTheme();
