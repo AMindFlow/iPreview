@@ -2,6 +2,26 @@ import AppKit
 import SwiftUI
 import iPreviewCore
 
+enum LibraryTheme: String, CaseIterable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: "跟随系统"
+        case .light: "浅色"
+        case .dark: "深色"
+        }
+    }
+
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 extension iPreviewCore.Layout {
     var sidebarSymbol: String {
         switch self {

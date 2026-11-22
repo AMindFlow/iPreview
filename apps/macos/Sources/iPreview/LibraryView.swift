@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Binding var theme: LibraryTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
@@ -266,6 +267,24 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityLabel("媒体库导航")
+        .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
+            Menu {
+                Picker("主题", selection: $theme) {
+                    ForEach(LibraryTheme.allCases, id: \.self) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label("主题", systemImage: "circle.lefthalf.filled")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("主题：\(theme.title)")
+            .help("主题：\(theme.title)")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
         .accessibilityHidden(libraryOverlayShown)
     }
 
@@ -278,7 +297,7 @@ struct LibraryView: View {
                     .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
                 Text(name)
                     .lineLimit(1)
-                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if offline {
                     Image(systemName: "bolt.slash")
                         .font(.caption)

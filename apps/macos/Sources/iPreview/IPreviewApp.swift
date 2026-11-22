@@ -3,10 +3,15 @@ import SwiftUI
 
 @main
 struct IPreviewApp: App {
+    @AppStorage("libraryTheme") private var theme = LibraryTheme.system
+
     var body: some Scene {
         Window("iPreview", id: "library") {
-            LibraryView()
+            LibraryView(theme: $theme)
                 .frame(minWidth: 760, minHeight: 500)
+                .onChange(of: theme, initial: true) { _, theme in
+                    NSApp.appearance = theme.appearance
+                }
         }
         .defaultSize(width: 1120, height: 740)
         .windowToolbarStyle(.unified(showsTitle: false))

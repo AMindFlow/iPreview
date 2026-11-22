@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
+        RestoreTheme();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
@@ -345,6 +346,7 @@ public sealed partial class MainWindow : Window
             var result = await new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
+                RequestedTheme = Root.RequestedTheme,
                 Title = $"导入 {MediaFiles.FolderName(summary.Path)}",
                 Content = optionPicker,
                 PrimaryButtonText = "导入",
@@ -438,6 +440,7 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
+            RequestedTheme = Root.RequestedTheme,
             Title = title,
             Content = entry,
             PrimaryButtonText = "保存",
