@@ -31,11 +31,27 @@ public struct IndexedDirectory: Hashable, Sendable {
     public var name: String { components.last! }
 }
 
+public enum SearchResultCategory: Sendable {
+    case creator, album, directory, file
+}
+
 public enum GlobalSearchResult: Hashable, Sendable, Identifiable {
     case directory(IndexedDirectory)
     case file(Media)
 
     public var id: Self { self }
+
+    public var category: SearchResultCategory {
+        switch self {
+        case .file: .file
+        case .directory(let directory):
+            switch (directory.source.layout, directory.components.count - 1) {
+            case (.creator, 0), (.multiCreator, 1): .creator
+            case (.flat, 0), (.creator, 1), (.multiCreator, 2): .album
+            default: .directory
+            }
+        }
+    }
 }
 
 public struct SearchIndex: Sendable {
