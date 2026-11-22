@@ -14,7 +14,7 @@ internal sealed class AlbumDeletionChangedException() :
 
 internal sealed partial class Catalog : IDisposable
 {
-    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql"];
+    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql"];
     private readonly Sqlite database;
     private readonly string dataDirectory;
 

@@ -295,6 +295,16 @@ static void CheckSourceRename(string work)
         secondId = indexed.Single(item => item.FileName == "second.png").Id;
         albumId = catalog.CreateAlbum("物理重命名检查", coverId);
         catalog.AddToAlbum(albumId, secondId);
+        using (var organization = new Sqlite(indexPath))
+        {
+            organization.Execute("""
+                INSERT INTO source_album_organization (id, source_id, album_path, favorite, rating_half)
+                    VALUES (101, ?, 'Maker/Album', 1, 0), (102, ?, 'Maker/Album2', 0, NULL);
+                """, sourceId, sourceId);
+            organization.Execute("INSERT INTO tags (id, name, normalized_name) VALUES (103, 'Travel', 'travel');");
+            organization.Execute("INSERT INTO source_album_tags VALUES (101, 103);");
+            organization.Execute("INSERT INTO source_album_cover_media VALUES (101, ?, 0), (101, ?, 1);", coverId, secondId);
+        }
 
         const string cover = "Maker/Album/front.jpg";
         AddFile(sourcePath, "Maker/Album/not-indexed.jpg");
@@ -351,6 +361,20 @@ static void CheckSourceRename(string work)
         Check(members.Select(item => item.Id).SequenceEqual([coverId, secondId]) &&
             members[0].RelativePath == "新创作者/New Album/新版封面.jpg",
             "renaming files and ancestors retains reference order and stable IDs after rescan");
+        using (var organization = new Sqlite(indexPath))
+        {
+            var identifiers = organization.Query("""
+                SELECT id FROM source_album_organization WHERE
+                    (album_path = '新创作者/New Album' AND favorite = 1 AND rating_half = 0)
+                    OR (album_path = '新创作者/Album2' AND favorite = 0 AND rating_half IS NULL)
+                ORDER BY id;
+                """, row => row.Number(0));
+            Check(identifiers.SequenceEqual([101L, 102L]), "album organization follows folder and creator renames");
+            Check(organization.Query("SELECT tag_id FROM source_album_tags WHERE source_album_id = 101;",
+                row => row.Number(0)).SequenceEqual([103L]), "album tag stays linked");
+            Check(organization.Query("SELECT media_id FROM source_album_cover_media WHERE source_album_id = 101 ORDER BY position;",
+                row => row.Number(0)).SequenceEqual([coverId, secondId]), "cover order stays linked");
+        }
 
         var nested = Path.Combine(sourcePath, "新创作者/Album2");
         catalog.Import(nested, Layout.Flat, MediaFiles.Scan(nested, Layout.Flat));

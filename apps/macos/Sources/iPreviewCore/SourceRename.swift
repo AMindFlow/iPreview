@@ -108,7 +108,7 @@ struct SourceRename {
                 guard try parent.state(of: intent) == .final else { throw SourceRenameError.pending }
                 try parent.verifyLocation(root: source.path, components: oldParts.dropLast())
                 try parent.synchronize()
-                try update(changes)
+                try update(changes, for: intent)
                 try clear()
             }
         } catch let operationError {
@@ -147,7 +147,7 @@ struct SourceRename {
                 try checkOverlaps(source: source, intent: intent)
                 let changes = try checkedChanges(for: intent, expectedID: nil)
                 try parent.synchronize()
-                try update(changes)
+                try update(changes, for: intent)
                 try clear()
             case .uncertain:
                 throw SourceRenameError.pending
@@ -242,9 +242,17 @@ struct SourceRename {
         }
     }
 
-    private func update(_ changes: [(id: Int64, path: String)]) throws {
+    private func update(_ changes: [(id: Int64, path: String)], for intent: RenameIntent) throws {
         try database.repeated("UPDATE media SET relative_path = ? WHERE id = ?",
                               bindings: changes.map { [.text($0.path), .integer($0.id)] })
+        if intent.isDirectory {
+            let oldPath = SQLiteValue.text(intent.oldPath)
+            try database.execute("""
+                UPDATE source_album_organization
+                SET album_path = ? || substr(album_path, length(?) + 1)
+                WHERE source_id = ? AND (album_path = ? OR substr(album_path, 1, length(?) + 1) = ? || '/')
+                """, [.text(intent.newPath), oldPath, .integer(intent.sourceID), oldPath, oldPath, oldPath])
+        }
     }
 
     private func validatedName(_ name: String) throws -> String {
