@@ -182,11 +182,27 @@ struct CatalogChecks {
         let favourite = try await initial.createAlbum(named: "Pinned", mediaID: original.id)
 
         // Reopen a populated version 1 database and retain all IDs and virtual references.
-        try fixtures.sql("DROP TABLE pending_rename; PRAGMA user_version = 1;")
+        try fixtures.sql("""
+            DROP TABLE source_album_cover_media;
+            DROP TABLE source_album_tags;
+            DROP TABLE tags;
+            DROP TABLE source_album_organization;
+            DROP TABLE pending_rename;
+            PRAGMA user_version = 1;
+            """)
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let migrated = try await catalog.snapshot()
         try verify(migrated.media.map(\.id) == before.media.map(\.id))
         try verify(migrated.albums.first { $0.id == favourite }?.mediaIDs == [original.id])
+        try fixtures.sql("""
+            INSERT INTO source_album_organization (id, source_id, album_path, favorite, rating_half)
+                VALUES (101, \(source.id), 'Artist/Album', 1, 0),
+                       (102, \(source.id), 'Artist/Album2', 0, NULL),
+                       (103, \(source.id), 'Second Creator/Album', 0, 7);
+            INSERT INTO tags (id, name, normalized_name) VALUES (104, 'Travel', 'travel');
+            INSERT INTO source_album_tags VALUES (101, 104);
+            INSERT INTO source_album_cover_media VALUES (101, \(original.id), 0), (101, \(offline.id), 1);
+            """)
 
         let originalURL = try original.readableURL()
         let bytes = try Data(contentsOf: originalURL)
@@ -262,6 +278,18 @@ struct CatalogChecks {
         try verify(after.media.first { $0.id == other.id }?.relativePath == "Artist/Album2/Other.png")
         try verify(after.media.first { $0.id == secondCreatorItem.id }?.relativePath == creatorPath + "/Album/Second.png")
         try verify(after.albums.first { $0.id == favourite }?.mediaIDs == [original.id])
+        let organizationRows = try fixtures.scalar("""
+            SELECT COUNT(*) FROM source_album_organization WHERE
+                (id = 101 AND album_path = 'Artist/Renamed Album' AND favorite = 1 AND rating_half = 0)
+                OR (id = 102 AND album_path = 'Artist/Album2' AND rating_half IS NULL)
+                OR (id = 103 AND album_path = 'New Creator/Album' AND rating_half = 7);
+            """)
+        let tagCount = try fixtures.scalar("SELECT COUNT(*) FROM source_album_tags WHERE source_album_id = 101 AND tag_id = 104")
+        let coverCount = try fixtures.scalar("""
+            SELECT COUNT(*) FROM source_album_cover_media WHERE source_album_id = 101 AND
+                ((position = 0 AND media_id = \(original.id)) OR (position = 1 AND media_id = \(offline.id)));
+            """)
+        try verify(organizationRows == 3 && tagCount == 1 && coverCount == 2)
 
         try await expectAsyncError(SourceRenameError.self) {
             try await catalog.renameSourceItem(sourceID: source.id, path: "Artist", mediaID: nil, to: "Blocked")
@@ -439,12 +467,28 @@ private struct Fixtures {
     func directory(_ path: String) -> URL { root.appendingPathComponent(path) }
 
     func sql(_ command: String) throws {
+        try withDatabase { database in
+            try verify(sqlite3_exec(database, command, nil, nil, nil) == SQLITE_OK)
+        }
+    }
+
+    func scalar(_ query: String) throws -> Int64 {
+        try withDatabase { database in
+            var statement: OpaquePointer?
+            try verify(sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK)
+            defer { sqlite3_finalize(statement) }
+            try verify(sqlite3_step(statement) == SQLITE_ROW)
+            return sqlite3_column_int64(statement, 0)
+        }
+    }
+
+    private func withDatabase<T>(_ operation: (OpaquePointer) throws -> T) throws -> T {
         let path = databaseDirectory.appendingPathComponent("catalog.sqlite3").path
-        var db: OpaquePointer?
-        let opened = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, nil)
-        defer { sqlite3_close(db) }
+        var database: OpaquePointer?
+        let opened = sqlite3_open_v2(path, &database, SQLITE_OPEN_READWRITE, nil)
+        defer { sqlite3_close(database) }
         try verify(opened == SQLITE_OK)
-        try verify(sqlite3_exec(db, command, nil, nil, nil) == SQLITE_OK)
+        return try operation(required(database))
     }
 
     func file(_ path: String) throws {

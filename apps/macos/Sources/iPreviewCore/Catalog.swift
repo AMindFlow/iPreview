@@ -19,7 +19,7 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...2).contains(version) else {
+            guard (0...3).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -29,6 +29,10 @@ public actor Catalog {
             if version < 2 {
                 let rename = try Self.migrationURL(named: "002-pending-rename", in: appBundle)
                 try database.script(String(contentsOf: rename, encoding: .utf8))
+            }
+            if version < 3 {
+                let organization = try Self.migrationURL(named: "003-album-organization", in: appBundle)
+                try database.script(String(contentsOf: organization, encoding: .utf8))
             }
         }
         self.database = database
