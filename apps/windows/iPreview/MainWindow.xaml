@@ -76,6 +76,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="LibraryHomeButton" Click="GoToLibrary" Style="{StaticResource LibrarySubtleButton}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,0"
@@ -89,6 +90,16 @@
                             <Button Grid.Column="1" Click="ShowGlobalSearch" ToolTipService.ToolTip="全局搜索（Ctrl+Shift+F）"
                                     Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="全局搜索">
                                 <FontIcon Glyph="&#xE721;" FontSize="14" />
+                            </Button>
+                            <Button x:Name="ThemeButton" Grid.Column="2" Style="{StaticResource LibraryIconButton}">
+                                <FontIcon Glyph="&#xE793;" FontSize="14" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <RadioMenuFlyoutItem x:Name="SystemThemeOption" Text="跟随系统" Tag="Default" Click="ChangeTheme" />
+                                        <RadioMenuFlyoutItem x:Name="LightThemeOption" Text="浅色" Tag="Light" Click="ChangeTheme" />
+                                        <RadioMenuFlyoutItem x:Name="DarkThemeOption" Text="深色" Tag="Dark" Click="ChangeTheme" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
                             </Button>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="9" Margin="10,11,0,0" Height="32">
@@ -636,7 +647,7 @@
             </Border>
         </Grid>
 
-        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent" RequestedTheme="Dark"
+        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent"
               PreviewKeyDown="PreviewKeyDown" TabFocusNavigation="Cycle">
             <Grid.Resources>
                 <Style x:Key="PreviewFlatButton" TargetType="Button">
@@ -686,12 +697,14 @@
                                Opacity=".20" Stretch="UniformToFill" />
                         <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Width="72" Height="28"
                                Opacity=".20" Stretch="UniformToFill" />
-                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1" Background="#0C1317" CornerRadius="8">
+                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
                             <Grid>
                                 <Image x:Name="MainImage" Stretch="Uniform" />
                                 <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
                                                     IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
-                                <TextBlock x:Name="PreviewError" Visibility="Collapsed" Foreground="#F0CEAE"
+                                <TextBlock x:Name="PreviewError" Visibility="Collapsed"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                            TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Margin="22" />
                             </Grid>
@@ -718,7 +731,8 @@
                 <StackPanel Grid.Row="2" Spacing="3">
                     <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
                                     HorizontalContentAlignment="Stretch" MaxWidth="680">
-                        <Grid Background="#253034" CornerRadius="20" Padding="10,3" ColumnSpacing="7">
+                        <Grid Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                              CornerRadius="20" Padding="10,3" ColumnSpacing="7">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -734,20 +748,23 @@
                                     Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="播放或暂停" />
                             <Button x:Name="VideoForward" Grid.Column="2" Content="+15 秒" Click="SeekVideoForward"
                                     Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="前进 15 秒" />
-                            <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                            <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
                                     VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
-                            <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                            <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <ToggleButton x:Name="VideoLock" Grid.Column="6" Click="ToggleVideoLock"
                                           Content="未锁定" AutomationProperties.Name="锁定视频预览"
                                           ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
                         </Grid>
                     </ContentControl>
                     <Grid>
-                        <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" Margin="65,0" VerticalAlignment="Center"
+                        <TextBlock x:Name="PreviewHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Margin="65,0" VerticalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
                         <TextBlock x:Name="IndexLabel" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="#B6C4C5" FontSize="12" />
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
                     </Grid>
                 </StackPanel>
             </Grid>

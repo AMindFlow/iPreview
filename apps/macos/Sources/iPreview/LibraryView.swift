@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Binding var theme: LibraryTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
@@ -209,6 +210,21 @@ struct LibraryView: View {
                     .accessibilityLabel("全局搜索")
                     .accessibilityIdentifier("show-global-search")
                     .help("搜索所有媒体源（⇧⌘F）")
+                    Menu {
+                        Picker("主题", selection: $theme) {
+                            ForEach(LibraryTheme.allCases, id: \.self) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .frame(width: 22, height: 26)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel("主题：\(theme.title)")
+                    .help("主题：\(theme.title)")
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     Label("源", systemImage: "folder")
