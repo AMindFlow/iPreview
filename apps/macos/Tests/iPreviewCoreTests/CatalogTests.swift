@@ -33,6 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try await checkPersistence()
+        try await checkOrderingAndBatchReferenceRemoval()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -116,6 +117,50 @@ struct CatalogChecks {
         try await reopened.remove(mediaIDs: [memberIDs[0]], from: albumID)
         let removed = try await reopened.snapshot()
         try verify(removed.albums.first?.mediaIDs == [memberIDs[1]])
+    }
+
+    static func checkOrderingAndBatchReferenceRemoval() async throws {
+        let fixtures = try Fixtures()
+        for path in ["First/01.png", "First/02.png", "Second/03.mov", "Second/04.png"] {
+            try fixtures.file(path)
+        }
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["First", "Second"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+
+        let before = try await catalog.snapshot()
+        let mediaIDs = before.media.map(\.id)
+        let selectedIDs = [mediaIDs[0], mediaIDs[2]]
+        let order = [mediaIDs[3], mediaIDs[0], mediaIDs[1], mediaIDs[2]]
+        let albumID = try await catalog.createAlbum(named: "Batch")
+        let otherAlbumID = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: order, to: albumID)
+        try await catalog.append(mediaIDs: selectedIDs, to: otherAlbumID)
+
+        let paths = try before.media.map { try $0.readableURL() }
+        let bytes = try paths.map { try Data(contentsOf: $0) }
+        let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+
+        try await catalog.move(mediaID: mediaIDs[3], in: albumID, to: 2, expectedOrder: order)
+        let reordered = try await catalog.snapshot()
+        try verify(reordered.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[0], mediaIDs[1], mediaIDs[3], mediaIDs[2]])
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        try await expectAsyncError(AlbumOrderError.self) {
+            try await otherWindow.move(mediaID: mediaIDs[0], in: albumID, to: 0, expectedOrder: order)
+        }
+
+        try await catalog.remove(mediaIDs: selectedIDs, from: albumID)
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let after = try await reopened.snapshot()
+        try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[1], mediaIDs[3]])
+        try verify(after.albums.first { $0.id == otherAlbumID }?.mediaIDs == selectedIDs)
+        try verify(after.media == before.media)
+        let afterBytes = try paths.map { try Data(contentsOf: $0) }
+        let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        try verify(afterBytes == bytes && afterTimes == times)
     }
 
     static func checkSourceRename() async throws {
@@ -324,19 +369,60 @@ struct CatalogChecks {
         try fixtures.file("Library/北京/旅行.PNG")
         try fixtures.file("Library/Summer Library/2.png")
         try fixtures.file("Library/Summer Library/10.png")
+        try fixtures.file("Elsewhere/2.png")
+        try fixtures.file("Elsewhere/Frame.v2.jpg")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
-        let index = SearchIndex(media: try await catalog.snapshot().media)
+        let elsewhere = try SourceScanner.inspect(fixtures.directory("Elsewhere"), dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: elsewhere.root, candidate: try required(elsewhere.candidates.first))
+        let snapshot = try await catalog.snapshot()
+        let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
         try verify(index.search("旅行.ＰＮＧ", mode: .exact, directories: false, files: true).map(\.name) == ["旅行.PNG"])
-        try verify(index.search("旅行", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.search("旅行", mode: .exact, directories: false, files: true).map(\.name) == ["旅行.PNG"])
+        try verify(index.search("旅行.jpg", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.search("旅行.pn", mode: .exact, directories: false, files: true).isEmpty)
         try verify(index.search("beijing", mode: .fuzzy, directories: true, files: false).map(\.name) == ["旅行.PNG"])
         try verify(index.search("bj", mode: .fuzzy, directories: true, files: false).map(\.name) == ["旅行.PNG"])
         try verify(index.search("beijing", mode: .fuzzy, directories: false, files: true).isEmpty)
         try verify(index.search("lvxing", mode: .fuzzy, directories: false, files: true).map(\.name) == ["旅行.PNG"])
         try verify(index.search("sumer", mode: .fuzzy, directories: true, files: false).map(\.name) == ["2.png", "10.png"])
         try verify(index.search("北京", mode: .exact, directories: false, files: false).isEmpty)
+
+        let local = index.search("2.png", mode: .exact, directories: false, files: true) { $0.source.name == "Library" }
+        try verify(local.map(\.directories) == [["Library", "Summer Library"]])
+        let barePrefix = GlobalSearchTerm("@")
+        try verify(barePrefix.mode == .fuzzy && barePrefix.text == "@")
+        let joinedPrefix = GlobalSearchTerm("@2.png")
+        try verify(joinedPrefix.mode == .fuzzy && joinedPrefix.text == "@2.png")
+        let pendingExact = GlobalSearchTerm("@ ")
+        try verify(pendingExact.mode == .exact && pendingExact.text.isEmpty)
+        let exactTerm = GlobalSearchTerm("  ＠　2.png ")
+        let globalFiles = index.globalSearch(exactTerm.text, mode: exactTerm.mode, directories: false, files: true).compactMap { hit -> Media? in
+            if case .file(let item) = hit { item } else { nil }
+        }
+        try verify(Set(globalFiles.map { $0.source.name }) == ["Library", "Elsewhere"])
+        let scopedFiles = index.globalSearch(exactTerm.text, mode: exactTerm.mode, directories: true, files: true) {
+            if case .file(let media) = $0 { return media.source.name == "Library" }
+            return false
+        }
+        try verify(scopedFiles == local.map(GlobalSearchResult.file))
+        try verify(index.globalSearch("2", mode: .exact, directories: false, files: true).count == 2)
+        try verify(index.globalSearch("2.jpg", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.globalSearch("frame.v2", mode: .exact, directories: false, files: true).count == 1)
+        try verify(index.globalSearch("frame.v2.png", mode: .exact, directories: false, files: true).isEmpty)
+        try verify(index.globalSearch("Summer", mode: .exact, directories: true, files: false).isEmpty)
+        let globalFolders = index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false)
+        try verify(globalFolders.count == 1)
+        guard case .directory(let directory) = globalFolders[0] else {
+            throw CheckFailure(location: "global search must return the matching directory")
+        }
+        try verify(directory.components == ["Library", "Summer Library"])
+        try verify(index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false) {
+            if case .directory(let folder) = $0 { return folder.source.name == "Elsewhere" }
+            return false
+        }.isEmpty)
     }
 }
 

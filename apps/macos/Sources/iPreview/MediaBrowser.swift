@@ -30,6 +30,35 @@ enum MediaBrowseMode: String, CaseIterable, Identifiable {
     }
 }
 
+private struct LibraryBrowseModeKey: FocusedValueKey {
+    typealias Value = Binding<MediaBrowseMode>
+}
+
+extension FocusedValues {
+    var libraryBrowseMode: Binding<MediaBrowseMode>? {
+        get { self[LibraryBrowseModeKey.self] }
+        set { self[LibraryBrowseModeKey.self] = newValue }
+    }
+}
+
+struct LibraryBrowseCommands: Commands {
+    @FocusedValue(\.libraryBrowseMode) private var mode
+
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Button("列表") { mode?.wrappedValue = .list }
+                .keyboardShortcut("1", modifiers: .command)
+                .disabled(mode == nil)
+            Button("画廊") { mode?.wrappedValue = .gallery }
+                .keyboardShortcut("2", modifiers: .command)
+                .disabled(mode == nil)
+            Button("图标") { mode?.wrappedValue = .icons }
+                .keyboardShortcut("3", modifiers: .command)
+                .disabled(mode == nil)
+        }
+    }
+}
+
 struct MediaListColumns<Name: View, Modified: View, Size: View, Kind: View>: View {
     @ViewBuilder let name: () -> Name
     @ViewBuilder let modified: () -> Modified
@@ -52,7 +81,7 @@ struct MediaListRow: View {
     let revision: Int
     let selected: Bool
     let shaded: Bool
-    let showPath: Bool
+    let checked: Bool
     @ViewState private var facts: Facts?
 
     private struct Facts: Sendable {
@@ -63,19 +92,11 @@ struct MediaListRow: View {
     var body: some View {
         MediaListColumns {
             HStack(spacing: 8) {
-                MediaThumbnail(media: media, revision: revision)
+                MediaThumbnail(media: media, revision: revision, previewCornerRadius: 3)
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(media.name)
-                        .fontWeight(selected ? .semibold : .regular)
-                    if showPath {
-                        Text(media.directories.joined(separator: " / "))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .truncationMode(.middle)
-                    }
-                }
+                Text(media.name)
+                    .fontWeight(selected ? .semibold : .regular)
             }
         } modified: {
             Text(facts?.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—")
@@ -89,9 +110,16 @@ struct MediaListRow: View {
         }
         .font(.system(size: 12))
         .lineLimit(1)
-        .frame(height: showPath ? 37 : 29)
+        .frame(height: 29)
         .background(selected ? Color.ipreviewAccent.opacity(0.16) : shaded ? Color.libraryInk.opacity(0.045) : .clear,
                     in: RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .bottomTrailing) {
+            if checked {
+                MediaSelectionMark()
+                    .padding(.trailing, 5)
+                    .padding(.bottom, 4)
+            }
+        }
         .contentShape(Rectangle())
         .task(id: revision) {
             facts = nil
@@ -110,6 +138,17 @@ struct MediaListRow: View {
         let suffix = URL(fileURLWithPath: media.name).pathExtension.uppercased()
         let format = suffix == "JPG" ? "JPEG" : suffix
         return "\(format) \(media.kind == .video ? "视频" : "图像")"
+    }
+}
+
+struct MediaSelectionMark: View {
+    var body: some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white, Color.ipreviewAccent)
+            .background(.white, in: Circle())
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

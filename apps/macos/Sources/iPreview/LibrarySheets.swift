@@ -52,16 +52,7 @@ struct ImportSheet: View {
     }
 }
 
-struct AlbumEdit: Identifiable {
-    let id = UUID()
-    var album: VirtualAlbum?
-    var firstMediaID: Int64?
-
-    var idToRename: Int64? { album?.id }
-}
-
-struct AlbumSheet: View {
-    let edit: AlbumEdit
+struct NewAlbumSheet: View {
     let confirm: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
@@ -69,10 +60,10 @@ struct AlbumSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text(edit.album == nil ? "新建虚拟专辑" : "重命名专辑")
+            Text("新建合集")
                 .font(.title2.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
-            TextField("专辑名称", text: $name)
+            TextField("合集名称", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .accessibilityIdentifier("album-name")
@@ -80,7 +71,7 @@ struct AlbumSheet: View {
                 Spacer()
                 Button("取消") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(edit.album == nil ? "创建" : "保存") {
+                Button("创建") {
                     confirm(name)
                     dismiss()
                 }
@@ -90,10 +81,7 @@ struct AlbumSheet: View {
         }
         .padding(24)
         .frame(width: 380)
-        .onAppear {
-            name = edit.album?.name ?? ""
-            focused = true
-        }
+        .onAppear { focused = true }
     }
 }
 
@@ -114,11 +102,15 @@ struct SourceNameEdit: Identifiable {
     }
 
     init(folder: LibraryFolder) {
-        source = folder.cover.source
+        self.init(folder: folder.page, source: folder.cover.source, expectedMember: folder.cover)
+    }
+
+    init(folder: LibraryPage, source: Source, expectedMember: Media?) {
+        self.source = source
         mediaID = nil
-        expectedFolderMemberID = folder.cover.isAvailable ? folder.cover.id : nil
-        self.folder = folder.page
-        switch folder.page {
+        expectedFolderMemberID = expectedMember.flatMap { $0.isAvailable ? $0.id : nil }
+        self.folder = folder
+        switch folder {
         case .creator(_, let path), .folder(_, let path):
             self.path = path
         default:

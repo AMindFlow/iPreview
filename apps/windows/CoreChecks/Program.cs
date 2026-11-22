@@ -51,7 +51,8 @@ try
         catalog.Import(single.Path, Layout.Creator, single.Options[Layout.Creator]);
         catalog.Import(ambiguous.Path, Layout.MultiCreator, ambiguous.Options[Layout.MultiCreator]);
 
-        var items = catalog.Read().Media;
+        var imported = catalog.Read();
+        var items = imported.Media;
         try
         {
             catalog.CheckSourcePath(work);
@@ -59,16 +60,54 @@ try
         }
         catch (IOException) { }
         Check(items.Count == 4, "persisted import");
-        var ordered = MediaSearch.Find(items, "城楼", false, false, true);
+        var sourceList = imported.Sources.Values;
+        var ordered = MediaSearch.Find(sourceList, items, new("城楼", false), GlobalSearchScope.Files)
+            .Select(result => result.Media!).ToList();
         Check(ordered.Select(item => item.FileName).SequenceEqual(["城楼2.PNG", "城楼10.PNG"]),
             "natural file ordering");
-        Check(MediaSearch.Find(items, "ＣＬＩＰ.mov", true, false, true).Count == 1,
-            "compatibility and case normalization");
-        Check(MediaSearch.Find(items, "clip", true, false, true).Count == 0, "exact file includes extension");
-        Check(MediaSearch.Find(items, "bj", false, true, false).Count == 3, "directory pinyin initials");
-        Check(MediaSearch.Find(items, "beijing", false, true, false).Count == 3, "directory full pinyin");
-        Check(MediaSearch.Find(items, "beijing", false, false, true).Count == 0, "scope isolation");
-        Check(MediaSearch.Find(items, "sumer", false, true, false).Count == 3, "directory typo");
+        Check(MediaSearch.Find(sourceList, items, new("bj", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder is null && result.Name == "北京"), "directory pinyin initials");
+        Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder is null && result.Name == "北京"), "directory full pinyin");
+        Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Files).Count == 0,
+            "file scope excludes matching parent directories");
+        Check(MediaSearch.Find(sourceList, items, new("sumer", false), GlobalSearchScope.Directories)
+                .Any(result => result.Folder == "Summer 2/"), "directory typo");
+        var directories = MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
+            GlobalSearchScope.Directories);
+        Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
+            "global search shows a distinct directory hit");
+        Check(GlobalSearchTerm.Parse("@") is { Text: "@", Exact: false }, "an at sign alone keeps fuzzy search");
+        Check(GlobalSearchTerm.Parse("@clip") is { Text: "@clip", Exact: false }, "the prefix requires a space");
+        Check(GlobalSearchTerm.Parse("@ ") is { Text.Length: 0, Exact: true }, "space activates exact mode before a name");
+        var exactClip = GlobalSearchTerm.Parse("  ＠　ＣＬＩＰ.mov");
+        var exactFiles = MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Files);
+        Check(exactFiles.Count == 1 && exactFiles[0] is { Media.FileName: "clip.MOV", Folder: "Summer 2/" },
+            "global exact prefix permits normalized file names and returns the containing directory");
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip"), GlobalSearchScope.Files)
+                .Single().Name == "clip.MOV", "global exact file allows omitting the suffix");
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ clip.png"), GlobalSearchScope.Files).Count == 0,
+            "global exact file respects an explicit suffix");
+        Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
+            "global exact directory requires its complete name");
+        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", IsVideo = false };
+        Check(MediaSearch.Find(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
+                .Single().Name == "Frame.v2.jpg", "the file stem can contain dots");
+        Check(MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
+            "global directory scope excludes matching files");
+
+        var withinAlbum = items[0] with { RelativePath = "Other/Album/Shared.png" };
+        var inSibling = items[0] with { RelativePath = "Other/Albums/Shared.png" };
+        var outsideScope = items[0] with { RelativePath = "Shared.png" };
+        Media[] scopedFixture = [withinAlbum, inSibling, outsideScope];
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Shared", true), GlobalSearchScope.Files,
+                "Other/Album/").Single().Media == withinAlbum,
+            "current folder results exclude siblings and files outside the subtree");
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Other", true), GlobalSearchScope.Directories,
+                "Other/Album/").Count == 0, "current folder results exclude ancestors");
+        Check(MediaSearch.Find(sourceList, scopedFixture, new("Album", true), GlobalSearchScope.Directories,
+                "Other/Album/").Single().Folder == "Other/Album/",
+            "current folder results include the selected folder");
 
         albumId = catalog.CreateAlbum("预览");
         firstId = ordered[0].Id;
@@ -90,7 +129,7 @@ try
         Check(badBatchFailed, "batch append fails for missing member ID");
         Check(catalog.Read().AlbumMembers[albumId].Select(item => item.Id).SequenceEqual([firstId, secondId, clipId]),
             "failed batch leaves no partial references");
-        catalog.RemoveFromAlbum(albumId, clipId);
+        catalog.RemoveFromAlbum(albumId, [clipId]);
         catalog.MoveInAlbum(albumId, secondId, -1);
         catalog.RenameAlbum(albumId, "海外");
     }
@@ -115,7 +154,32 @@ try
         Check(MediaFiles.OpenPath(online) == Path.Combine(mixed, "Other", "Album", "other.jpg"),
             "preview resolves source-relative media");
 
-        catalog.RemoveFromAlbum(albumId, secondId);
+        var clip = snapshot.Media.Single(item => item.IsVideo);
+        var retainedPhoto = snapshot.Media.Single(item => item.FileName == "城楼10.PNG");
+        var batchAlbum = catalog.CreateAlbum("批量移除");
+        long[] oldOrder = [secondId, firstId, clip.Id, retainedPhoto.Id];
+        catalog.AppendToAlbum(batchAlbum, oldOrder);
+        var removedFiles = new[] { online, clip }.Select(MediaFiles.OpenPath).ToArray();
+        var originalTimes = removedFiles.Select(File.GetLastWriteTimeUtc).ToArray();
+        catalog.MoveInAlbum(batchAlbum, retainedPhoto.Id, 0, oldOrder);
+        Check(catalog.Read().AlbumMembers[batchAlbum].Select(item => item.Id)
+            .SequenceEqual([retainedPhoto.Id, secondId, firstId, clip.Id]), "drag order persists across sources");
+        Reject<AlbumOrderChangedException>(() => catalog.MoveInAlbum(batchAlbum, secondId, 2, oldOrder),
+            "a stale drag leaves the current album order unchanged");
+        catalog.RemoveFromAlbum(batchAlbum, [clip.Id, secondId]);
+        using (var reopened = new Catalog(data))
+        {
+            var members = reopened.Read().AlbumMembers;
+            Check(members[batchAlbum].Select(item => item.Id).SequenceEqual([retainedPhoto.Id, firstId]),
+                "batch removal persists remaining album order");
+            Check(members[albumId].Select(item => item.Id).SequenceEqual([secondId, firstId]),
+                "batch removal preserves references in another album");
+        }
+        Check(removedFiles.All(path => File.ReadAllText(path) == "fixture") &&
+              removedFiles.Select(File.GetLastWriteTimeUtc).SequenceEqual(originalTimes),
+            "batch removal preserves original content and modification time");
+
+        catalog.RemoveFromAlbum(albumId, [secondId]);
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }

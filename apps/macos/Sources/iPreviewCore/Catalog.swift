@@ -183,13 +183,31 @@ public actor Catalog {
 
     public func move(mediaID: Int64, in albumID: Int64, by delta: Int) throws {
         precondition([-1, 1].contains(delta))
-        try database.transaction {
-            let album = SQLiteValue.integer(albumID)
-            var ids = try database.select(
-                "SELECT media_id FROM album_media WHERE album_id = ? ORDER BY position, media_id", [album]
-            ) { sqlite3_column_int64($0, 0) }
+        try updateOrder(in: albumID) { ids in
             guard let index = ids.firstIndex(of: mediaID), ids.indices.contains(index + delta) else { return }
             ids.swapAt(index, index + delta)
+        }
+    }
+
+    public func move(mediaID: Int64, in albumID: Int64, to targetIndex: Int, expectedOrder: [Int64]) throws {
+        try updateOrder(in: albumID) { ids in
+            guard ids == expectedOrder else {
+                throw AlbumOrderError.changed
+            }
+            guard let index = ids.firstIndex(of: mediaID), ids.indices.contains(targetIndex) else { return }
+            ids.insert(ids.remove(at: index), at: targetIndex)
+        }
+    }
+
+    private func updateOrder(in albumID: Int64, change: (inout [Int64]) throws -> Void) throws {
+        try database.transaction {
+            let album = SQLiteValue.integer(albumID)
+            let original = try database.select(
+                "SELECT media_id FROM album_media WHERE album_id = ? ORDER BY position, media_id", [album]
+            ) { sqlite3_column_int64($0, 0) }
+            var ids = original
+            try change(&ids)
+            guard ids != original else { return }
             try database.repeated(
                 "UPDATE album_media SET position = ? WHERE album_id = ? AND media_id = ?",
                 bindings: ids.enumerated().map { [.integer(Int64($0)), album, .integer($1)] }
@@ -213,8 +231,16 @@ public actor Catalog {
     private func validatedAlbumName(_ name: String) throws -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("\0") else {
-            throw SQLiteError(message: "请输入有效的专辑名称")
+            throw SQLiteError(message: "请输入有效的合集名称")
         }
         return trimmed
+    }
+}
+
+public enum AlbumOrderError: LocalizedError {
+    case changed
+
+    public var errorDescription: String? {
+        "合集内的顺序已在其他窗口更新。请按当前顺序重新拖动。"
     }
 }

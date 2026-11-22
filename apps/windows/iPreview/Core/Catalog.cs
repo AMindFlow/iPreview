@@ -6,6 +6,9 @@ internal sealed record CatalogSnapshot(
     Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
     Dictionary<long, List<Media>> AlbumMembers);
 
+internal sealed class AlbumOrderChangedException() :
+    InvalidOperationException("合集顺序已在其他窗口更新。请按当前顺序重新拖动。");
+
 internal sealed partial class Catalog : IDisposable
 {
     private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql"];
@@ -118,7 +121,7 @@ internal sealed partial class Catalog : IDisposable
         {
             EnsureCurrentScan(scanVersion);
             if (HasPendingRename(source))
-                throw new InvalidOperationException("此来源有待恢复的重命名，暂时无法重新扫描。");
+                throw new InvalidOperationException("此媒体源有待恢复的重命名，暂时无法重新扫描。");
             if (files is null)
                 database.Execute("UPDATE sources SET available = 0 WHERE id = ?;", source);
             else
@@ -179,15 +182,17 @@ internal sealed partial class Catalog : IDisposable
             INSERT OR IGNORE INTO album_media (album_id, media_id, position) VALUES (?, ?, ?);
             """, album, media, position);
 
-    public void RemoveFromAlbum(long album, long media) =>
-        database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, media);
+    public void RemoveFromAlbum(long album, IReadOnlyCollection<long> media) =>
+        database.InTransaction(() =>
+        {
+            foreach (var member in media)
+                database.Execute("DELETE FROM album_media WHERE album_id = ? AND media_id = ?;", album, member);
+        });
 
     public void MoveInAlbum(long album, long media, int offset) =>
         database.InTransaction(() =>
         {
-            var members = database.Query("""
-                SELECT media_id, position FROM album_media WHERE album_id = ? ORDER BY position, media_id;
-                """, row => (Media: row.Number(0), Position: row.Number(1)), album);
+            var members = AlbumPositions(album);
             var current = members.FindIndex(member => member.Media == media);
             var next = current + offset;
             if (current < 0 || next < 0 || next >= members.Count)
@@ -197,6 +202,27 @@ internal sealed partial class Catalog : IDisposable
             database.Execute("UPDATE album_media SET position = ? WHERE album_id = ? AND media_id = ?;",
                 members[current].Position, album, members[next].Media);
         });
+
+    public void MoveInAlbum(long album, long media, int target, IReadOnlyList<long> expectedOrder) =>
+        database.InTransaction(() =>
+        {
+            var order = AlbumPositions(album).Select(member => member.Media).ToList();
+            if (!order.SequenceEqual(expectedOrder))
+                throw new AlbumOrderChangedException();
+            var source = order.IndexOf(media);
+            if (source < 0 || source == target || target < 0 || target >= order.Count)
+                return;
+            order.RemoveAt(source);
+            order.Insert(target, media);
+            for (var position = 0; position < order.Count; position++)
+                database.Execute("UPDATE album_media SET position = ? WHERE album_id = ? AND media_id = ?;",
+                    position, album, order[position]);
+        });
+
+    private List<(long Media, long Position)> AlbumPositions(long album) =>
+        database.Query("""
+            SELECT media_id, position FROM album_media WHERE album_id = ? ORDER BY position, media_id;
+            """, row => (Media: row.Number(0), Position: row.Number(1)), album);
 
     public void Dispose() => database.Dispose();
 }

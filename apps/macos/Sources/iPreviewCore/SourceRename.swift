@@ -18,7 +18,7 @@ public enum SourceRenameError: LocalizedError {
         case .invalidName: "请输入有效的名称。名称不能以点开头或包含路径分隔符。"
         case .unavailable: "源文件或文件夹已离线、移动或无法安全定位。"
         case .collision: "目标名称已存在于磁盘或媒体索引中。"
-        case .overlappingSources: "此项与另一个已导入的来源重叠，无法安全重命名。"
+        case .overlappingSources: "此项与另一个已导入的媒体源重叠，无法安全重命名。"
         case .unsupportedVolume: "此版本的 macOS 源文件重命名需要 APFS 磁盘。"
         case .unsafeFilesystem(let detail): "无法安全重命名源文件或文件夹：\(detail)"
         case .pending: "上次重命名无法自动核对。请检查原名称和目标名称，处理后重新打开 iPreview。"

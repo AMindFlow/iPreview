@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -5,20 +6,45 @@ struct IPreviewApp: App {
     var body: some Scene {
         Window("iPreview", id: "library") {
             LibraryView()
-                .preferredColorScheme(.light)
-                .tint(.ipreviewAccent)
                 .frame(minWidth: 760, minHeight: 500)
         }
         .defaultSize(width: 1120, height: 740)
-        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
+        .commands {
+            LibraryBrowseCommands()
+            LibraryImportCommands()
+            LibrarySearchCommands()
+        }
+    }
+}
+
+private struct LibraryImportActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
+extension FocusedValues {
+    var libraryImportAction: (@MainActor () -> Void)? {
+        get { self[LibraryImportActionKey.self] }
+        set { self[LibraryImportActionKey.self] = newValue }
+    }
+}
+
+private struct LibraryImportCommands: Commands {
+    @FocusedValue(\.libraryImportAction) private var importFolder
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("导入文件夹…") { importFolder?() }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(importFolder == nil)
+        }
     }
 }
 
 extension Color {
-    static let ipreviewAccent = Color(red: 0.322, green: 0.455, blue: 0.875)
-    static let libraryCanvas = Color(red: 0.957, green: 0.961, blue: 0.969)
-    static let libraryInk = Color(red: 0.094, green: 0.125, blue: 0.176)
-    static let mediaSurface = Color(red: 0.895, green: 0.917, blue: 0.950)
+    static let ipreviewAccent = Color.accentColor
+    static let libraryInk = Color(nsColor: .labelColor)
+    static let mediaSurface = Color(nsColor: .quaternaryLabelColor).opacity(0.32)
 }
 
 // Use the state property wrapper on the Command Line Tools SDK as well as Xcode.

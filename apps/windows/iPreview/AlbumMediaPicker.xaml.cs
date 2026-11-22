@@ -49,7 +49,7 @@ public sealed partial class AlbumMediaPicker : UserControl
         Creators.IsEnabled = options.Count != 0;
         Folders.IsEnabled = false;
         if (options.Count == 0)
-            CandidateStatus.Text = "没有可用来源";
+            CandidateStatus.Text = "没有可用的媒体源";
     }
 
     internal Media[] SelectedMedia => staged.Select(item => item.Media).ToArray();
@@ -91,7 +91,7 @@ public sealed partial class AlbumMediaPicker : UserControl
 
         if (album is null)
         {
-            CandidateStatus.Text = Creators.SelectedItem is null ? "先选择来源或创作者" : "请选择一个专辑";
+            CandidateStatus.Text = Creators.SelectedItem is null ? "先选择媒体源或创作者" : "请选择一个专辑";
             return;
         }
 

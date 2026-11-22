@@ -25,15 +25,12 @@ final class LibraryModel {
         }
     }
 
-    func contentScope(for page: LibraryPage, matches: [Media]?) -> ContentScope {
+    func contentScope(for page: LibraryPage) -> ContentScope {
         let currentSnapshot = snapshot
-        if let matches {
-            return ContentScope(page: page, snapshot: currentSnapshot, matches: matches)
-        }
         if let cachedScope, cachedScope.page == page {
             return cachedScope.value
         }
-        let scope = ContentScope(page: page, snapshot: currentSnapshot, matches: nil)
+        let scope = ContentScope(page: page, snapshot: currentSnapshot)
         cachedScope = (page, scope)
         return scope
     }
@@ -104,10 +101,10 @@ final class LibraryModel {
         }
     }
 
-    func createAlbum(named name: String, with mediaID: Int64?) async -> Int64? {
+    func createAlbum(named name: String) async -> Int64? {
         var created: Int64?
         await change(rebuildSearch: false) { catalog in
-            let id = try await catalog.createAlbum(named: name, mediaID: mediaID)
+            let id = try await catalog.createAlbum(named: name)
             created = id
         }
         return created
@@ -130,10 +127,6 @@ final class LibraryModel {
         return path
     }
 
-    func add(mediaID: Int64, to albumID: Int64) async {
-        await add(mediaIDs: [mediaID], to: albumID)
-    }
-
     @discardableResult
     func add(mediaIDs: [Int64], to albumID: Int64) async -> Bool {
         await change(rebuildSearch: false) { catalog in
@@ -142,14 +135,30 @@ final class LibraryModel {
     }
 
     func remove(mediaID: Int64, from albumID: Int64) async {
+        await remove(mediaIDs: [mediaID], from: albumID)
+    }
+
+    @discardableResult
+    func remove(mediaIDs: [Int64], from albumID: Int64) async -> Bool {
         await change(rebuildSearch: false) { catalog in
-            try await catalog.remove(mediaIDs: [mediaID], from: albumID)
+            try await catalog.remove(mediaIDs: mediaIDs, from: albumID)
         }
     }
 
     func move(mediaID: Int64, in albumID: Int64, by delta: Int) async {
         await change(rebuildSearch: false) { catalog in
             try await catalog.move(mediaID: mediaID, in: albumID, by: delta)
+        }
+    }
+
+    func move(mediaID: Int64, in album: VirtualAlbum, to index: Int) async {
+        await change(rebuildSearch: false) { catalog in
+            do {
+                try await catalog.move(mediaID: mediaID, in: album.id, to: index, expectedOrder: album.mediaIDs)
+            } catch AlbumOrderError.changed {
+                try await refresh(catalog, rebuildSearch: false)
+                throw AlbumOrderError.changed
+            }
         }
     }
 
@@ -172,7 +181,7 @@ final class LibraryModel {
         let loaded = try await catalog.snapshot()
         if rebuildSearch {
             let media = loaded.media.filter(\.existsInSource)
-            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media) }.value
+            searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media, sources: loaded.sources) }.value
             revision += 1
         }
         cachedScope = nil

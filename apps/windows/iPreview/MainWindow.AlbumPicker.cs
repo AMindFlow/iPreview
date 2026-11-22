@@ -8,7 +8,7 @@ public sealed partial class MainWindow
 {
     private async void PickAlbumMedia(object sender, RoutedEventArgs args)
     {
-        if (catalog is null || busy || searching || current.Album is not long album)
+        if (catalog is null || busy || current.Album is not long album)
             return;
 
         var staged = new AlbumMediaPicker(media, (albumMembers.GetValueOrDefault(album) ?? []).Select(item => item.Id),
@@ -16,7 +16,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
-            Title = $"添加到「{current.Label}」",
+            Title = $"添加到合集「{current.Label}」",
             PrimaryButtonText = "添加媒体",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
