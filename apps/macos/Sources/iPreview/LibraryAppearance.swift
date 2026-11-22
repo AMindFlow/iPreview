@@ -253,7 +253,7 @@ struct LibraryBrowseModePicker: View {
                 .accessibilityLabel(mode.title)
                 .accessibilityIdentifier(mode.symbol)
                 .accessibilityAddTraits(mode == selection ? .isSelected : [])
-                .help(mode.title)
+                .help("\(mode.title)（⌘\(String(mode.shortcut.character))）")
             }
         }
         .padding(4)
