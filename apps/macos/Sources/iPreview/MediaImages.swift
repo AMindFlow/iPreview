@@ -78,6 +78,7 @@ struct MediaThumbnail: View {
 struct PhotoCanvas: View {
     let media: Media
     var poster: CGImage?
+    @ViewState private var loadedID: Int64?
     @ViewState private var photo: CGImage?
     @ViewState private var animation: NSImage?
     @ViewState private var error: String?
@@ -85,14 +86,14 @@ struct PhotoCanvas: View {
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let animation {
-                    AnimatedPhoto(image: animation)
-                } else if let error {
+                if loadedID == media.id, let error {
                     PreviewError(message: error)
+                } else if loadedID != media.id, let poster {
+                    stillImage(poster)
+                } else if let animation {
+                    AnimatedPhoto(image: animation)
                 } else if let still = photo ?? poster {
-                    Image(decorative: still, scale: 1)
-                        .resizable()
-                        .scaledToFit()
+                    stillImage(still)
                 } else {
                     ProgressView()
                         .controlSize(.small)
@@ -102,33 +103,50 @@ struct PhotoCanvas: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .task(id: media.id) {
+            let media = media
+            let load = Task.detached(priority: .userInitiated) { () -> Picture in
+                try Task.checkCancellation()
+                let url = try media.readableURL()
+                if url.pathExtension.lowercased() == "gif" {
+                    return try Picture.animation(Data(contentsOf: url, options: .mappedIfSafe))
+                }
+                guard let image = MediaImages.image(at: url, limit: 4096) else {
+                    throw PreviewFailure.unreadablePhoto
+                }
+                return .still(image)
+            }
             do {
-                let media = media
-                let content = try await Task.detached(priority: .userInitiated) { () -> Picture in
-                    let url = try media.readableURL()
-                    if url.pathExtension.lowercased() == "gif" {
-                        return try Picture.animation(Data(contentsOf: url, options: .mappedIfSafe))
-                    }
-                    guard let image = MediaImages.image(at: url, limit: 4096) else {
-                        throw PreviewFailure.unreadablePhoto
-                    }
-                    return .still(image)
-                }.value
-                guard !Task.isCancelled else { return }
+                let content = try await withTaskCancellationHandler {
+                    try await load.value
+                } onCancel: {
+                    load.cancel()
+                }
+                try Task.checkCancellation()
                 switch content {
                 case .still(let image):
                     photo = image
+                    animation = nil
                 case .animation(let data):
                     guard let image = NSImage(data: data), image.isValid else {
                         throw PreviewFailure.unreadablePhoto
                     }
+                    photo = nil
                     animation = image
                 }
+                error = nil
+                loadedID = media.id
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
+                loadedID = media.id
             }
         }
+    }
+
+    private func stillImage(_ image: CGImage) -> some View {
+        Image(decorative: image, scale: 1)
+            .resizable()
+            .scaledToFit()
     }
 }
 

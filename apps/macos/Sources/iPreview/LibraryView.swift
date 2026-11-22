@@ -100,13 +100,14 @@ struct LibraryView: View {
                         guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection in
-                        self.preview = nil
+                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
                         if searchDomain == nil {
-                            self.selected = selection
-                            if thumbnail(selection) == nil { self.mediaToReveal = selection }
-                            focusBrowser()
+                            selected = selection
+                            if !hasThumbnail { mediaToReveal = selection }
                         }
+                    } close: {
+                        self.preview = nil
+                        focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
                 }
