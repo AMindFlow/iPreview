@@ -6,6 +6,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 - [一期验收登记册](releases/0.1.0.md)登记已交付功能、后续细化及 PR，实际行为由 `official/` 规格定义。
 - [未完成需求](backlog.md)单独登记部分完成、待实施、待决策和待验收项，使用原规格编号追踪。
 - [路线图](roadmap.md)记录先后依赖；[分工与 DAG](phase-1-collaboration.md)记录一期实际工作包。[总体 Issue #3](https://github.com/AMindFlow/iPreview/issues/3)追踪整个产品，[一期收尾 #51](https://github.com/AMindFlow/iPreview/issues/51)追踪本轮归档。
+- [0.2.0 开发计划](releases/0.2.0.md)记录二期工作包、依赖和发布验收。[预览体验 #57](https://github.com/AMindFlow/iPreview/issues/57)的新增要求见 [PRE-007、008、010 拟改规格](../specs/spike/preview.md#pre-007-退出预览时同步选择)。
 
 ## 原始需求逐项对应
 
