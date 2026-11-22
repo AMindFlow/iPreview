@@ -354,11 +354,12 @@
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </Grid>
                         </Border>
+                        <!-- ListView navigation scrolls to the row itself. Skip the ScrollViewer's extra focus margin. -->
                         <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
                                   SingleSelectionFollowsFocus="True"
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
-                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                     <Setter Property="Padding" Value="0" />
