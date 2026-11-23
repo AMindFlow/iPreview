@@ -272,13 +272,15 @@ public sealed partial class MainWindow : Window
             .Select(group =>
             {
                 var folder = prefix + group.Key + "/";
-                var count = choosingCreator
+                var albumPath = folder.TrimEnd('/');
+                var isCreator = choosingCreator && !group.Any(item => item.WorkAlbumPath == albumPath);
+                var count = isCreator
                     ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
                     : group.Count();
-                IReadOnlyList<Media> cover = choosingCreator ? [group.First()]
-                    : sourceAlbumIndex.Covers(new(source!.Id, folder.TrimEnd('/')), group);
+                IReadOnlyList<Media> cover = isCreator ? [group.First()]
+                    : sourceAlbumIndex.Covers(new(source!.Id, albumPath), group);
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
-                    Cover: cover, Caption: $"{count} {(choosingCreator ? "个专辑" : "项")}");
+                    Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}");
             }).ToList();
         SourceFolders.ItemsSource = folders;
         if (SourceFolders.Items.Count > 0)
