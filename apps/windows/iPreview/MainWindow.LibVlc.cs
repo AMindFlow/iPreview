@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Media.Playback;
 
 namespace IPreview;
 
@@ -9,6 +10,26 @@ public sealed partial class MainWindow
     private LibVlcVideoPlayback? fallbackVideo;
     private WriteableBitmap? fallbackBitmap;
     private string? fallbackSystemError;
+    private (Media Media, int Generation)? awaitingNativeVideo;
+
+    private bool RecoverIfNativeVideoMissing(MediaPlaybackSession session, bool playbackConfirmed)
+    {
+        if (awaitingNativeVideo is not { } current)
+            return false;
+
+        if (session.NaturalVideoWidth != 0 || session.NaturalVideoHeight != 0)
+        {
+            awaitingNativeVideo = null;
+            return false;
+        }
+
+        if (!playbackConfirmed || !CanUpdatePreview(current.Generation))
+            return false;
+
+        _ = RecoverSystemVideo(current.Media, current.Generation, "系统无法播放此视频。",
+            "系统播放器已开始播放，但没有可用的视频画面。");
+        return true;
+    }
 
     private async Task OpenPreviewVideo(Media media, int generation)
     {

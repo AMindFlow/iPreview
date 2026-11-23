@@ -948,11 +948,14 @@ public sealed partial class MainWindow : Window
     {
         var mediaPlayer = new MediaPlayer();
         player = mediaPlayer;
+        var canFallback = LibVlcVideoPlayback.Supports(media.RelativePath);
         mediaPlayer.CommandManager.IsEnabled = false;
         mediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (!CanUpdatePreview(generation) || !ReferenceEquals(player, mediaPlayer))
                 return;
+            if (canFallback)
+                awaitingNativeVideo = (media, generation);
             MainImage.Visibility = Visibility.Collapsed;
             if (previewImageGeneration != generation)
                 VideoSurface.PosterSource = null;
@@ -969,6 +972,15 @@ public sealed partial class MainWindow : Window
             });
         };
 
+        if (canFallback)
+        {
+            mediaPlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (ReferenceEquals(player, mediaPlayer))
+                    RecoverIfNativeVideoMissing(mediaPlayer.PlaybackSession, playbackConfirmed: true);
+            });
+        }
+
         VideoSurface.PosterSource = MainImage.Source;
         VideoSurface.SetMediaPlayer(mediaPlayer);
         VideoSurface.Visibility = Visibility.Visible;
@@ -981,6 +993,7 @@ public sealed partial class MainWindow : Window
     private void StopVideo()
     {
         playbackClock.Stop();
+        awaitingNativeVideo = null;
         StopFallbackVideo();
         if (player is not { } active)
             return;
@@ -1029,8 +1042,12 @@ public sealed partial class MainWindow : Window
         if (player is { } active)
         {
             var session = active.PlaybackSession;
-            UpdateVideoTime(session.Position, session.NaturalDuration, session.CanSeek,
-                session.PlaybackState == MediaPlaybackState.Playing);
+            var position = session.Position;
+            var playing = session.PlaybackState == MediaPlaybackState.Playing;
+            // Let initial video setup settle before treating an advancing audio-only session as failed.
+            if (RecoverIfNativeVideoMissing(session, playing && position >= TimeSpan.FromSeconds(1)))
+                return;
+            UpdateVideoTime(position, session.NaturalDuration, session.CanSeek, playing);
         }
     }
 
