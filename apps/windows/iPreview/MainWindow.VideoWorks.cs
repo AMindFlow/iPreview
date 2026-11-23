@@ -51,8 +51,7 @@ public sealed partial class MainWindow
         MediaSortMenu.Attach(VideoWorkSortButton, () => session.Sort.Order, async order =>
         {
             session.Sort.Order = order;
-            var selected = (VideoWorkItems.SelectedItem as WorkRow)?.Cover.Media.Id;
-            await ArrangeVideoWorkFiles(session, selected);
+            await ArrangeVideoWorkFiles(session);
         });
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
@@ -117,9 +116,10 @@ public sealed partial class MainWindow
         if (session.InsideGroup)
         {
             session.Sort.Cancel();
+            var layout = new BrowseLayout(BrowseMode.Icons, GridColumns(VideoWorkItems));
             VideoWorkOverlay.IsHitTestVisible = false;
             VideoWorkOverlay.Visibility = Visibility.Collapsed;
-            OpenPreview(session.Files, index, new BrowseLayout(BrowseMode.Gallery, 1));
+            OpenPreview(session.Files, index, layout);
         }
         else
         {
@@ -127,15 +127,16 @@ public sealed partial class MainWindow
             session.InsideGroup = true;
             session.Files = session.Group.Items.Select((media, position) => new Tile(media, position)).ToList();
             ShowVideoWorkLevel(session, 0);
-            await ArrangeVideoWorkFiles(session, selected: null);
+            await ArrangeVideoWorkFiles(session);
         }
     }
 
-    private async Task ArrangeVideoWorkFiles(VideoWorkSession session, long? selected)
+    private async Task ArrangeVideoWorkFiles(VideoWorkSession session)
     {
         var arranged = await session.Sort.ArrangeAsync(session.Group.Items, item => item);
         if (arranged is null || !ReferenceEquals(session, videoWorkSession) || !session.InsideGroup)
             return;
+        var selected = (VideoWorkItems.SelectedItem as WorkRow)?.Cover.Media.Id;
         session.Files = arranged.Select((item, position) => new Tile(item, position)).ToList();
         var index = session.Files.FindIndex(tile => tile.Media.Id == selected);
         ShowVideoWorkLevel(session, Math.Max(0, index));
