@@ -1,7 +1,7 @@
 # 双端数据与验收约定
 
-- 数据库位于本机应用数据目录。从 `PRAGMA user_version = 0` 按版本在事务中依次执行 [初始结构](migrations/001-initial.sql)、[重命名恢复记录](migrations/002-pending-rename.sql)、[来源专辑组织](migrations/003-album-organization.sql)及[视频作品索引](migrations/004-video-works.sql)。每次打开连接后启用外键。
-- `sources.path` 为平台原生绝对路径。`media.relative_path` 以 `/` 存储相对于来源的文件路径。重扫事务保留同一路径的媒体行 ID，消失的媒体标记不可用。根目录不可访问时仅标记来源离线，重新联机扫描后恢复。合集关联媒体 ID，通过 `position` 排序。
+- 数据库位于本机应用数据目录。从 `PRAGMA user_version = 0` 按版本在事务中依次执行 [初始结构](migrations/001-initial.sql)、[重命名恢复记录](migrations/002-pending-rename.sql)、[来源专辑组织](migrations/003-album-organization.sql)、[视频作品索引](migrations/004-video-works.sql)及[来源与媒体身份序列](migrations/005-source-media-identities.sql)。每次打开连接后启用外键。
+- `sources.path` 为平台原生绝对路径。`media.relative_path` 以 `/` 存储相对于来源的文件路径。重扫事务保留同一路径的媒体行 ID，消失的媒体标记不可用。根目录不可访问时仅标记来源离线，重新联机扫描后恢复。合集关联媒体 ID，通过 `position` 排序。删除来源再导入相同目录时分配新的来源和媒体 ID，旧引用无法关联到新索引。
 - 普通来源导入探测读取直属普通文件及两种约定深度。识别作品时额外读取规定的样张及写真集目录。单创作者命中深度 2，多创作者命中深度 3。两者都命中时展示两种选择。只有未命中这两种结构时才使用直属媒体。忽略隐藏项、符号链接与 Windows 重解析点。
 - 扩展名不区分大小写。图片为 jpg、jpeg、png、webp、gif、heic，视频见 [PRE-001、006](../docs/specs/official/preview.md#pre-006-系统视频格式扩展)。缩略图与播放只读访问源路径。明确确认的本地重命名见 [LIB-011](../docs/specs/official/library.md#lib-011-重命名真实目录和媒体)。
 - 路径各级目录名（含选择的根目录名）和文件名可独立匹配。结果显示匹配项及路径。精确匹配按 NFKC、不区分大小写，目录匹配完整名称。文件可省略最后一个后缀。查询以支持的媒体后缀结尾时匹配完整文件名，其余查询保留名称中的点号。模糊匹配按完全、前缀、子串、全拼、首字母、拼写容错排序。同等级按自然顺序，拼写容错至少三个字符。拼音保留 `lü` → `lv`。搜索范围都关闭时显示空结果。

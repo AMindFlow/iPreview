@@ -252,8 +252,8 @@ static void CheckSourceDeletion(string work)
     AddFile(keptPath, "two.png");
     var data = Path.Combine(work, "removal-catalog");
     using var catalog = new Catalog(data);
-    var removed = catalog.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
     var kept = catalog.Import(keptPath, Layout.Flat, MediaFiles.Scan(keptPath, Layout.Flat));
+    var removed = catalog.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
     var media = catalog.Read().Media;
     var removedItem = media.Single(item => item.Source.Id == removed);
     var keptItems = media.Where(item => item.Source.Id == kept).Select(item => item.Id).Reverse().ToArray();
@@ -277,6 +277,15 @@ static void CheckSourceDeletion(string work)
         "shared album keeps remaining members in order");
     Check(otherWindow.ReadSourceAlbumsForTag(tag.Id).Count == 0, "removed source no longer matches tags");
     Check(File.ReadAllText(Path.Combine(removedPath, "photo.png")) == "fixture", "removing a source preserves the file");
+
+    using var reopened = new Catalog(data);
+    var reimported = reopened.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var restored = reopened.Read();
+    var newMedia = restored.Media.Single(item => item.Source.Id == reimported);
+    Check(reimported > removed && newMedia.Id > removedItem.Id && newMedia.RelativePath == removedItem.RelativePath,
+        "reimporting the same path after restart allocates new source and media identities");
+    Check(restored.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "reimport does not restore removed album references");
 }
 
 static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long[] memberIds)
@@ -419,6 +428,12 @@ static void CheckSourceAlbumOrganization(string work)
     File.Move(outside, coverPath);
     reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
     Check(reopened.ReadSourceAlbumOrganization(album).EffectiveCoverIds.SequenceEqual([9L, 8L]), "returned cover restores order");
+    AddFile(sourcePath, "Maker/Album/Later.png");
+    reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+    var upgraded = reopened.Read();
+    Check(upgraded.Media.Single(item => item.FileName == "Later.png").Id > 11 &&
+        upgraded.AlbumMembers[20].Select(item => item.Id).SequenceEqual([11L, 8L]),
+        "migration keeps existing identities and appends new ones");
     reopened.Rescan(4, null);
     var offline = reopened.ReadSourceAlbumOrganization(album);
     Check(offline.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && offline.EffectiveCoverIds.Count == 0, "offline cover configuration persists");
