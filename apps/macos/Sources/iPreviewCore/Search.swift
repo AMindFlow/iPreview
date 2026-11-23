@@ -31,8 +31,17 @@ public struct IndexedDirectory: Hashable, Sendable {
     public var name: String { components.last! }
 }
 
-public enum SearchResultCategory: Sendable {
+public enum SearchResultCategory: CaseIterable, Sendable {
     case creator, album, directory, file
+
+    public var title: String {
+        switch self {
+        case .creator: "创作者"
+        case .album: "专辑"
+        case .directory: "目录"
+        case .file: "文件"
+        }
+    }
 }
 
 public enum GlobalSearchResult: Hashable, Sendable, Identifiable {
@@ -40,6 +49,15 @@ public enum GlobalSearchResult: Hashable, Sendable, Identifiable {
     case file(Media)
 
     public var id: Self { self }
+
+    public var sourceAlbum: SourceAlbumKey? {
+        switch self {
+        case .file(let media): SourceAlbumKey(media: media)
+        case .directory(let directory) where category == .album:
+            SourceAlbumKey(sourceID: directory.source.id, relativePath: directory.relativePath)
+        default: nil
+        }
+    }
 
     public var category: SearchResultCategory {
         switch self {
@@ -110,15 +128,22 @@ public struct SearchIndex: Sendable {
     }
 
     public func globalSearch(_ query: String, mode: MatchMode, directories: Bool, files: Bool,
+                             taggedAlbums: Set<SourceAlbumKey>? = nil,
                              including include: (GlobalSearchResult) -> Bool = { _ in true }) -> [GlobalSearchResult] {
         let query = normalize(query)
-        guard !query.isEmpty, directories || files else { return [] }
+        guard !query.isEmpty || taggedAlbums != nil, directories || files else { return [] }
         let lookup = Name.Query(text: query)
+        func includes(_ result: GlobalSearchResult) -> Bool {
+            if let taggedAlbums {
+                guard let album = result.sourceAlbum, taggedAlbums.contains(album) else { return false }
+            }
+            return include(result)
+        }
         var matches: [(rank: Int, order: Int, result: GlobalSearchResult)] = []
         if directories {
             for (index, folder) in folders.enumerated() {
                 let result = GlobalSearchResult.directory(folder.directory)
-                if include(result), let rank = folder.name.rank(lookup, mode: mode) {
+                if includes(result), let rank = query.isEmpty ? 0 : folder.name.rank(lookup, mode: mode) {
                     matches.append((rank, index, result))
                 }
             }
@@ -126,7 +151,7 @@ public struct SearchIndex: Sendable {
         if files {
             for (index, entry) in entries.enumerated() {
                 let result = GlobalSearchResult.file(entry.media)
-                if include(result), let rank = entry.file.rank(lookup, mode: mode, isFile: true) {
+                if includes(result), let rank = query.isEmpty ? 0 : entry.file.rank(lookup, mode: mode, isFile: true) {
                     matches.append((rank, folders.count + index, result))
                 }
             }

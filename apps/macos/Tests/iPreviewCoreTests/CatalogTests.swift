@@ -120,6 +120,17 @@ struct CatalogChecks {
         try verify(persistedSibling.ratingHalf == 7 && !persistedSibling.favorite)
         try verify(persisted.configuredCoverIDs == [9, 8] && persisted.effectiveCoverIDs == [9, 8])
         try verify(library.albums.first?.mediaIDs == [11, 8])
+        let organizationIndex = try await reopened.sourceAlbumIndex()
+        try verify(organizationIndex.configuredCovers[album] == [9, 8])
+        try verify(SourceAlbumTag.suggestions(matching: "旅", from: organizationIndex.tags).map(\.id) == [trip.id])
+        let search = SearchIndex(media: library.media, sources: library.sources)
+        let filtered = search.globalSearch("", mode: .fuzzy, directories: true, files: true,
+                                           taggedAlbums: organizationIndex.taggedAlbums[scenic.id])
+        try verify(filtered.filter { $0.category == .album }.map(\.sourceAlbum) == [album])
+        try verify(filtered.count == 4 && filtered.allSatisfy { $0.sourceAlbum == album })
+        let filteredFiles = search.globalSearch("Image", mode: .fuzzy, directories: false, files: true,
+                                                taggedAlbums: organizationIndex.taggedAlbums[scenic.id])
+        try verify(filteredFiles.count == 2 && filteredFiles.allSatisfy { $0.sourceAlbum == album })
 
         let removedCover = sourceURL.appendingPathComponent("Maker/Album/Image 10.jpg")
         let outside = fixtures.directory("Unavailable.jpg")
