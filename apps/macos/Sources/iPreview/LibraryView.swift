@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Binding var theme: LibraryTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
@@ -176,25 +177,31 @@ struct LibraryView: View {
     }
 
     private var windowControls: some View {
-        HStack(spacing: 4) {
+        let size = LibraryTitleBarLayout.buttonSize
+        return HStack(spacing: 0) {
             sidebarToggle
-            Button(action: chooseFolder) {
-                Image(systemName: "folder.badge.plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 26, height: 26)
+            Spacer(minLength: LibraryTitleBarLayout.groupSpacing)
+            HStack(spacing: LibraryTitleBarLayout.buttonSpacing) {
+                Button(action: chooseFolder) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: size, height: size)
+                }
+                .buttonStyle(LibraryIconButtonStyle())
+                .accessibilityLabel("导入文件夹")
+                .help("导入文件夹")
+                .disabled(!canChooseFolder)
+                LibraryThemeButton(theme: $theme)
+                    .disabled(libraryOverlayShown)
             }
-            .buttonStyle(LibraryIconButtonStyle())
-            .accessibilityLabel("导入文件夹")
-            .help("导入文件夹")
-            .disabled(!canChooseFolder)
         }
-        .frame(width: 64, height: 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .frame(height: size)
         .opacity(preview == nil ? 1 : 0)
         .accessibilityHidden(libraryOverlayShown)
     }
 
     private var sidebarToggle: some View {
+        let size = LibraryTitleBarLayout.buttonSize
         let collapsed = sidebarVisibility == .detailOnly
         let title: LocalizedStringKey = collapsed ? "展开侧边栏" : "收起侧边栏"
         return Button {
@@ -202,16 +209,16 @@ struct LibraryView: View {
                 sidebarVisibility = collapsed ? .all : .detailOnly
             }
         } label: {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: 14, weight: .medium))
-                .overlay {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 7, weight: .semibold))
-                        .rotationEffect(.degrees(collapsed ? 180 : 0))
+            RoundedRectangle(cornerRadius: 2.5)
+                .strokeBorder(lineWidth: 1.25)
+                .frame(width: 16, height: 12)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .frame(width: 1.25, height: collapsed ? 5 : 12)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
-                        .offset(x: 3.5)
+                        .padding(.leading, 4.5)
                 }
-                .frame(width: 26, height: 26)
+                .frame(width: size, height: size)
         }
         .buttonStyle(LibraryIconButtonStyle())
         .accessibilityLabel(title)
@@ -302,7 +309,7 @@ struct LibraryView: View {
                     .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
                 Text(name)
                     .lineLimit(1)
-                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if offline {
                     Image(systemName: "bolt.slash")
                         .font(.caption)
