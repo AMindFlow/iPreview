@@ -87,7 +87,7 @@ public actor Catalog {
                 let id = sqlite3_column_int64(row, 0)
                 return VirtualAlbum(id: id, name: textColumn(row, 1), mediaIDs: byAlbum[id, default: []].map(\.media))
             }
-            return LibrarySnapshot(sources: sources, media: media, albums: albums)
+            return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion())
         }
     }
 
@@ -157,6 +157,14 @@ public actor Catalog {
             "UPDATE albums SET name = ? WHERE id = ?",
             [.text(try validatedAlbumName(name)), .integer(albumID)]
         )
+    }
+
+    public func delete(albumID: Int64, expectedDataVersion: Int64) throws {
+        try database.transaction {
+            // A deleted SQLite row ID can be reused by a new album in another process.
+            guard try scanVersion() == expectedDataVersion else { throw AlbumDeletionError.changed }
+            try database.execute("DELETE FROM albums WHERE id = ?", [.integer(albumID)])
+        }
     }
 
     public func append(mediaIDs: [Int64], to albumID: Int64) throws {
@@ -235,6 +243,12 @@ public actor Catalog {
         }
         return trimmed
     }
+}
+
+public enum AlbumDeletionError: LocalizedError {
+    case changed
+
+    public var errorDescription: String? { "媒体库已在其他窗口更新。请核对合集后重试。" }
 }
 
 public enum AlbumOrderError: LocalizedError {
