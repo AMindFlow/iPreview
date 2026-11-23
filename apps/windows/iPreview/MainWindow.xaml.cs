@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         SetBrowseMode(browseMode);
+        InitializeMediaSort();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         RestoreTheme();
@@ -61,6 +62,9 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelAlbumAdjustmentPointer();
+            browserSort.Cancel();
+            previewSort.Cancel();
+            previewNeighborGeneration++;
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
             previewCopyTimer.Stop();
@@ -91,6 +95,7 @@ public sealed partial class MainWindow : Window
         {
             ShowNotice("无法打开媒体库", error.Message);
             ImportButton.IsEnabled = false;
+            AddSourceButton.IsEnabled = false;
             CreateAlbumButton.IsEnabled = false;
             Rescan.IsEnabled = false;
         }
@@ -106,6 +111,7 @@ public sealed partial class MainWindow : Window
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
 
+        RevealSourceActions(null);
         SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
             .Select(source => new Navigation(source.Available ? source.Name : $"{source.Name}（离线）",
                 Source: source.Id, Glyph: source.Layout switch
@@ -117,6 +123,8 @@ public sealed partial class MainWindow : Window
         AlbumNavigation.ItemsSource = albums.Select(album => new Navigation(album.Name, Album: album.Id,
             Glyph: "\uE7B8")).ToList();
 
+        if (current.Source is long sourceId && !sources.ContainsKey(sourceId))
+            current = Library;
         if (current.Album is long albumId)
             current = albums.Find(album => album.Id == albumId) is { } album
                 ? new(album.Name, Album: albumId) : Library;
@@ -141,6 +149,7 @@ public sealed partial class MainWindow : Window
     private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
+        RevealSourceActions(null);
         Notice.IsOpen = false;
         UpdateNavigationSelection();
         ShowItems(selectedMedia);
@@ -268,23 +277,28 @@ public sealed partial class MainWindow : Window
         return browseFolders;
     }
 
-    private void ShowItems(long? selected = null)
+    private void ShowItems(long? selected = null, bool revealSelection = false)
     {
         if (catalog is null)
             return;
+        browserSort.Cancel();
         browsingFolders = ShowSourceFolders();
         var scopedMedia = ScopeMedia();
         IEnumerable<Media> items = browsingFolders ? []
             : current.Album is not null ? scopedMedia : MediaSearch.ByPath(scopedMedia);
 
-        tiles = new ObservableCollection<Tile>(items.Select((item, index) => new Tile(item, index)));
+        var displayed = items.ToList();
         if (selectionAlbum is long selectedAlbum)
         {
-            if (current.Album != selectedAlbum || tiles.Count == 0)
+            if (current.Album != selectedAlbum || displayed.Count == 0)
                 ClearAlbumSelection();
             else
-                albumRemovalIds.IntersectWith(tiles.Select(tile => tile.Media.Id));
+                albumRemovalIds.IntersectWith(displayed.Select(item => item.Id));
         }
+        var order = SelectingAlbumMembers ? default : browserSort.Order;
+        if (order.Field == MediaSortField.Name)
+            displayed = order.Arrange(displayed, static item => item);
+        tiles = new ObservableCollection<Tile>(displayed.Select((item, index) => new Tile(item, index)));
         RefreshMediaBrowser(selected);
         Heading.Text = current.Label;
         RefreshTitleEditor();
@@ -310,6 +324,10 @@ public sealed partial class MainWindow : Window
         EmptyLabel.Visibility = visibleItemCount == 0 && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
         Rescan.Visibility = current.Source is not null ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
+        if (revealSelection)
+            FocusSelectedMedia();
+        if (order.NeedsFileFacts && tiles.Count > 1)
+            SortBrowserByFileFacts(tiles);
     }
 
     private async void ChooseSource(object sender, RoutedEventArgs args)
@@ -379,14 +397,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void RescanSources(object sender, RoutedEventArgs args)
+    private async void RescanSources(object sender, RoutedEventArgs args) =>
+        await RescanSourcesAsync(current.Source is long id ? [sources[id]] : sources.Values.ToList());
+
+    private async Task RescanSourcesAsync(IReadOnlyList<Source> scanSources)
     {
         if (busy || catalog is null)
             return;
         SetBusy(true);
         try
         {
-            List<Source> scanSources = current.Source is long id ? [sources[id]] : sources.Values.ToList();
             var offline = new List<string>();
             var pending = new List<string>();
             foreach (var source in scanSources)
@@ -397,7 +417,7 @@ public sealed partial class MainWindow : Window
                     continue;
                 }
                 List<ScannedMedia>? scan = null;
-                var scanVersion = Database.DataVersion;
+                var scanVersion = libraryDataVersion;
                 try
                 {
                     scan = await Task.Run(() => MediaFiles.Scan(source.Path, source.Layout));
@@ -423,6 +443,8 @@ public sealed partial class MainWindow : Window
         }
         catch (InvalidOperationException error)
         {
+            if (libraryDataVersion != Database.DataVersion)
+                Reload(Selection?.Media.Id);
             ShowNotice("重新扫描失败", error.Message);
         }
         finally
@@ -435,8 +457,10 @@ public sealed partial class MainWindow : Window
     {
         busy = value;
         ImportButton.IsEnabled = !value && catalog is not null;
+        AddSourceButton.IsEnabled = ImportButton.IsEnabled;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
+        BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
 
@@ -659,7 +683,10 @@ public sealed partial class MainWindow : Window
 
     private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
     {
+        originalPreviewTiles = items;
         previewTiles = items;
+        previewSort.Order = default;
+        PreviewSortButton.IsEnabled = items.Count > 1;
         previewLayout = layout;
         PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
         PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
@@ -687,6 +714,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         previewClosing = true;
+        previewSort.Cancel();
         ResetPreviewCopyFeedback();
         var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
@@ -710,6 +738,7 @@ public sealed partial class MainWindow : Window
         previewBrowser = null;
         previewGeneration++;
         previewIndex = -1;
+        originalPreviewTiles = [];
         previewTiles = [];
         LibraryHost.IsEnabled = true;
         if (!RestoreSearchAfterPreview(selectedId))
@@ -781,7 +810,8 @@ public sealed partial class MainWindow : Window
             return;
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
-            if (ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCloseAction))
+            var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
+            if (ReferenceEquals(focused, PreviewCloseAction) || ReferenceEquals(focused, PreviewSortButton))
                 return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
@@ -845,10 +875,7 @@ public sealed partial class MainWindow : Window
             TimeLabel.Text = DurationLabel.Text = "0:00";
         VideoControls.Visibility = tile.Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
         SetPreviewVideoLock(false);
-        LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
-        LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
-        LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
-        LoadNeighbor(NeighborBottom, BrowseDirection.Down, generation);
+        RefreshPreviewNeighbors();
 
         try
         {
@@ -892,7 +919,7 @@ public sealed partial class MainWindow : Window
         {
             var media = previewTiles[index].Media;
             var bitmap = media.IsVideo ? await DecodeVideoThumbnail(media) : await DecodeImage(media, 24, false);
-            if (CanUpdatePreview(generation))
+            if (generation == previewNeighborGeneration && !previewClosing && previewIndex >= 0)
                 image.Source = bitmap;
         }
         catch (Exception error) when (MediaFailure(error)) { }
@@ -1018,10 +1045,7 @@ public sealed partial class MainWindow : Window
         VideoLock.IsChecked = locked;
         VideoLock.Content = locked ? "已锁定" : "未锁定";
 
-        UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
-        UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
-        UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
-        UpdateDirection(PreviewDown, NeighborBottom, BrowseDirection.Down);
+        UpdatePreviewNavigation();
 
         if (locked)
         {
@@ -1036,10 +1060,19 @@ public sealed partial class MainWindow : Window
         };
         var lockHint = VideoControls.Visibility == Visibility.Visible ? "    Enter 锁定" : "";
         PreviewHint.Text = $"{navigation}    Space / Esc 退出{lockHint}";
+    }
+
+    private void UpdatePreviewNavigation()
+    {
+        UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
+        UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
+        UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
+        UpdateDirection(PreviewDown, NeighborBottom, BrowseDirection.Down);
 
         void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
         {
-            var available = !locked && previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
+            var available = !previewVideoLocked &&
+                previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
             button.Visibility = neighbor.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         }
     }

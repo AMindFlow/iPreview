@@ -37,7 +37,13 @@ public sealed partial class MainWindow
             return;
         var scale = AppTitleBar.XamlRoot.RasterizationScale;
         var left = AppWindow.TitleBar.LeftInset / scale;
-        var right = Math.Max(left, Root.ActualWidth - AppWindow.TitleBar.RightInset / scale);
+        var rightInset = AppWindow.TitleBar.RightInset / scale;
+        var right = Math.Max(left, Root.ActualWidth - rightInset);
+
+        PreviewSortButton.Margin = new Thickness(0, 0, rightInset, 0);
+        var titleInset = Math.Max(left, rightInset) + PreviewSortButton.MinWidth + 8;
+        PreviewFilename.Margin = new Thickness(titleInset, 0, titleInset, 0);
+
         var overlay = SearchOverlay.Visibility == Visibility.Visible || PreviewOverlay.Visibility == Visibility.Visible;
         Rect bounds;
         if (overlay)

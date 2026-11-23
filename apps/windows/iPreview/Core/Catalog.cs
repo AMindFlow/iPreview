@@ -14,7 +14,11 @@ internal sealed class AlbumDeletionChangedException() :
 
 internal sealed partial class Catalog : IDisposable
 {
-    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql", "004-video-works.sql"];
+    private static readonly string[] Migrations =
+    [
+        "001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql",
+        "004-video-works.sql", "005-source-media-identities.sql"
+    ];
     private readonly Sqlite database;
     private readonly string dataDirectory;
 
@@ -105,7 +109,10 @@ internal sealed partial class Catalog : IDisposable
             id = existing.Item1;
             if (id == 0)
             {
-                database.Execute("INSERT INTO sources (path, layout) VALUES (?, ?);", path, MediaFiles.Store(layout));
+                database.Execute("""
+                    INSERT INTO sources (id, path, layout)
+                    SELECT last_id + 1, ?, ? FROM catalog_identity_sequence WHERE entity = 'source';
+                    """, path, MediaFiles.Store(layout));
                 id = database.Query("SELECT last_insert_rowid();", row => row.Number(0)).Single();
             }
             else
@@ -146,7 +153,8 @@ internal sealed partial class Catalog : IDisposable
         {
             var kind = file.IsVideo ? "video" : "image";
             database.Execute("""
-                INSERT INTO media (source_id, relative_path, kind) VALUES (?, ?, ?)
+                INSERT INTO media (id, source_id, relative_path, kind)
+                SELECT last_id + 1, ?, ?, ? FROM catalog_identity_sequence WHERE entity = 'media'
                 ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1;
                 """, source, file.RelativePath, kind);
         }
