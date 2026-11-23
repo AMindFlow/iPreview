@@ -2,6 +2,42 @@ import AppKit
 import SwiftUI
 import iPreviewCore
 
+enum LibraryTheme: String, CaseIterable {
+    case system, light, dark
+
+    var next: Self {
+        switch self {
+        case .system: .light
+        case .light: .dark
+        case .dark: .system
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .system: "跟随系统"
+        case .light: "浅色"
+        case .dark: "深色"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .system: "display"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 extension iPreviewCore.Layout {
     var sidebarSymbol: String {
         switch self {
@@ -118,6 +154,13 @@ struct LibraryTitleEdit {
     }
 }
 
+enum LibraryTitleBarLayout {
+    static let buttonSize: CGFloat = 26
+    static let buttonSpacing: CGFloat = 4
+    static let groupSpacing: CGFloat = 12
+    static let minimumWidth = buttonSize * 3 + buttonSpacing + groupSpacing
+}
+
 struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     let sidebarWidth: CGFloat?
     let controls: Controls
@@ -150,7 +193,8 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
             super.init(frame: .zero)
             host.sizingOptions = []
             host.safeAreaRegions = []
-            host.frame = NSRect(x: 0, y: 0, width: 64, height: 26)
+            host.frame = NSRect(x: 0, y: 0, width: LibraryTitleBarLayout.minimumWidth,
+                                height: LibraryTitleBarLayout.buttonSize)
             accessory.view = host
             accessory.layoutAttribute = .left
             accessory.onLayout = { [weak self] in self?.updateWidth() }
@@ -175,7 +219,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
         func updateWidth(animated: Bool = false) {
             guard installedWindow != nil else { return }
             let leading = host.convert(host.bounds, to: nil).minX
-            let width = max(64, (sidebarWidth ?? 0) - leading - 8)
+            let width = max(LibraryTitleBarLayout.minimumWidth, (sidebarWidth ?? 0) - leading - 8)
             if let targetWidth, abs(targetWidth - width) <= 0.5 { return }
             targetWidth = width
             if animated {
@@ -199,6 +243,102 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     }
 }
 
+struct LibraryThemeButton: View {
+    @Binding var theme: LibraryTheme
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+    @State private var showingMenu = false
+
+    var body: some View {
+        let size = LibraryTitleBarLayout.buttonSize
+        Button {
+            if NSEvent.modifierFlags.contains(.option) {
+                showingMenu = true
+            } else {
+                theme = theme.next
+            }
+        } label: {
+            Group {
+                if hovering && isEnabled {
+                    LibraryThemeSwitchGlyph()
+                } else {
+                    Image(systemName: theme.symbol)
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .frame(width: size, height: size)
+        }
+        .buttonStyle(LibraryIconButtonStyle())
+        .onHover { hovering in
+            self.hovering = hovering
+            if isEnabled && hovering && NSEvent.modifierFlags.contains(.option) { showingMenu = true }
+        }
+        .onModifierKeysChanged(mask: .option) { _, keys in
+            if isEnabled && hovering && keys.contains(.option) { showingMenu = true }
+        }
+        .accessibilityLabel("主题：\(theme.title)")
+        .accessibilityIdentifier("library-theme")
+        .accessibilityAction(named: Text("选择主题")) { showingMenu = true }
+        .help("点击依次切换跟随系统、浅色、深色。按住 Option 显示主题菜单。")
+        .popover(isPresented: $showingMenu, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(LibraryTheme.allCases, id: \.self) { option in
+                    Button {
+                        theme = option
+                        showingMenu = false
+                    } label: {
+                        HStack {
+                            Label(option.title, systemImage: option.symbol)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .opacity(theme == option ? 1 : 0)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(minWidth: 114)
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(theme == option ? .isSelected : [])
+                }
+            }
+            .padding(8)
+        }
+    }
+}
+
+private struct LibraryThemeSwitchGlyph: View {
+    var body: some View {
+        Canvas { context, size in
+            let side = size.width
+            let center = side / 2
+            let gap: CGFloat = 1.3
+            let font = Font.system(size: 14, weight: .medium)
+
+            var sun = context
+            sun.clip(to: Path { path in
+                path.addLines([.zero, CGPoint(x: side - gap, y: 0), CGPoint(x: 0, y: side - gap)])
+                path.closeSubpath()
+            })
+            sun.draw(Text(Image(systemName: "sun.max")).font(font), at: CGPoint(x: center - 1, y: center - 1))
+
+            var moon = context
+            moon.clip(to: Path { path in
+                path.addLines([CGPoint(x: side, y: side), CGPoint(x: side, y: gap), CGPoint(x: gap, y: side)])
+                path.closeSubpath()
+            })
+            moon.draw(Text(Image(systemName: "moon")).font(font), at: CGPoint(x: center + 1, y: center + 1))
+
+            context.stroke(Path { path in
+                path.move(to: CGPoint(x: 1.5, y: side - 1.5))
+                path.addLine(to: CGPoint(x: side - 1.5, y: 1.5))
+            }, with: .foreground, style: StrokeStyle(lineWidth: 1, lineCap: .round))
+        }
+        .frame(width: 18, height: 18)
+    }
+}
+
 struct LibraryIconButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -218,6 +358,34 @@ struct LibraryIconButtonStyle: ButtonStyle {
             .onHover { isHovered = $0 }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+struct EmptyAlbumAddButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 15)
+        let isPressed = isEnabled && configuration.isPressed
+        let highlighted = isEnabled && (isHovered || isPressed)
+        let highlight = contrast == .increased ? Color.primary : Color.ipreviewAccent
+
+        configuration.label
+            .frame(width: 74, height: 70)
+            .background(isPressed ? Color.primary.opacity(0.14) : Color.mediaSurface.opacity(0.48), in: shape)
+            .overlay {
+                shape.strokeBorder(highlight, lineWidth: isPressed ? 2 : 1.5)
+                    .opacity(highlighted ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
     }
 }
 
@@ -253,7 +421,7 @@ struct LibraryBrowseModePicker: View {
                 .accessibilityLabel(mode.title)
                 .accessibilityIdentifier(mode.symbol)
                 .accessibilityAddTraits(mode == selection ? .isSelected : [])
-                .help(mode.title)
+                .help("\(mode.title)（⌘\(String(mode.shortcut.character))）")
             }
         }
         .padding(4)

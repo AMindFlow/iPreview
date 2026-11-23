@@ -86,6 +86,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
+            RequestedTheme = Root.RequestedTheme,
             Title = isDirectory ? "重命名源文件夹" : "重命名源文件",
             Content = content,
             PrimaryButtonText = "重命名",

@@ -66,7 +66,8 @@ try
         Check(ordered.Select(item => item.FileName).SequenceEqual(["城楼2.PNG", "城楼10.PNG"]),
             "natural file ordering");
         Check(MediaSearch.Find(sourceList, items, new("bj", false), GlobalSearchScope.Directories)
-                .Any(result => result.Folder is null && result.Name == "北京"), "directory pinyin initials");
+                .Any(result => result is { Folder: null, Name: "北京", Category: SearchResultCategory.Creator }),
+            "a single-creator source matches its creator name by pinyin initials");
         Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Directories)
                 .Any(result => result.Folder is null && result.Name == "北京"), "directory full pinyin");
         Check(MediaSearch.Find(sourceList, items, new("beijing", false), GlobalSearchScope.Files).Count == 0,
@@ -75,8 +76,20 @@ try
                 .Any(result => result.Folder == "Summer 2/"), "directory typo");
         var directories = MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer 2"),
             GlobalSearchScope.Directories);
-        Check(directories.Count == 1 && directories[0] is { Folder: "Summer 2/", Media: null },
+        Check(directories.Count == 1 && directories[0] is
+              { Folder: "Summer 2/", Media: null, Category: SearchResultCategory.Album },
             "global search shows a distinct directory hit");
+        var flatSource = new Source(long.MaxValue, flat, Layout.Flat, true);
+        Check(MediaSearch.Find([flatSource], [], new("flat", true), GlobalSearchScope.Directories)
+                .Single().Category == SearchResultCategory.Album, "a flat source is a single album");
+        Check(MediaSearch.Find(sourceList, items, new("catalog", true), GlobalSearchScope.Directories)
+                .Single().Category == SearchResultCategory.Directory, "multi-creator source root remains a directory");
+        Check(MediaSearch.Find(sourceList, items, new("Album", true), GlobalSearchScope.Directories)
+                .Single() is { Folder: "Other/Album/", Category: SearchResultCategory.Album },
+            "the album under a multi-creator source keeps its full path");
+        Check(MediaSearch.Find(sourceList, items, new("Other", true), GlobalSearchScope.All)
+                .Select(result => result.Category).SequenceEqual([SearchResultCategory.Creator, SearchResultCategory.File]),
+            "same-name creator directory and media keep distinct categories and order");
         Check(GlobalSearchTerm.Parse("@") is { Text: "@", Exact: false }, "an at sign alone keeps fuzzy search");
         Check(GlobalSearchTerm.Parse("@clip") is { Text: "@clip", Exact: false }, "the prefix requires a space");
         Check(GlobalSearchTerm.Parse("@ ") is { Text.Length: 0, Exact: true }, "space activates exact mode before a name");
@@ -179,6 +192,7 @@ try
               removedFiles.Select(File.GetLastWriteTimeUtc).SequenceEqual(originalTimes),
             "batch removal preserves original content and modification time");
 
+        CheckAlbumDeletion(catalog, data, albumId, [firstId, secondId]);
         catalog.RemoveFromAlbum(albumId, [secondId]);
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
@@ -203,6 +217,52 @@ static void Check(bool result, string name)
 {
     if (!result)
         throw new InvalidOperationException("Core check failed: " + name);
+}
+
+static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long[] memberIds)
+{
+    var sourcePaths = catalog.Read().Media.Select(MediaFiles.OpenPath).ToArray();
+    var originalTimes = sourcePaths.Select(File.GetLastWriteTimeUtc).ToArray();
+    var deleted = catalog.CreateAlbum("Shared");
+    catalog.AppendToAlbum(deleted, memberIds);
+    using var external = new Sqlite(Path.Combine(data, "library.sqlite3"));
+    external.ExecuteScript("""
+        CREATE TRIGGER reject_member_delete BEFORE DELETE ON album_media
+        BEGIN SELECT RAISE(ABORT, 'test member delete failure'); END;
+        """);
+    var beforeFailure = catalog.Read();
+    try
+    {
+        catalog.DeleteAlbum(deleted, beforeFailure.DataVersion);
+        throw new Exception("Core check failed: album deletion must report cascade failure");
+    }
+    catch (InvalidOperationException error)
+    {
+        Check(error.Message.Contains("test member delete failure"), "cascade reports database error");
+    }
+    var failed = catalog.Read();
+    Check(failed.Albums.SequenceEqual(beforeFailure.Albums) &&
+          failed.AlbumMembers[deleted].Select(item => item.Id).SequenceEqual(memberIds),
+          "cascade failure preserves the album and all its references");
+    external.ExecuteScript("DROP TRIGGER reject_member_delete;");
+
+    var original = catalog.Read();
+    using var otherWindow = new Catalog(data);
+    otherWindow.DeleteAlbum(deleted, otherWindow.Read().DataVersion);
+    var recreated = otherWindow.CreateAlbum("Shared");
+    Check(recreated == deleted, "the fixture reuses a deleted album ID");
+    Reject<AlbumDeletionChangedException>(() => catalog.DeleteAlbum(deleted, original.DataVersion),
+        "a stale confirmation cannot delete the replacement album");
+    var after = catalog.Read();
+    Check(after.Albums.Any(album => album.Id == recreated) && !after.AlbumMembers.ContainsKey(recreated),
+        "a recreated album has none of the deleted references");
+    Check(after.AlbumMembers[retained].SequenceEqual(original.AlbumMembers[retained]) &&
+          after.Media.SequenceEqual(original.Media), "deletion preserves other album order and media index");
+    catalog.DeleteAlbum(recreated, after.DataVersion);
+    Check(otherWindow.Read().Albums.All(album => album.Id != recreated), "deletion persists in another connection");
+    Check(sourcePaths.All(path => File.ReadAllText(path) == "fixture") &&
+          sourcePaths.Select(File.GetLastWriteTimeUtc).SequenceEqual(originalTimes),
+        "deletion preserves source media contents and modification times");
 }
 
 static void CheckSourceAlbumOrganization(string work)

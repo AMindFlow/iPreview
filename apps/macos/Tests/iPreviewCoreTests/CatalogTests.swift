@@ -35,6 +35,7 @@ struct CatalogChecks {
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
+        try await checkAlbumDeletion()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -259,6 +260,63 @@ struct CatalogChecks {
         try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[1], mediaIDs[3]])
         try verify(after.albums.first { $0.id == otherAlbumID }?.mediaIDs == selectedIDs)
         try verify(after.media == before.media)
+        let afterBytes = try paths.map { try Data(contentsOf: $0) }
+        let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        try verify(afterBytes == bytes && afterTimes == times)
+    }
+
+    static func checkAlbumDeletion() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("First/01.png")
+        try fixtures.file("Second/02.mov")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["First", "Second"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+
+        let imported = try await catalog.snapshot()
+        let paths = try imported.media.map { try $0.readableURL() }
+        let bytes = try paths.map { try Data(contentsOf: $0) }
+        let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        let memberIDs = imported.media.map(\.id)
+        let retained = try await catalog.createAlbum(named: "Retained")
+        let deleted = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: Array(memberIDs.reversed()), to: retained)
+        try await catalog.append(mediaIDs: memberIDs, to: deleted)
+        try await catalog.markUnavailable(source: imported.sources[0])
+
+        try fixtures.sql("""
+            CREATE TRIGGER reject_member_delete BEFORE DELETE ON album_media
+            BEGIN SELECT RAISE(ABORT, 'test member delete failure'); END;
+            """)
+        let beforeFailure = try await catalog.snapshot()
+        do {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: beforeFailure.dataVersion)
+            throw CheckFailure(location: "album deletion must report cascade failure")
+        } catch {
+            try verify(error.localizedDescription.contains("test member delete failure"))
+        }
+        let failed = try await catalog.snapshot()
+        try verify(failed.albums == beforeFailure.albums)
+        try fixtures.sql("DROP TRIGGER reject_member_delete")
+
+        let original = try await catalog.snapshot()
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        let otherSnapshot = try await otherWindow.snapshot()
+        try await otherWindow.delete(albumID: deleted, expectedDataVersion: otherSnapshot.dataVersion)
+        let recreated = try await otherWindow.createAlbum(named: "Shared")
+        try verify(recreated == deleted)
+        try await expectAsyncError(AlbumDeletionError.self) {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: original.dataVersion)
+        }
+        let after = try await catalog.snapshot()
+        try verify(after.albums.first { $0.id == recreated }?.mediaIDs == [])
+        try verify(after.albums.first { $0.id == retained }?.mediaIDs == Array(memberIDs.reversed()))
+        try verify(after.media == original.media)
+        try await catalog.delete(albumID: recreated, expectedDataVersion: after.dataVersion)
+        let reopened = try await otherWindow.snapshot()
+        try verify(reopened.albums.map(\.id) == [retained])
         let afterBytes = try paths.map { try Data(contentsOf: $0) }
         let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         try verify(afterBytes == bytes && afterTimes == times)
@@ -500,11 +558,15 @@ struct CatalogChecks {
         try fixtures.file("Library/Summer Library/10.png")
         try fixtures.file("Elsewhere/2.png")
         try fixtures.file("Elsewhere/Frame.v2.jpg")
+        try fixtures.file("Teams/远山/湖光/湖光.png")
+        try fixtures.file("Teams/海岛/湖光/海岸.png")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
         let elsewhere = try SourceScanner.inspect(fixtures.directory("Elsewhere"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: elsewhere.root, candidate: try required(elsewhere.candidates.first))
+        let teams = try SourceScanner.inspect(fixtures.directory("Teams"), dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: teams.root, candidate: try required(teams.candidates.first))
         let snapshot = try await catalog.snapshot()
         let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
@@ -548,6 +610,20 @@ struct CatalogChecks {
             throw CheckFailure(location: "global search must return the matching directory")
         }
         try verify(directory.components == ["Library", "Summer Library"])
+        try verify(globalFolders[0].category == .album)
+        try verify(index.globalSearch("Library", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        try verify(index.globalSearch("Elsewhere", mode: .exact, directories: true, files: false).map(\.category) == [.album])
+        try verify(index.globalSearch("Teams", mode: .exact, directories: true, files: false).map(\.category) == [.directory])
+        try verify(index.globalSearch("远山", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        let sameName = index.globalSearch("湖光", mode: .exact, directories: true, files: true)
+        try verify(sameName.map(\.category) == [.album, .album, .file])
+        let scoped = index.globalSearch("湖光", mode: .exact, directories: true, files: true) { result in
+            switch result {
+            case .directory(let directory): directory.relativePath.hasPrefix("远山/")
+            case .file(let item): item.relativePath.hasPrefix("远山/")
+            }
+        }
+        try verify(scoped.map(\.category) == [.album, .file])
         try verify(index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false) {
             if case .directory(let folder) = $0 { return folder.source.name == "Elsewhere" }
             return false

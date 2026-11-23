@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 namespace IPreview;
 
 internal enum GlobalSearchScope { All, Files, Directories }
+internal enum SearchResultCategory { Creator, Album, Directory, File }
 
 internal readonly record struct GlobalSearchTerm(string Text, bool Exact)
 {
@@ -19,7 +20,28 @@ internal readonly record struct GlobalSearchTerm(string Text, bool Exact)
 
 internal sealed record GlobalSearchHit(Source Source, string? Folder, string Name, string Location, Media? Media = null)
 {
-    public string Glyph => Media is null ? "\uE8B7" : Media.IsVideo ? "\uE714" : "\uEB9F";
+    public SearchResultCategory Category => Media is not null ? SearchResultCategory.File
+        : (Source.Layout, Folder?.Count(character => character == '/') ?? 0) switch
+        {
+            (Layout.Creator, 0) or (Layout.MultiCreator, 1) => SearchResultCategory.Creator,
+            (Layout.Flat, 0) or (Layout.Creator, 1) or (Layout.MultiCreator, 2) => SearchResultCategory.Album,
+            _ => SearchResultCategory.Directory
+        };
+
+    public string Details => Category switch
+    {
+        SearchResultCategory.Creator => $"创作者 · {Location}",
+        SearchResultCategory.Album => $"专辑 · {Location}",
+        _ => Location
+    };
+
+    public string Glyph => Category switch
+    {
+        SearchResultCategory.Creator => "\uE77B",
+        SearchResultCategory.Album => "\uE7B8",
+        SearchResultCategory.Directory => "\uE8B7",
+        _ => Media is { IsVideo: true } ? "\uE714" : "\uEB9F"
+    };
 }
 
 internal static class MediaSearch

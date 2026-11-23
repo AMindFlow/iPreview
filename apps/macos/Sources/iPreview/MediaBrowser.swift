@@ -2,7 +2,7 @@ import SwiftUI
 import iPreviewCore
 
 enum MediaBrowseMode: String, CaseIterable, Identifiable {
-    case icons, list, gallery
+    case list, gallery, icons
 
     var id: Self { self }
 
@@ -21,6 +21,15 @@ enum MediaBrowseMode: String, CaseIterable, Identifiable {
         case .gallery: "画廊"
         }
     }
+
+    var shortcut: KeyEquivalent {
+        switch self {
+        case .list: "1"
+        case .gallery: "2"
+        case .icons: "3"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .icons: "square.grid.2x2"
@@ -46,15 +55,11 @@ struct LibraryBrowseCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
-            Button("列表") { mode?.wrappedValue = .list }
-                .keyboardShortcut("1", modifiers: .command)
-                .disabled(mode == nil)
-            Button("画廊") { mode?.wrappedValue = .gallery }
-                .keyboardShortcut("2", modifiers: .command)
-                .disabled(mode == nil)
-            Button("图标") { mode?.wrappedValue = .icons }
-                .keyboardShortcut("3", modifiers: .command)
-                .disabled(mode == nil)
+            ForEach(MediaBrowseMode.allCases) { destination in
+                Button(destination.title) { mode?.wrappedValue = destination }
+                    .keyboardShortcut(destination.shortcut, modifiers: .command)
+                    .disabled(mode == nil)
+            }
         }
     }
 }

@@ -31,13 +31,16 @@ public sealed partial class MainWindow : Window
     private List<Media> media = [];
     private List<Album> albums = [];
     private Dictionary<long, List<Media>> albumMembers = [];
+    private long libraryDataVersion;
     private ObservableCollection<Tile> tiles = [];
     private bool busy;
     private int previewIndex = -1;
     private List<Tile> previewTiles = [];
     private BrowseLayout previewLayout;
     private int previewGeneration;
+    private int previewImageGeneration;
     private bool previewVideoLocked;
+    private readonly DispatcherTimer previewCopyTimer = new() { Interval = TimeSpan.FromSeconds(1.2) };
     private MediaPlayer? player;
     private MediaSource? videoSource;
     private readonly DispatcherTimer playbackClock = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -46,17 +49,21 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SetBrowseMode(browseMode);
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
+        RestoreTheme();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
+        previewCopyTimer.Tick += (_, _) => ResetPreviewCopyFeedback();
         Closed += (_, _) =>
         {
             CancelAlbumAdjustmentPointer();
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
+            previewCopyTimer.Stop();
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();
@@ -89,9 +96,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void Reload(long? selected = null)
+    private void Reload(long? selected = null, Navigation? destination = null)
     {
         var snapshot = Database.Read();
+        current = destination ?? current;
+        libraryDataVersion = snapshot.DataVersion;
         sources = snapshot.Sources;
         media = snapshot.Media;
         albums = snapshot.Albums;
@@ -109,7 +118,8 @@ public sealed partial class MainWindow : Window
             Glyph: "\uE7B8")).ToList();
 
         if (current.Album is long albumId)
-            current = new(albums.Single(album => album.Id == albumId).Name, Album: albumId);
+            current = albums.Find(album => album.Id == albumId) is { } album
+                ? new(album.Name, Album: albumId) : Library;
         UpdateNavigationSelection();
         ShowItems(selected);
     }
@@ -341,6 +351,7 @@ public sealed partial class MainWindow : Window
             var result = await new ContentDialog
             {
                 XamlRoot = Root.XamlRoot,
+                RequestedTheme = Root.RequestedTheme,
                 Title = $"导入 {MediaFiles.FolderName(summary.Path)}",
                 Content = optionPicker,
                 PrimaryButtonText = "导入",
@@ -425,6 +436,7 @@ public sealed partial class MainWindow : Window
         busy = value;
         ImportButton.IsEnabled = !value && catalog is not null;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
+        DeleteAlbumButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
 
@@ -434,6 +446,7 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
+            RequestedTheme = Root.RequestedTheme,
             Title = title,
             Content = entry,
             PrimaryButtonText = "保存",
@@ -458,6 +471,50 @@ public sealed partial class MainWindow : Window
             Reload();
         }
         catch (InvalidOperationException error) { ShowNotice("无法创建合集", error.Message); }
+    }
+
+    private async void DeleteAlbum(object sender, RoutedEventArgs args)
+    {
+        if (catalog is null || busy || titleEdit is not null || current.Album is not long album)
+            return;
+
+        var expectedDataVersion = libraryDataVersion;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "删除合集",
+            Content = new TextBlock
+            {
+                Text = $"将删除「{current.Label}」及其中的媒体引用。原始媒体文件会保留。",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "删除合集",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            try
+            {
+                Database.DeleteAlbum(album, expectedDataVersion);
+            }
+            catch (AlbumDeletionChangedException)
+            {
+                Reload(Selection?.Media.Id);
+                throw;
+            }
+            Reload(destination: Library);
+            Notice.IsOpen = false;
+            if (!LibraryHomeButton.Focus(FocusState.Programmatic))
+                FocusSelectedMedia();
+        }
+        catch (InvalidOperationException error)
+        {
+            ShowNotice("无法删除合集", error.Message);
+        }
     }
 
     private void SelectionChanged(object sender, SelectionChangedEventArgs args)
@@ -630,30 +687,41 @@ public sealed partial class MainWindow : Window
             return;
         }
         previewClosing = true;
+        ResetPreviewCopyFeedback();
         var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
             player.Pause();
+        if (!searchOpen)
+        {
+            var browser = ActiveMediaBrowser;
+            var selected = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
+            browser.SelectedItem = selected;
+            if (selected is not null)
+            {
+                browser.ScrollIntoView(selected);
+                browser.UpdateLayout();
+            }
+        }
         AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
     }
 
     private void FinishClosePreview(long? selectedId)
     {
-        previewClosing = false;
         previewBrowser = null;
         previewGeneration++;
         previewIndex = -1;
+        previewTiles = [];
+        LibraryHost.IsEnabled = true;
+        if (!RestoreSearchAfterPreview(selectedId))
+        {
+            FocusSelectedMedia();
+            LibraryView.IsHitTestVisible = true;
+        }
+        PreviewOverlay.Visibility = Visibility.Collapsed;
         StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
-        PreviewOverlay.Visibility = Visibility.Collapsed;
-        previewTiles = [];
-        LibraryHost.IsEnabled = true;
-        if (RestoreSearchAfterPreview(selectedId))
-            return;
-        LibraryView.IsHitTestVisible = true;
-        var browser = ActiveMediaBrowser;
-        browser.SelectedItem = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
-        FocusSelectedMedia();
+        previewClosing = false;
     }
 
     private void CopyPreviewFilename(object sender, DoubleTappedRoutedEventArgs args)
@@ -661,8 +729,10 @@ public sealed partial class MainWindow : Window
         if (previewIndex < 0 || previewClosing)
             return;
 
+        var tile = previewTiles[previewIndex];
+        ResetPreviewCopyFeedback();
         var content = new DataPackage();
-        content.SetText(previewTiles[previewIndex].FileName);
+        content.SetText(tile.FileName);
         args.Handled = true;
         if (!Clipboard.SetContentWithOptions(content, null))
         {
@@ -682,6 +752,20 @@ public sealed partial class MainWindow : Window
             return;
         }
         SetPreviewVideoLock(previewVideoLocked);
+        if (!tile.Media.IsVideo)
+        {
+            PreviewTitle.Visibility = Visibility.Collapsed;
+            PreviewCopyFeedback.Visibility = Visibility.Visible;
+            AnimatePreviewCopyFeedback();
+            previewCopyTimer.Start();
+        }
+    }
+
+    private void ResetPreviewCopyFeedback()
+    {
+        previewCopyTimer.Stop();
+        PreviewCopyFeedback.Visibility = Visibility.Collapsed;
+        PreviewTitle.Visibility = Visibility.Visible;
     }
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
@@ -746,10 +830,14 @@ public sealed partial class MainWindow : Window
         var generation = ++previewGeneration;
         StopVideo();
         var tile = previewTiles[index];
+        ResetPreviewCopyFeedback();
         PreviewTitle.Text = tile.FileName;
         IndexLabel.Text = $"{index + 1} / {previewTiles.Count}";
         PreviewError.Visibility = Visibility.Collapsed;
-        MainImage.Source = tile.Media.IsVideo ? null : poster;
+        // Hold the last usable frame while the current item is being decoded.
+        if (poster is not null)
+            SetPreviewImage(poster, generation);
+        MainImage.Visibility = Visibility.Visible;
         VideoSurface.Visibility = Visibility.Collapsed;
         PlayPause.IsEnabled = false;
         SetPreviewSeekEnabled(false);
@@ -767,24 +855,32 @@ public sealed partial class MainWindow : Window
             if (tile.Media.IsVideo)
             {
                 var file = await OpenMediaFile(tile.Media);
-                if (generation == previewGeneration)
+                if (CanUpdatePreview(generation))
                     StartVideo(file, generation);
                 return;
             }
 
             var image = await DecodeImage(tile.Media, 0, true, (_, error) =>
             {
-                if (generation == previewGeneration)
+                if (CanUpdatePreview(generation))
                     ShowPreviewError("无法解码此图片。", error.ErrorMessage);
             });
-            if (generation == previewGeneration && PreviewError.Visibility == Visibility.Collapsed)
-                MainImage.Source = image;
+            if (CanUpdatePreview(generation) && PreviewError.Visibility == Visibility.Collapsed)
+                SetPreviewImage(image, generation);
         }
         catch (Exception error) when (MediaFailure(error))
         {
-            if (generation == previewGeneration)
+            if (CanUpdatePreview(generation))
                 ShowPreviewError(tile.Media.IsVideo ? "无法打开此视频。" : "无法解码此图片。", error.Message);
         }
+    }
+
+    private bool CanUpdatePreview(int generation) => generation == previewGeneration && !previewClosing;
+
+    private void SetPreviewImage(BitmapImage image, int generation)
+    {
+        MainImage.Source = image;
+        previewImageGeneration = generation;
     }
 
     private async void LoadNeighbor(Image image, BrowseDirection direction, int generation)
@@ -796,7 +892,7 @@ public sealed partial class MainWindow : Window
         {
             var media = previewTiles[index].Media;
             var bitmap = media.IsVideo ? await DecodeVideoThumbnail(media) : await DecodeImage(media, 24, false);
-            if (generation == previewGeneration)
+            if (CanUpdatePreview(generation))
                 image.Source = bitmap;
         }
         catch (Exception error) when (MediaFailure(error)) { }
@@ -809,17 +905,21 @@ public sealed partial class MainWindow : Window
         mediaPlayer.CommandManager.IsEnabled = false;
         mediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (generation != previewGeneration)
+            if (!CanUpdatePreview(generation))
                 return;
+            MainImage.Visibility = Visibility.Collapsed;
+            if (previewImageGeneration != generation)
+                VideoSurface.PosterSource = null;
             PlayPause.IsEnabled = true;
             UpdateTime();
         });
         mediaPlayer.MediaFailed += (_, details) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (generation == previewGeneration)
+            if (CanUpdatePreview(generation))
                 ShowPreviewError("系统无法播放此视频。", details.ErrorMessage);
         });
 
+        VideoSurface.PosterSource = MainImage.Source;
         VideoSurface.SetMediaPlayer(mediaPlayer);
         VideoSurface.Visibility = Visibility.Visible;
         videoSource = MediaSource.CreateFromStorageFile(file);
@@ -846,6 +946,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             VideoSurface.SetMediaPlayer(null);
+            VideoSurface.PosterSource = null;
             using (active)
             {
                 source?.Dispose();
@@ -856,7 +957,7 @@ public sealed partial class MainWindow : Window
     private void ShowPreviewError(string title, string detail)
     {
         StopVideo();
-        MainImage.Source = null;
+        MainImage.Visibility = Visibility.Collapsed;
         VideoSurface.Visibility = Visibility.Collapsed;
         PlayPause.IsEnabled = false;
         SetPreviewSeekEnabled(false);
