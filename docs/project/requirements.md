@@ -1,6 +1,6 @@
 # iPreview 完整需求
 
-iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流、图片、常见视频和音频、多工作区、旧库迁移与媒体元信息。桌面交付范围分别记录在 [0.1.0](releases/0.1.0.md) 和 [0.2.0](releases/0.2.0.md)。 [0.3.0 版本登记](releases/0.3.0.md)汇总 [#75](https://github.com/AMindFlow/iPreview/issues/75) 与用户指定的首版延续需求。
+iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流、图片、常见视频和音频、多工作区、旧库迁移与媒体元信息。桌面交付范围分别记录在 [0.1.0](releases/0.1.0.md) 和 [0.2.0](releases/0.2.0.md)。[0.3.0 版本登记](releases/0.3.0.md)汇总 [#75](https://github.com/AMindFlow/iPreview/issues/75) 与用户指定的首版延续需求。
 
 - [原始需求快照](requirements-original.md)保存用户提供的最初文档；其中路径与旧产品名称属于原文。下表逐项映射原始范围。
 - [一期验收登记册](releases/0.1.0.md)登记已交付功能、后续细化及 PR，实际行为由 `official/` 规格定义。
@@ -14,31 +14,31 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 
 | 原文追溯 | 最初需求 | 交付状态与规格去向 |
 | --- | --- | --- |
-| ORIG-01 | 重启 picosmic，承接原本图库、键盘预览和跨目录虚拟专辑 | 0.1.0 交付[图库](../specs/official/library.md)、[键盘预览](../specs/official/preview.md)和[跨目录合集](../specs/official/virtual-albums.md)。0.2.0 加入[合集删除](../specs/official/virtual-albums.md#alb-003-合集删除)与空态按钮反馈。旧版其余工作流见[未完成清单](backlog.md)。 |
+| ORIG-01 | 重启 picosmic，承接原本图库、键盘预览和跨目录虚拟专辑 | 0.1.0 交付[图库](../specs/official/library.md)、[键盘预览](../specs/official/preview.md)和[跨目录合集](../specs/official/virtual-albums.md)。0.2.0 交付合集删除、主题选择与恢复。0.3.0 纳入来源操作、媒体排序与来源专辑组织，详见[本期工作包](releases/0.3.0.md#工作包与合入状态)。 |
 | ORIG-02 | 旧版所有图片类型 | JPEG/JPG、PNG、WebP、GIF 及 macOS HEIC 已交付；Windows HEIC 依赖系统解码器。[PRE-001](../specs/official/preview.md#pre-001-图片与视频预览)。 |
-| ORIG-03 | 常见视频格式 | 系统框架播放 H.264/AAC MP4、MOV。额外容器和编码仍待双端缺口验证与接入，见 [PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展)。 |
+| ORIG-03 | 常见视频格式 | 0.1.0 以系统框架播放 H.264/AAC MP4、MOV。0.3.0 候选扩展 MPEG-TS、MKV、WebM、AVI，后三种在系统播放失败时使用本地 LibVLC 回退。[PRE-006 交付与验收](releases/0.3.0.md#工作包与合入状态) |
 | ORIG-04 | 常见音频格式 | 待设计、审阅与实施：[LIB-007](../specs/spike/library.md#lib-007-音频组织)。 |
 | ORIG-05 | creator → album 自动识别 | 已交付：[LIB-001](../specs/official/library.md#lib-001-目录导入与扫描)。 |
 | ORIG-06 | multi-creators → creator → album 自动识别 | 已交付，先选择创作者、再进入其专辑：[LIB-009、010](../specs/official/library.md)。 |
-| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | [PR #69](https://github.com/AMindFlow/iPreview/pull/69)提供双端本地探测候选。导入、索引及外部样张来源仍待推进，见 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)。 |
-| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | 同属 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)，探测候选覆盖简化结构，应用接入待完成。 |
+| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 完整本地作品的导入、索引及重扫已随 [PR #69](https://github.com/AMindFlow/iPreview/pull/69) 合入主线。随目录提供的样张进入本地索引。外部样张的提供方与获取方式由 [#62](https://github.com/AMindFlow/iPreview/issues/62) 继续确认。 |
+| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | 简化本地作品随 [PR #69](https://github.com/AMindFlow/iPreview/pull/69) 合入主线，主视频、根目录样张与平铺写真统一归入作品。 |
 | ORIG-09 | 音频管理体系由代理设计，用户审阅后做 | 已登记，后置且保留审阅条件：[LIB-007](../specs/spike/library.md#lib-007-音频组织)、[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择并改善列表滚动，完整长按验收见 [PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。 |
 | ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |
-| ORIG-12 | 精确／模糊及文件／目录搜索模式 | 0.1.0 采用居中搜索、快捷键与 `@` 后空格。0.2.0 标记创作者、专辑类别。匹配与分类见 [SRCH-001–003](../specs/official/search.md)，分组和标签查询见 [SRCH-003 余项](../specs/spike/search.md#srch-003-旧版分类结果与标签搜索)。 |
+| ORIG-12 | 精确／模糊及文件／目录搜索模式 | 0.1.0 交付精确、模糊与文件、目录筛选。0.2.0 增加创作者、专辑类别标记。0.3.0 候选增加结果分组、标签过滤与 `#` 联想，保留原有作用域与定位。[分类与标签搜索 PR #78](https://github.com/AMindFlow/iPreview/pull/78) |
 | ORIG-13 | 从媒体提取清晰度、作者等元信息 | 待实施：[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)。一期列表中的大小、修改时间及种类不代表此项完成。 |
 | ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
 | ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
 | ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
-| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 待实施：[PRE-004](../specs/spike/preview.md#pre-004-视频作品的影碟与图册预览)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
+| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 0.3.0 候选支持影碟与图册分层预览。采用 Space 进入，Esc 逐层返回。Enter 用于真实重命名或视频预览锁定。[PRE-004 PR #81](https://github.com/AMindFlow/iPreview/pull/81) |
 | ORIG-18 | 音频封面与 CD 机模拟，其他由代理设计 | 待审阅与实施：[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-19 | 多工作区，分别保存文件夹与专辑管理数据 | 待实施：[LIB-004](../specs/spike/library.md#lib-004-多工作区)。一期只有默认本地库，测试用数据目录不算工作区产品功能。 |
-| ORIG-20 | 跨 macOS／Windows 原生可用并实机测试 | 两期实际证据与未覆盖项见 [0.1.0](releases/0.1.0.md) 和 [0.2.0](releases/0.2.0.md) 登记。macOS 15 有启动 CI。 |
+| ORIG-20 | 跨 macOS／Windows 原生可用并实机测试 | 实机证据按 [0.1.0](releases/0.1.0.md)、[0.2.0](releases/0.2.0.md) 与 [0.3.0](releases/0.3.0.md) 登记。0.3.0 候选构建含 macOS 15 启动 CI。正式双端验收结果随本版归档。 |
 | ORIG-21 | 视觉依次参考液态玻璃、Stitch、本地前端参考 | 两端原生界面及主题选择见 [UI-001–007](../specs/official/appearance.md)。macOS 26+ 采用原生玻璃，macOS 15 使用系统材质。Windows 使用原生窗框和材质。 |
 | ORIG-22 | 美术先用 agy，Hydrogen High／Flex，低速再 Standard | 持续设计约束，见下文；不把全部实现交给 agy。 |
 | ORIG-23 | 新增流程先 ImageGen 两套，先采用一套保留备选 | 持续设计约束；选片器采用用户选定的底部胶片条，备选随版本设计资料保存。 |
 | ORIG-24 | 先 roadmap、分期 specs，仅重大取舍请求决定 | [路线图](roadmap.md)、分维度 `official/spike` 与 [SDD 流程](../workflow/sdd.md)持续执行。 |
-| ORIG-25 | 多 Agent 并行、交付任务 DAG | 按独立 worktree 与可单独验收的 PR 拆分，见[一期分工](phase-1-collaboration.md)与[二期分工](phase-2-collaboration.md)。 |
+| ORIG-25 | 多 Agent 并行、交付任务 DAG | 按独立 worktree 与可单独验收的 PR 拆分，见[一期分工](phase-1-collaboration.md)、[二期分工](phase-2-collaboration.md)与[0.3.0 分工及依赖](releases/0.3.0.md#分工与依赖)。 |
 | ORIG-26 | GitHub Flow、禁止直推 main、关注 Codex Review | 已采用 PR、独立审阅与 Merge Queue；见[工作流](../workflow/git.md)及一期 PR 台账。 |
 
 ## 设计与交付约束

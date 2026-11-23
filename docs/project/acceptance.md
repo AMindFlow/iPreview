@@ -1,6 +1,6 @@
 # 双端验收步骤
 
-各版本实际执行的项目、提交、产物 SHA-256、系统版本和未验证项以对应的[发布与验收登记](releases/0.2.0.md)为准。用同一最终源码和相同的合成样例在 Apple Silicon Mac 与 Windows 11 x64 实机验证。功能测试使用隔离 QA 资料库，复用样例集中于各自 `~/Temporary/iPreview/`。
+各版本实际执行的项目、提交、产物 SHA-256、系统版本和未验证项以对应的发布与验收登记为准，见 [0.2.0](releases/0.2.0.md) 和 [0.3.0](releases/0.3.0.md)。用同一最终源码和相同的合成样例在 Apple Silicon Mac 与 Windows 11 x64 实机验证。功能测试使用隔离 QA 资料库，复用样例集中于各自 `~/Temporary/iPreview/`。
 
 ## 样例和保护边界
 
