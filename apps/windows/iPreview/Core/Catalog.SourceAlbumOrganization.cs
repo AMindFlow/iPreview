@@ -5,10 +5,27 @@ namespace IPreview;
 internal readonly record struct SourceAlbumKey(long SourceId, string RelativePath)
 {
     public static SourceAlbumKey FromMedia(Media item) =>
-        new(item.Source.Id, string.Join('/', item.RelativePath.Split('/').SkipLast(1).Take((int)item.Source.Layout)));
+        new(item.Source.Id, item.WorkAlbumPath ??
+            string.Join('/', item.RelativePath.Split('/').SkipLast(1).Take((int)item.Source.Layout)));
 
     public bool MatchesLayout(Layout layout) =>
         (RelativePath.Length == 0 ? 0 : RelativePath.Count(character => character == '/') + 1) == (int)layout;
+
+    public SourceAlbumKey? ContainingWork(IReadOnlySet<SourceAlbumKey> roots)
+    {
+        if (roots.Count == 0)
+            return null;
+        var path = RelativePath;
+        while (true)
+        {
+            var candidate = new SourceAlbumKey(SourceId, path);
+            if (roots.Contains(candidate))
+                return candidate;
+            if (path.Length == 0)
+                return null;
+            path = SourceRename.SplitPath(path).Parent;
+        }
+    }
 }
 internal sealed record SourceAlbumTag(long Id, string Name, string NormalizedName)
 {
@@ -204,7 +221,8 @@ internal sealed partial class Catalog
             SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
             WHERE {AlbumMembers} LIMIT 1;
             """, row => MediaFiles.DecodeLayout(row.Text(0)), album.SourceId, AlbumPrefix(album));
-        if (layouts.Count == 0 || !album.MatchesLayout(layouts[0]))
+        var work = album.ContainingWork(ReadWorkAlbumRoots(album.SourceId));
+        if (layouts.Count == 0 || (work is { } root ? root != album : !album.MatchesLayout(layouts[0])))
             throw new InvalidOperationException("此专辑已不在资料库中。");
 
         database.Execute("""

@@ -117,8 +117,10 @@ public struct IndexedVideoWork: Hashable, Identifiable, Sendable {
     public let photoSets: [PhotoSet]
 
     public var id: Int64 { video.id }
-    public var relativePath: String {
-        video.components.dropLast(structure == .complete ? 2 : 1).joined(separator: "/")
+    public var relativePath: String { Self.albumPath(for: video.relativePath, structure: structure) }
+
+    static func albumPath(for videoPath: String, structure: VideoWork.Structure) -> String {
+        videoPath.split(separator: "/").dropLast(structure == .complete ? 2 : 1).joined(separator: "/")
     }
     public var title: String { relativePath.split(separator: "/").last.map(String.init) ?? video.source.name }
 }

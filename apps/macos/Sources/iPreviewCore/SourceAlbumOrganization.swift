@@ -10,12 +10,24 @@ public struct SourceAlbumKey: Hashable, Sendable {
     }
 
     public init(media: Media) {
-        self.init(sourceID: media.source.id, relativePath: media.albumComponents.joined(separator: "/"))
+        self.init(sourceID: media.source.id,
+                  relativePath: media.workAlbumPath ?? media.albumComponents.joined(separator: "/"))
     }
 
     public func matchesLayout(_ layout: Layout) -> Bool {
         let depth = relativePath.isEmpty ? 0 : relativePath.split(separator: "/", omittingEmptySubsequences: false).count
         return depth == layout.albumDepth
+    }
+
+    func containingWork(in roots: Set<Self>) -> Self? {
+        guard !roots.isEmpty else { return nil }
+        var path = relativePath
+        while true {
+            let candidate = Self(sourceID: sourceID, relativePath: path)
+            if roots.contains(candidate) { return candidate }
+            if path.isEmpty { return nil }
+            path = path.lastIndex(of: "/").map { String(path.prefix(upTo: $0)) } ?? ""
+        }
     }
 
     public static func == (left: Self, right: Self) -> Bool {

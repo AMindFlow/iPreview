@@ -35,6 +35,7 @@ struct CatalogChecks {
         try await checkMediaSort()
         try checkVideoWorks()
         try await checkVideoWorkIndex()
+        try await checkLegacyWorkAlbumOrganization()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -109,6 +110,56 @@ struct CatalogChecks {
         for file in scanned {
             let contents = try Data(contentsOf: work.video.source.url.appendingPathComponent(file.relativePath))
             try verify(contents == Data("fixture".utf8))
+        }
+    }
+
+    static func checkLegacyWorkAlbumOrganization() async throws {
+        let fixtures = try Fixtures()
+        for path in ["Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg", "Complete/附加写真集/写真/封面.jpg",
+                     "Complete/附加写真集/写真/完整照片.jpg", "Compact/影片.mov", "Compact/官方样张.jpg",
+                     "Compact/附加写真集/简化照片.jpg"] {
+            try fixtures.file("Legacy/" + path)
+        }
+        let inspection = try SourceScanner.inspect(fixtures.directory("Legacy"), dataDirectory: fixtures.databaseDirectory)
+        let shallowWorks = try required(inspection.candidates.first { $0.layout == .creator })
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: inspection.root, candidate: shallowWorks)
+        // Model the indexed rows after a legacy multi-creator source recognizes its shallow works.
+        try fixtures.sql("UPDATE sources SET layout = 'multi-creator'")
+        let snapshot = try await catalog.snapshot()
+        let complete = try required(snapshot.videoWorks.first { $0.structure == .complete })
+        let compact = try required(snapshot.videoWorks.first { $0.structure == .compact })
+        let completeKey = SourceAlbumKey(sourceID: complete.video.source.id, relativePath: "Complete")
+        let compactKey = SourceAlbumKey(sourceID: compact.video.source.id, relativePath: "Compact")
+        let photographs = [complete.photoSets[0].photos[0], compact.photoSets[0].photos[0]]
+        try verify(SourceAlbumKey(media: photographs[0]) == completeKey && SourceAlbumKey(media: photographs[1]) == compactKey)
+        let tag = try await catalog.addTag(named: "浅层作品", to: completeKey)
+        try await catalog.addTag(tag.id, to: compactKey)
+        try await catalog.replaceCover([photographs[0].id, complete.samples[0].id], for: completeKey)
+        try await catalog.replaceCover([photographs[1].id], for: compactKey)
+        let intermediary = SourceAlbumKey(sourceID: complete.video.source.id, relativePath: "Complete/官方样张")
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.setFavorite(true, for: intermediary)
+        }
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let loaded = try await reopened.snapshot()
+        let albums = try await reopened.sourceAlbumIndex()
+        let index = SearchIndex(media: loaded.media, sources: loaded.sources)
+        let workHits = index.globalSearch("", mode: .fuzzy, directories: true, files: false,
+                                          taggedAlbums: albums.taggedAlbums[tag.id])
+        try verify(Set(workHits.compactMap(\.sourceAlbum)) == [completeKey, compactKey] && workHits.count == 2)
+        let groups = index.globalSearch("官方样张", mode: .exact, directories: true, files: false)
+        try verify(groups.count == 1 && groups[0].category == .directory && groups[0].sourceAlbum == nil)
+        for (photo, key) in zip(photographs, [completeKey, compactKey]) {
+            let hits = index.globalSearch(photo.name, mode: .exact, directories: false, files: true,
+                                          taggedAlbums: albums.taggedAlbums[tag.id])
+            guard case .file(let found) = try required(hits.first) else {
+                throw CheckFailure(location: "作品照片未生成文件搜索结果")
+            }
+            try verify(found.id == photo.id && SourceAlbumKey(media: found) == key)
+            let organization = try await reopened.sourceAlbumOrganization(for: key)
+            try verify(organization.tags == [tag] && organization.effectiveCoverIDs.first == photo.id)
         }
     }
 

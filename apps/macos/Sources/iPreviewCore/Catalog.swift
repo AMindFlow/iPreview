@@ -82,7 +82,7 @@ public actor Catalog {
                 )
             }.sorted { compareNaturally($0.path, $1.path) == .orderedAscending }
             let sourceByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
-            let media = try database.select("SELECT id, source_id, relative_path, kind, available FROM media") { row in
+            var media = try database.select("SELECT id, source_id, relative_path, kind, available FROM media") { row in
                 Media(
                     id: sqlite3_column_int64(row, 0),
                     source: sourceByID[sqlite3_column_int64(row, 1)]!,
@@ -99,7 +99,7 @@ public actor Catalog {
                 let id = sqlite3_column_int64(row, 0)
                 return VirtualAlbum(id: id, name: textColumn(row, 1), mediaIDs: byAlbum[id, default: []].map(\.media))
             }
-            let videoWorks = try VideoWorkIndex.read(from: database, media: media)
+            let videoWorks = try VideoWorkIndex.read(from: database, media: &media)
             return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion(),
                                    videoWorks: videoWorks)
         }
@@ -442,7 +442,10 @@ extension Catalog {
                 SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
                 WHERE \(Self.albumMembers) LIMIT 1
                 """, membershipBindings(album)) { Layout(rawValue: textColumn($0, 0))! }.first
-            guard let layout, album.matchesLayout(layout) else { throw AlbumOrganizationError.unknownAlbum }
+            let work = try album.containingWork(in: VideoWorkIndex.albumRoots(in: database, sourceID: album.sourceID))
+            guard let layout, work.map({ $0 == album }) ?? album.matchesLayout(layout) else {
+                throw AlbumOrganizationError.unknownAlbum
+            }
             try database.execute("""
                 INSERT INTO source_album_organization (source_id, album_path) VALUES (?, ?)
                 ON CONFLICT (source_id, album_path) DO NOTHING

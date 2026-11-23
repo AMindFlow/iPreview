@@ -202,6 +202,7 @@ try
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
     CheckVideoWorkIndex(work);
+    CheckLegacyWorkAlbumOrganization(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -533,6 +534,55 @@ static void CheckVideoWorkIndex(string root)
         .SequenceEqual(["照片 1.jpg", "照片 2.jpg"]), "rescan keeps identity and updates photo membership");
     Check(scanned.All(file => File.ReadAllText(Path.Combine(works, file.RelativePath)) == "fixture"),
         "work indexing preserves source media");
+}
+
+static void CheckLegacyWorkAlbumOrganization(string work)
+{
+    var source = Path.Combine(work, "legacy-work-albums");
+    foreach (var name in new[] { "Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg", "Complete/附加写真集/写真/封面.jpg",
+                                "Complete/附加写真集/写真/完整照片.jpg", "Compact/影片.mov", "Compact/官方样张.jpg",
+                                "Compact/附加写真集/简化照片.jpg" })
+        AddFile(source, name);
+    var found = MediaFiles.Probe(source);
+    var data = Path.Combine(work, "legacy-work-albums-db");
+    using var catalog = new Catalog(data);
+    // Model the indexed rows after a legacy multi-creator source recognizes its shallow works.
+    var sourceId = catalog.Import(found.Path, Layout.MultiCreator, found.Options[Layout.Creator]);
+    var snapshot = catalog.Read();
+    var complete = snapshot.VideoWorks.Single(item => item.Structure == VideoWorkStructure.Complete);
+    var compact = snapshot.VideoWorks.Single(item => item.Structure == VideoWorkStructure.Compact);
+    var completeKey = new SourceAlbumKey(sourceId, "Complete");
+    var compactKey = new SourceAlbumKey(sourceId, "Compact");
+    var completePhoto = complete.PhotoSets[0].Photos[0];
+    var compactPhoto = compact.PhotoSets[0].Photos[0];
+    Check(SourceAlbumKey.FromMedia(completePhoto) == completeKey && SourceAlbumKey.FromMedia(compactPhoto) == compactKey,
+        "shallow work photos use the indexed work album root");
+    var tag = catalog.AddAlbumTag("浅层作品", completeKey);
+    catalog.AddAlbumTag(tag.Id, compactKey);
+    catalog.ReplaceCover([completePhoto.Id, complete.Samples[0].Id], completeKey);
+    catalog.ReplaceCover([compactPhoto.Id], compactKey);
+    Reject<InvalidOperationException>(() => catalog.SetFavorite(true, new(sourceId, "Complete/官方样张")),
+        "a nominal-depth internal folder is not a work album");
+
+    using var reopened = new Catalog(data);
+    var loaded = reopened.Read();
+    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[tag.Id];
+    var albums = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("", false), GlobalSearchScope.Directories,
+        taggedAlbums: tagged);
+    Check(albums.Count == 2 && albums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([completeKey, compactKey]),
+        "tagged directory results use shallow work album roots");
+    var group = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("官方样张", true), GlobalSearchScope.Directories).Single();
+    Check(group.Category == SearchResultCategory.Directory && group.SourceAlbum is null,
+        "work subdirectories retain their directory classification");
+    foreach (var (photo, key) in new[] { (completePhoto, completeKey), (compactPhoto, compactKey) })
+    {
+        var hit = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new(photo.FileName, true), GlobalSearchScope.Files,
+            taggedAlbums: tagged).Single();
+        Check(hit.Media?.Id == photo.Id && hit.SourceAlbum == key, "search selects the original media in its work album");
+        var organization = reopened.ReadSourceAlbumOrganization(key);
+        Check(organization.Tags.SequenceEqual([tag]) && organization.EffectiveCoverIds[0] == photo.Id,
+            "work tags and cover survive reopening");
+    }
 }
 
 static void CheckSourceRename(string work)

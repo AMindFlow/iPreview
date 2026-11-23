@@ -17,7 +17,8 @@ public sealed partial class MainWindow
             if (VisibleSource is not { } source)
                 return null;
             var key = new SourceAlbumKey(source.Id, current.Folder?.TrimEnd('/') ?? "");
-            return key.MatchesLayout(source.Layout) ? key : null;
+            var workPath = ScopeMedia().FirstOrDefault()?.WorkAlbumPath;
+            return (workPath is null ? key.MatchesLayout(source.Layout) : key.RelativePath == workPath) ? key : null;
         }
     }
 
