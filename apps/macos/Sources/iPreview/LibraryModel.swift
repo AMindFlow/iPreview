@@ -116,6 +116,17 @@ final class LibraryModel {
         }
     }
 
+    func delete(albumID: Int64, expectedDataVersion: Int64) async -> Bool {
+        await change(rebuildSearch: false) { catalog in
+            do {
+                try await catalog.delete(albumID: albumID, expectedDataVersion: expectedDataVersion)
+            } catch AlbumDeletionError.changed {
+                try await refresh(catalog, rebuildSearch: true)
+                throw AlbumDeletionError.changed
+            }
+        }
+    }
+
     func renameSourceItem(_ edit: SourceNameEdit, to name: String) async throws -> String {
         guard let catalog, !isWorking else { throw SourceRenameError.unavailable }
         isWorking = true

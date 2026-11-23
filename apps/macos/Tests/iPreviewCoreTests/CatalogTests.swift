@@ -34,13 +34,115 @@ struct CatalogChecks {
         try checkLayouts()
         try checkVideoWorks()
         try await checkPersistence()
+        try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
+        try await checkAlbumDeletion()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
         try await checkStaleFolderAnchor()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
+    }
+
+    static func checkSourceAlbumOrganization() async throws {
+        let fixtures = try Fixtures()
+        let sourceURL = fixtures.directory("Source")
+        for name in ["Maker/Album/Image 2.png", "Maker/Album/Image 10.jpg", "Maker/Album/Clip.mp4", "Maker/Album2/Image.png"] {
+            try fixtures.file("Source/" + name)
+        }
+        let root = sourceURL.path.replacingOccurrences(of: "'", with: "''")
+        let sourceFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let migrations = sourceFile.appendingPathComponent("../../../../shared/migrations").standardizedFileURL
+        try FileManager.default.createDirectory(at: fixtures.databaseDirectory, withIntermediateDirectories: true)
+        try Data().write(to: fixtures.databaseDirectory.appendingPathComponent("catalog.sqlite3"))
+        for migration in ["001-initial.sql", "002-pending-rename.sql"] {
+            try fixtures.sql(String(contentsOf: migrations.appendingPathComponent(migration), encoding: .utf8))
+        }
+        try fixtures.sql("""
+            INSERT INTO sources (id, path, layout) VALUES (4, '\(root)', 'multi-creator');
+            INSERT INTO media (id, source_id, relative_path, kind)
+                VALUES (8, 4, 'Maker/Album/Image 2.png', 'image'), (9, 4, 'Maker/Album/Image 10.jpg', 'image'),
+                       (10, 4, 'Maker/Album/Clip.mp4', 'video'), (11, 4, 'Maker/Album2/Image.png', 'image');
+            INSERT INTO albums (id, name) VALUES (20, '旧版合集');
+            INSERT INTO album_media VALUES (20, 8, 1), (20, 11, 0);
+            """)
+        let originalVersion = try fixtures.scalar("PRAGMA user_version")
+        try verify(originalVersion == 2)
+
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let source = try required(try await catalog.snapshot().sources.first)
+        let album = SourceAlbumKey(sourceID: source.id, relativePath: "Maker/Album")
+        let sibling = SourceAlbumKey(sourceID: source.id, relativePath: "Maker/Album2")
+        let defaultOrganization = try await catalog.sourceAlbumOrganization(for: album)
+        try verify(defaultOrganization.ratingHalf == nil && !defaultOrganization.favorite &&
+                   defaultOrganization.configuredCoverIDs.isEmpty && defaultOrganization.effectiveCoverIDs == [8])
+        try await catalog.setFavorite(true, for: album)
+        try await catalog.setRatingHalf(0, for: album)
+        try await catalog.setRatingHalf(7, for: sibling)
+        let trip = try await catalog.addTag(named: "　 ＴＲＩＰ   图片 ", to: album)
+        let duplicate = try await catalog.addTag(named: "trip 图片", to: sibling)
+        try verify(duplicate == trip && trip.name == "TRIP 图片" && trip.normalizedName == "trip 图片")
+        try verify(SourceAlbumTag.names(from: "ΟΣ İ").normalized == "οσ i\u{0307}")
+        let scenic = try await catalog.addTag(named: "风景", to: album)
+        try await catalog.addTag(trip.id, to: sibling)
+        let tagged = try await catalog.sourceAlbums(tagID: trip.id)
+        try verify(tagged == [album, sibling])
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.renameTag(trip.id, to: scenic.name)
+        }
+        try await catalog.renameTag(trip.id, to: "旅行")
+        try await catalog.replaceCover([9, 8], for: album)
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.replaceCover([9, 11], for: album)
+        }
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.replaceCover([10], for: album)
+        }
+        try fixtures.sql("""
+            CREATE TRIGGER reject_second_cover BEFORE INSERT ON source_album_cover_media
+            WHEN NEW.position = 1 BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+            """)
+        do {
+            try await catalog.replaceCover([8, 9], for: album)
+            throw CheckFailure(location: "封面写入局部失败未报告")
+        } catch {
+            try verify(error.localizedDescription.contains("fixture failure"))
+        }
+        try fixtures.sql("DROP TRIGGER reject_second_cover")
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let persisted = try await reopened.sourceAlbumOrganization(for: album)
+        let persistedSibling = try await reopened.sourceAlbumOrganization(for: sibling)
+        let library = try await reopened.snapshot()
+        try verify(persisted.favorite && persisted.ratingHalf == 0 && persisted.tags.contains { $0.name == "旅行" })
+        try verify(persistedSibling.ratingHalf == 7 && !persistedSibling.favorite)
+        try verify(persisted.configuredCoverIDs == [9, 8] && persisted.effectiveCoverIDs == [9, 8])
+        try verify(library.albums.first?.mediaIDs == [11, 8])
+
+        let removedCover = sourceURL.appendingPathComponent("Maker/Album/Image 10.jpg")
+        let outside = fixtures.directory("Unavailable.jpg")
+        try FileManager.default.moveItem(at: removedCover, to: outside)
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let fallback = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(fallback.configuredCoverIDs == [9, 8] && fallback.effectiveCoverIDs == [8])
+        try FileManager.default.moveItem(at: outside, to: removedCover)
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let recovered = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(recovered.effectiveCoverIDs == [9, 8])
+        try await reopened.markUnavailable(source: source)
+        let offline = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(offline.configuredCoverIDs == [9, 8] && offline.effectiveCoverIDs.isEmpty)
+
+        try await reopened.setRatingHalf(nil, for: album)
+        try await reopened.removeTag(trip.id, from: album)
+        let detached = try await reopened.sourceAlbums(tagID: trip.id)
+        try verify(detached == [sibling])
+        try await reopened.deleteTag(trip.id)
+        let remaining = try await reopened.albumTags()
+        let deletedLinks = try await reopened.sourceAlbums(tagID: trip.id)
+        let cleared = try await reopened.sourceAlbumOrganization(for: album)
+        try verify(remaining == [scenic] && deletedLinks.isEmpty && cleared.ratingHalf == nil && cleared.favorite)
     }
 
     static func checkLayouts() throws {
@@ -218,6 +320,63 @@ struct CatalogChecks {
         try verify(afterBytes == bytes && afterTimes == times)
     }
 
+    static func checkAlbumDeletion() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("First/01.png")
+        try fixtures.file("Second/02.mov")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["First", "Second"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+
+        let imported = try await catalog.snapshot()
+        let paths = try imported.media.map { try $0.readableURL() }
+        let bytes = try paths.map { try Data(contentsOf: $0) }
+        let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        let memberIDs = imported.media.map(\.id)
+        let retained = try await catalog.createAlbum(named: "Retained")
+        let deleted = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: Array(memberIDs.reversed()), to: retained)
+        try await catalog.append(mediaIDs: memberIDs, to: deleted)
+        try await catalog.markUnavailable(source: imported.sources[0])
+
+        try fixtures.sql("""
+            CREATE TRIGGER reject_member_delete BEFORE DELETE ON album_media
+            BEGIN SELECT RAISE(ABORT, 'test member delete failure'); END;
+            """)
+        let beforeFailure = try await catalog.snapshot()
+        do {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: beforeFailure.dataVersion)
+            throw CheckFailure(location: "album deletion must report cascade failure")
+        } catch {
+            try verify(error.localizedDescription.contains("test member delete failure"))
+        }
+        let failed = try await catalog.snapshot()
+        try verify(failed.albums == beforeFailure.albums)
+        try fixtures.sql("DROP TRIGGER reject_member_delete")
+
+        let original = try await catalog.snapshot()
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        let otherSnapshot = try await otherWindow.snapshot()
+        try await otherWindow.delete(albumID: deleted, expectedDataVersion: otherSnapshot.dataVersion)
+        let recreated = try await otherWindow.createAlbum(named: "Shared")
+        try verify(recreated == deleted)
+        try await expectAsyncError(AlbumDeletionError.self) {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: original.dataVersion)
+        }
+        let after = try await catalog.snapshot()
+        try verify(after.albums.first { $0.id == recreated }?.mediaIDs == [])
+        try verify(after.albums.first { $0.id == retained }?.mediaIDs == Array(memberIDs.reversed()))
+        try verify(after.media == original.media)
+        try await catalog.delete(albumID: recreated, expectedDataVersion: after.dataVersion)
+        let reopened = try await otherWindow.snapshot()
+        try verify(reopened.albums.map(\.id) == [retained])
+        let afterBytes = try paths.map { try Data(contentsOf: $0) }
+        let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        try verify(afterBytes == bytes && afterTimes == times)
+    }
+
     static func checkSourceRename() async throws {
         let fixtures = try Fixtures()
         try fixtures.file("Source/Artist/Album/Original.PNG")
@@ -237,11 +396,27 @@ struct CatalogChecks {
         let favourite = try await initial.createAlbum(named: "Pinned", mediaID: original.id)
 
         // Reopen a populated version 1 database and retain all IDs and virtual references.
-        try fixtures.sql("DROP TABLE pending_rename; PRAGMA user_version = 1;")
+        try fixtures.sql("""
+            DROP TABLE source_album_cover_media;
+            DROP TABLE source_album_tags;
+            DROP TABLE tags;
+            DROP TABLE source_album_organization;
+            DROP TABLE pending_rename;
+            PRAGMA user_version = 1;
+            """)
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let migrated = try await catalog.snapshot()
         try verify(migrated.media.map(\.id) == before.media.map(\.id))
         try verify(migrated.albums.first { $0.id == favourite }?.mediaIDs == [original.id])
+        try fixtures.sql("""
+            INSERT INTO source_album_organization (id, source_id, album_path, favorite, rating_half)
+                VALUES (101, \(source.id), 'Artist/Album', 1, 0),
+                       (102, \(source.id), 'Artist/Album2', 0, NULL),
+                       (103, \(source.id), 'Second Creator/Album', 0, 7);
+            INSERT INTO tags (id, name, normalized_name) VALUES (104, 'Travel', 'travel');
+            INSERT INTO source_album_tags VALUES (101, 104);
+            INSERT INTO source_album_cover_media VALUES (101, \(original.id), 0), (101, \(offline.id), 1);
+            """)
 
         let originalURL = try original.readableURL()
         let bytes = try Data(contentsOf: originalURL)
@@ -317,6 +492,18 @@ struct CatalogChecks {
         try verify(after.media.first { $0.id == other.id }?.relativePath == "Artist/Album2/Other.png")
         try verify(after.media.first { $0.id == secondCreatorItem.id }?.relativePath == creatorPath + "/Album/Second.png")
         try verify(after.albums.first { $0.id == favourite }?.mediaIDs == [original.id])
+        let organizationRows = try fixtures.scalar("""
+            SELECT COUNT(*) FROM source_album_organization WHERE
+                (id = 101 AND album_path = 'Artist/Renamed Album' AND favorite = 1 AND rating_half = 0)
+                OR (id = 102 AND album_path = 'Artist/Album2' AND rating_half IS NULL)
+                OR (id = 103 AND album_path = 'New Creator/Album' AND rating_half = 7);
+            """)
+        let tagCount = try fixtures.scalar("SELECT COUNT(*) FROM source_album_tags WHERE source_album_id = 101 AND tag_id = 104")
+        let coverCount = try fixtures.scalar("""
+            SELECT COUNT(*) FROM source_album_cover_media WHERE source_album_id = 101 AND
+                ((position = 0 AND media_id = \(original.id)) OR (position = 1 AND media_id = \(offline.id)));
+            """)
+        try verify(organizationRows == 3 && tagCount == 1 && coverCount == 2)
 
         try await expectAsyncError(SourceRenameError.self) {
             try await catalog.renameSourceItem(sourceID: source.id, path: "Artist", mediaID: nil, to: "Blocked")
@@ -426,11 +613,15 @@ struct CatalogChecks {
         try fixtures.file("Library/Summer Library/10.png")
         try fixtures.file("Elsewhere/2.png")
         try fixtures.file("Elsewhere/Frame.v2.jpg")
+        try fixtures.file("Teams/远山/湖光/湖光.png")
+        try fixtures.file("Teams/海岛/湖光/海岸.png")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         let inspection = try SourceScanner.inspect(fixtures.directory("Library"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
         let elsewhere = try SourceScanner.inspect(fixtures.directory("Elsewhere"), dataDirectory: fixtures.databaseDirectory)
         try await catalog.importSource(root: elsewhere.root, candidate: try required(elsewhere.candidates.first))
+        let teams = try SourceScanner.inspect(fixtures.directory("Teams"), dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: teams.root, candidate: try required(teams.candidates.first))
         let snapshot = try await catalog.snapshot()
         let index = SearchIndex(media: snapshot.media, sources: snapshot.sources)
 
@@ -474,6 +665,20 @@ struct CatalogChecks {
             throw CheckFailure(location: "global search must return the matching directory")
         }
         try verify(directory.components == ["Library", "Summer Library"])
+        try verify(globalFolders[0].category == .album)
+        try verify(index.globalSearch("Library", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        try verify(index.globalSearch("Elsewhere", mode: .exact, directories: true, files: false).map(\.category) == [.album])
+        try verify(index.globalSearch("Teams", mode: .exact, directories: true, files: false).map(\.category) == [.directory])
+        try verify(index.globalSearch("远山", mode: .exact, directories: true, files: false).map(\.category) == [.creator])
+        let sameName = index.globalSearch("湖光", mode: .exact, directories: true, files: true)
+        try verify(sameName.map(\.category) == [.album, .album, .file])
+        let scoped = index.globalSearch("湖光", mode: .exact, directories: true, files: true) { result in
+            switch result {
+            case .directory(let directory): directory.relativePath.hasPrefix("远山/")
+            case .file(let item): item.relativePath.hasPrefix("远山/")
+            }
+        }
+        try verify(scoped.map(\.category) == [.album, .file])
         try verify(index.globalSearch("sumer", mode: .fuzzy, directories: true, files: false) {
             if case .directory(let folder) = $0 { return folder.source.name == "Elsewhere" }
             return false
@@ -494,12 +699,28 @@ private struct Fixtures {
     func directory(_ path: String) -> URL { root.appendingPathComponent(path) }
 
     func sql(_ command: String) throws {
+        try withDatabase { database in
+            try verify(sqlite3_exec(database, command, nil, nil, nil) == SQLITE_OK)
+        }
+    }
+
+    func scalar(_ query: String) throws -> Int64 {
+        try withDatabase { database in
+            var statement: OpaquePointer?
+            try verify(sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK)
+            defer { sqlite3_finalize(statement) }
+            try verify(sqlite3_step(statement) == SQLITE_ROW)
+            return sqlite3_column_int64(statement, 0)
+        }
+    }
+
+    private func withDatabase<T>(_ operation: (OpaquePointer) throws -> T) throws -> T {
         let path = databaseDirectory.appendingPathComponent("catalog.sqlite3").path
-        var db: OpaquePointer?
-        let opened = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, nil)
-        defer { sqlite3_close(db) }
+        var database: OpaquePointer?
+        let opened = sqlite3_open_v2(path, &database, SQLITE_OPEN_READWRITE, nil)
+        defer { sqlite3_close(database) }
         try verify(opened == SQLITE_OK)
-        try verify(sqlite3_exec(db, command, nil, nil, nil) == SQLITE_OK)
+        return try operation(required(database))
     }
 
     func file(_ path: String) throws {

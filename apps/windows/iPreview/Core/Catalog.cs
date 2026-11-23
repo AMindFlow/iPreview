@@ -4,14 +4,17 @@ namespace IPreview;
 
 internal sealed record CatalogSnapshot(
     Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
-    Dictionary<long, List<Media>> AlbumMembers);
+    Dictionary<long, List<Media>> AlbumMembers, long DataVersion);
 
 internal sealed class AlbumOrderChangedException() :
     InvalidOperationException("合集顺序已在其他窗口更新。请按当前顺序重新拖动。");
 
+internal sealed class AlbumDeletionChangedException() :
+    InvalidOperationException("媒体库已在其他窗口更新。请核对合集后重试。");
+
 internal sealed partial class Catalog : IDisposable
 {
-    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql"];
+    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql"];
     private readonly Sqlite database;
     private readonly string dataDirectory;
 
@@ -82,7 +85,7 @@ internal sealed partial class Catalog : IDisposable
                 row => (Album: row.Number(0), Media: mediaById[row.Number(1)]))
                 .GroupBy(member => member.Album)
                 .ToDictionary(album => album.Key, album => album.Select(member => member.Media).ToList());
-            snapshot = new(sources, media, albums, members);
+            snapshot = new(sources, media, albums, members, DataVersion);
         }, write: false);
         return snapshot!;
     }
@@ -164,6 +167,15 @@ internal sealed partial class Catalog : IDisposable
 
     public void RenameAlbum(long album, string name) =>
         database.Execute("UPDATE albums SET name = ? WHERE id = ?;", name.Trim(), album);
+
+    public void DeleteAlbum(long album, long expectedDataVersion) =>
+        database.InTransaction(() =>
+        {
+            // A deleted SQLite row ID can be reused by a new album in another process.
+            if (expectedDataVersion != DataVersion)
+                throw new AlbumDeletionChangedException();
+            database.Execute("DELETE FROM albums WHERE id = ?;", album);
+        });
 
     public void AddToAlbum(long album, long media) => AppendToAlbum(album, [media]);
 

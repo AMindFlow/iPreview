@@ -3,6 +3,7 @@ import SwiftUI
 import iPreviewCore
 
 struct LibraryView: View {
+    @Binding var theme: LibraryTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var model = LibraryModel()
     @ViewState private var page = LibraryPage.library
@@ -10,10 +11,11 @@ struct LibraryView: View {
     @ViewState private var sidebarWidth: CGFloat = 200
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
-    @ViewState private var browseMode = MediaBrowseMode.icons
+    @ViewState private var browseMode = MediaBrowseMode.list
     @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
+    @ViewState private var albumDeletion: AlbumDeletion?
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var titleEdit: LibraryTitleEdit?
     @ViewState private var titleDraft = ""
@@ -26,11 +28,16 @@ struct LibraryView: View {
 
     enum Focus: Hashable { case browser, searchQuery, searchResults, title }
 
+    private struct AlbumDeletion {
+        let album: VirtualAlbum
+        let dataVersion: Int64
+    }
+
     private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
 
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
-            && !creatingAlbum && editSourceName == nil && addAlbumMedia == nil
+            && !creatingAlbum && albumDeletion == nil && editSourceName == nil && addAlbumMedia == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -38,7 +45,7 @@ struct LibraryView: View {
     }
 
     private var searchActions: LibrarySearchActions {
-        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum,
+        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil,
               addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
@@ -100,13 +107,14 @@ struct LibraryView: View {
                         guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection in
-                        self.preview = nil
+                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
                         if searchDomain == nil {
-                            self.selected = selection
-                            if thumbnail(selection) == nil { self.mediaToReveal = selection }
-                            focusBrowser()
+                            selected = selection
+                            if !hasThumbnail { mediaToReveal = selection }
                         }
+                    } close: {
+                        self.preview = nil
+                        focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
                 }
@@ -140,6 +148,24 @@ struct LibraryView: View {
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
         }
+        .alert("删除合集", isPresented: Binding(
+            get: { albumDeletion != nil },
+            set: { if !$0 { albumDeletion = nil } }
+        ), presenting: albumDeletion) { target in
+            Button("取消", role: .cancel) { focusBrowser() }
+                .keyboardShortcut(.defaultAction)
+            Button("删除合集", role: .destructive) {
+                Task {
+                    let albumID = target.album.id
+                    let deleted = await model.delete(albumID: albumID, expectedDataVersion: target.dataVersion)
+                    if page == .virtual(albumID), deleted || !model.snapshot.albums.contains(where: { $0.id == albumID }) {
+                        navigate(.library)
+                    }
+                }
+            }
+        } message: { target in
+            Text("将删除「\(target.album.name)」及其中的媒体引用。原始媒体文件会保留。")
+        }
         .alert("无法完成操作", isPresented: Binding(
             get: { model.error != nil },
             set: { if !$0 { model.error = nil } }
@@ -151,25 +177,31 @@ struct LibraryView: View {
     }
 
     private var windowControls: some View {
-        HStack(spacing: 4) {
+        let size = LibraryTitleBarLayout.buttonSize
+        return HStack(spacing: 0) {
             sidebarToggle
-            Button(action: chooseFolder) {
-                Image(systemName: "folder.badge.plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 26, height: 26)
+            Spacer(minLength: LibraryTitleBarLayout.groupSpacing)
+            HStack(spacing: LibraryTitleBarLayout.buttonSpacing) {
+                Button(action: chooseFolder) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: size, height: size)
+                }
+                .buttonStyle(LibraryIconButtonStyle())
+                .accessibilityLabel("导入文件夹")
+                .help("导入文件夹")
+                .disabled(!canChooseFolder)
+                LibraryThemeButton(theme: $theme)
+                    .disabled(libraryOverlayShown)
             }
-            .buttonStyle(LibraryIconButtonStyle())
-            .accessibilityLabel("导入文件夹")
-            .help("导入文件夹")
-            .disabled(!canChooseFolder)
         }
-        .frame(width: 64, height: 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .frame(height: size)
         .opacity(preview == nil ? 1 : 0)
         .accessibilityHidden(libraryOverlayShown)
     }
 
     private var sidebarToggle: some View {
+        let size = LibraryTitleBarLayout.buttonSize
         let collapsed = sidebarVisibility == .detailOnly
         let title: LocalizedStringKey = collapsed ? "展开侧边栏" : "收起侧边栏"
         return Button {
@@ -177,16 +209,16 @@ struct LibraryView: View {
                 sidebarVisibility = collapsed ? .all : .detailOnly
             }
         } label: {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: 14, weight: .medium))
-                .overlay {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 7, weight: .semibold))
-                        .rotationEffect(.degrees(collapsed ? 180 : 0))
+            RoundedRectangle(cornerRadius: 2.5)
+                .strokeBorder(lineWidth: 1.25)
+                .frame(width: 16, height: 12)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .frame(width: 1.25, height: collapsed ? 5 : 12)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
-                        .offset(x: 3.5)
+                        .padding(.leading, 4.5)
                 }
-                .frame(width: 26, height: 26)
+                .frame(width: size, height: size)
         }
         .buttonStyle(LibraryIconButtonStyle())
         .accessibilityLabel(title)
@@ -277,7 +309,7 @@ struct LibraryView: View {
                     .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
                 Text(name)
                     .lineLimit(1)
-                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if offline {
                     Image(systemName: "bolt.slash")
                         .font(.caption)
@@ -433,6 +465,15 @@ struct LibraryView: View {
             .disabled(removalSelection.isEmpty || model.isWorking)
             .help("仅从当前合集移除所选引用")
         } else {
+            Button {
+                albumDeletion = AlbumDeletion(album: album, dataVersion: model.snapshot.dataVersion)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isWorking || titleEdit != nil)
+            .accessibilityLabel("删除合集")
+            .help("删除合集")
             if hasItems {
                 Button {
                     addAlbumMedia = album
@@ -468,19 +509,17 @@ struct LibraryView: View {
                 Button {
                     addAlbumMedia = album
                 } label: {
-                    Image(systemName: "rectangle.stack")
-                        .font(.system(size: 35, weight: .light))
-                        .foregroundStyle(Color.libraryInk.opacity(0.64))
-                        .frame(width: 74, height: 70)
-                        .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
-                        .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundStyle(.white, Color.ipreviewAccent)
-                        }
-                        .contentShape(Rectangle())
+                    ZStack {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 35, weight: .light))
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .regular))
+                            // Center the plus on the front card.
+                            .offset(y: 3)
+                    }
+                    .foregroundStyle(Color.libraryInk.opacity(0.64))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(EmptyAlbumAddButtonStyle())
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
                 Text("合集为空").font(.title3.weight(.semibold))
@@ -614,7 +653,7 @@ struct LibraryView: View {
                             }
                         } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
                             selected = items[destination].id
-                            reader.scrollTo(items[destination].id, anchor: .center)
+                            reader.scrollTo(items[destination].id, anchor: browseMode == .list ? nil : .center)
                         }
                         return .handled
                     }

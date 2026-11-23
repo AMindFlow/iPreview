@@ -132,6 +132,11 @@ internal sealed partial class Catalog
                 SET relative_path = ? || substr(relative_path, length(?) + 1)
                 WHERE source_id = ? AND substr(relative_path, 1, length(?) + 1) = ? || '/';
                 """, pending.After, pending.Before, pending.Source, pending.Before, pending.Before);
+            database.Execute("""
+                UPDATE source_album_organization
+                SET album_path = ? || substr(album_path, length(?) + 1)
+                WHERE source_id = ? AND (album_path = ? OR substr(album_path, 1, length(?) + 1) = ? || '/');
+                """, pending.After, pending.Before, pending.Source, pending.Before, pending.Before, pending.Before);
         }
         else
         {

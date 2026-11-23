@@ -76,6 +76,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="LibraryHomeButton" Click="GoToLibrary" Style="{StaticResource LibrarySubtleButton}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="8,0"
@@ -89,6 +90,16 @@
                             <Button Grid.Column="1" Click="ShowGlobalSearch" ToolTipService.ToolTip="全局搜索（Ctrl+Shift+F）"
                                     Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="全局搜索">
                                 <FontIcon Glyph="&#xE721;" FontSize="14" />
+                            </Button>
+                            <Button x:Name="ThemeButton" Grid.Column="2" Style="{StaticResource LibraryIconButton}">
+                                <FontIcon Glyph="&#xE793;" FontSize="14" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <RadioMenuFlyoutItem x:Name="SystemThemeOption" Text="跟随系统" Tag="Default" Click="ChangeTheme" />
+                                        <RadioMenuFlyoutItem x:Name="LightThemeOption" Text="浅色" Tag="Light" Click="ChangeTheme" />
+                                        <RadioMenuFlyoutItem x:Name="DarkThemeOption" Text="深色" Tag="Dark" Click="ChangeTheme" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
                             </Button>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="9" Margin="10,11,0,0" Height="32">
@@ -132,10 +143,11 @@
                 </StackPanel.RenderTransform>
                 <Button x:Name="SidebarToggleButton" Click="ToggleSidebar" Style="{StaticResource LibraryIconButton}"
                         AutomationProperties.Name="收起侧边栏" ToolTipService.ToolTip="收起侧边栏">
-                    <Grid Width="18" Height="16">
-                        <Border BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="1" CornerRadius="2" />
-                        <Rectangle Width="4" HorizontalAlignment="Left" Margin="2,2" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <FontIcon x:Name="SidebarToggleGlyph" Glyph="&#xE76B;" FontSize="8" Margin="5,0,0,0" />
+                    <Grid Width="16" Height="12">
+                        <Border BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="1.25" CornerRadius="2.5" />
+                        <Rectangle x:Name="SidebarToggleDivider" Width="1.25" Height="12" RadiusX="0.625" RadiusY="0.625"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4.5,0,0,0"
+                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
                 </Button>
                 <Button x:Name="ImportButton" Click="ChooseSource" Style="{StaticResource LibraryIconButton}"
@@ -196,6 +208,10 @@
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
+                                <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
+                                        AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                </Button>
                                 <Button x:Name="AlbumPickerButton" Click="PickAlbumMedia" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="添加媒体" ToolTipService.ToolTip="添加媒体" Visibility="Collapsed">
                                     <FontIcon Glyph="&#xE710;" FontSize="14" />
@@ -251,11 +267,6 @@
                                         </ResourceDictionary.ThemeDictionaries>
                                     </ResourceDictionary>
                                 </StackPanel.Resources>
-                                <ToggleButton x:Name="IconModeButton" IsChecked="True" Click="ChangeBrowseMode"
-                                              Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
-                                              ToolTipService.ToolTip="图标（Ctrl+3）">
-                                    <FontIcon Glyph="&#xE8A9;" FontSize="13" />
-                                </ToggleButton>
                                 <ToggleButton x:Name="ListModeButton" Click="ChangeBrowseMode"
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="列表"
                                               ToolTipService.ToolTip="列表（Ctrl+1）">
@@ -265,6 +276,11 @@
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="画廊"
                                               ToolTipService.ToolTip="画廊（Ctrl+2）">
                                     <FontIcon Glyph="&#xE91B;" FontSize="13" />
+                                </ToggleButton>
+                                <ToggleButton x:Name="IconModeButton" Click="ChangeBrowseMode"
+                                              Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
+                                              ToolTipService.ToolTip="图标（Ctrl+3）">
+                                    <FontIcon Glyph="&#xE8A9;" FontSize="13" />
                                 </ToggleButton>
                             </StackPanel>
                         </Border>
@@ -354,11 +370,12 @@
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </Grid>
                         </Border>
+                        <!-- ListView navigation scrolls to the row itself. Skip the ScrollViewer's extra focus margin. -->
                         <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
                                   SingleSelectionFollowsFocus="True"
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
-                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                     <Setter Property="Padding" Value="0" />
@@ -497,13 +514,38 @@
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Button x:Name="EmptyAlbumAddButton" Click="PickAlbumMedia" AutomationProperties.Name="添加媒体"
                                 ToolTipService.ToolTip="添加媒体" Style="{StaticResource LibrarySubtleButton}"
-                                HorizontalAlignment="Center" Padding="4">
+                                HorizontalAlignment="Center" Padding="4" BorderThickness="1.5">
+                            <Button.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.ThemeDictionaries>
+                                        <ResourceDictionary x:Key="Default">
+                                            <StaticResource x:Key="SubtleButtonForeground" ResourceKey="TextFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPointerOver" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPressed" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="SubtleButtonBackgroundPressed" ResourceKey="ControlAltFillColorQuarternaryBrush" />
+                                            <StaticResource x:Key="SubtleButtonForegroundPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="Light">
+                                            <StaticResource x:Key="SubtleButtonForeground" ResourceKey="TextFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPointerOver" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPressed" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="SubtleButtonBackgroundPressed" ResourceKey="ControlAltFillColorQuarternaryBrush" />
+                                            <StaticResource x:Key="SubtleButtonForegroundPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="HighContrast">
+                                            <StaticResource x:Key="SubtleButtonForeground" ResourceKey="SystemColorButtonTextColorBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPointerOver" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="SubtleButtonBorderBrushPressed" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="SubtleButtonBackgroundPressed" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="SubtleButtonForegroundPressed" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                        </ResourceDictionary>
+                                    </ResourceDictionary.ThemeDictionaries>
+                                </ResourceDictionary>
+                            </Button.Resources>
                             <Grid Width="66" Height="66">
-                                <FontIcon Glyph="&#xE8B7;" FontSize="40" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <Border Width="25" Height="25" CornerRadius="13" Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                    <FontIcon Glyph="&#xE710;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                                </Border>
+                                <FontIcon Glyph="&#xE8B7;" FontSize="40" />
+                                <FontIcon Glyph="&#xE710;" FontSize="15"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0" />
                             </Grid>
                         </Button>
                         <TextBlock Text="合集为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
@@ -588,7 +630,7 @@
                                     <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Location}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                        <TextBlock Text="{Binding Details}" FontSize="12" TextTrimming="CharacterEllipsis"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                 </Grid>
@@ -636,7 +678,7 @@
             </Border>
         </Grid>
 
-        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent" RequestedTheme="Dark"
+        <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent"
               PreviewKeyDown="PreviewKeyDown" TabFocusNavigation="Cycle">
             <Grid.Resources>
                 <Style x:Key="PreviewFlatButton" TargetType="Button">
@@ -660,10 +702,15 @@
                             AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
-                    <TextBlock x:Name="PreviewTitle" Margin="52,0" TextTrimming="CharacterEllipsis" TextAlignment="Center"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                               DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名"
-                               AutomationProperties.HelpText="双击复制文件名" />
+                    <Grid Margin="52,0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                          DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
+                        <TextBlock x:Name="PreviewTitle" TextTrimming="CharacterEllipsis" TextAlignment="Center"
+                                   FontWeight="SemiBold" AutomationProperties.HelpText="双击复制文件名" />
+                        <StackPanel x:Name="PreviewCopyFeedback" Visibility="Collapsed" Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE73E;" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="已复制" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
@@ -686,12 +733,14 @@
                                Opacity=".20" Stretch="UniformToFill" />
                         <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Width="72" Height="28"
                                Opacity=".20" Stretch="UniformToFill" />
-                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1" Background="#0C1317" CornerRadius="8">
+                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
                             <Grid>
                                 <Image x:Name="MainImage" Stretch="Uniform" />
                                 <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
                                                     IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
-                                <TextBlock x:Name="PreviewError" Visibility="Collapsed" Foreground="#F0CEAE"
+                                <TextBlock x:Name="PreviewError" Visibility="Collapsed"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                            TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Margin="22" />
                             </Grid>
@@ -718,7 +767,8 @@
                 <StackPanel Grid.Row="2" Spacing="3">
                     <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
                                     HorizontalContentAlignment="Stretch" MaxWidth="680">
-                        <Grid Background="#253034" CornerRadius="20" Padding="10,3" ColumnSpacing="7">
+                        <Grid Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                              CornerRadius="20" Padding="10,3" ColumnSpacing="7">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -734,20 +784,23 @@
                                     Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="播放或暂停" />
                             <Button x:Name="VideoForward" Grid.Column="2" Content="+15 秒" Click="SeekVideoForward"
                                     Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="前进 15 秒" />
-                            <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                            <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
                                     VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
-                            <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center" Foreground="#D2DEDE" />
+                            <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <ToggleButton x:Name="VideoLock" Grid.Column="6" Click="ToggleVideoLock"
                                           Content="未锁定" AutomationProperties.Name="锁定视频预览"
                                           ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
                         </Grid>
                     </ContentControl>
                     <Grid>
-                        <TextBlock x:Name="PreviewHint" Foreground="#BCCBCB" Margin="65,0" VerticalAlignment="Center"
+                        <TextBlock x:Name="PreviewHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Margin="65,0" VerticalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
                         <TextBlock x:Name="IndexLabel" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="#B6C4C5" FontSize="12" />
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
                     </Grid>
                 </StackPanel>
             </Grid>

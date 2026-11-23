@@ -78,10 +78,12 @@ extension View {
 struct MediaPreview: View {
     let session: PreviewSession
     let thumbnail: (Int64) -> PreviewThumbnail?
-    let close: (Int64) -> Void
+    let prepareToClose: (Int64, Bool) -> Void
+    let close: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var expanded = false
+    @ViewState private var closingThumbnail: PreviewThumbnail?
     @ViewState private var video = VideoPlayback()
     @ViewState private var videoLocked = false
     @ViewState private var scrubPosition: Double?
@@ -104,7 +106,8 @@ struct MediaPreview: View {
             let bottomInset: CGFloat = media.kind == .video ? 86 : 30
             let destination = CGRect(x: sideInset, y: topInset, width: max(0, size.width - 2 * sideInset),
                                      height: max(0, size.height - topInset - bottomInset))
-            let source = reduceMotion ? nil : thumbnail(session.closingSelection ?? session.selection)
+            let origin = session.closingSelection == nil ? thumbnail(session.selection) : closingThumbnail
+            let source = reduceMotion ? nil : origin
             let displayedThumbnail = thumbnail(media.id)
             ZStack {
                 Color.clear
@@ -121,7 +124,6 @@ struct MediaPreview: View {
                 PreviewStage(progress: expanded || reduceMotion ? 1 : 0, source: source, destination: destination,
                              aspectRatio: displayedThumbnail?.aspectRatio) {
                     stage(poster: displayedThumbnail?.image)
-                        .id(media.id)
                 }
                 .opacity(expanded || source != nil ? 1 : 0)
                 .accessibilityLabel(media.name)
@@ -184,10 +186,12 @@ struct MediaPreview: View {
 
     private func dismiss(returningTo selection: Int64) {
         video.player.pause()
+        closingThumbnail = thumbnail(selection)
+        prepareToClose(selection, closingThumbnail != nil)
         withAnimation(transitionAnimation, completionCriteria: .logicallyComplete) {
             expanded = false
         } completion: {
-            close(selection)
+            close()
         }
     }
 
@@ -241,8 +245,6 @@ struct MediaPreview: View {
                             Image(decorative: poster, scale: 1)
                                 .resizable()
                                 .scaledToFit()
-                        } else {
-                            Color.black
                         }
                     }
             }
@@ -412,16 +414,40 @@ struct MediaPreview: View {
 
 private struct PreviewTitleBar: View {
     let session: PreviewSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewState private var feedback: CopyFeedback?
+
+    private struct CopyFeedback: Equatable {
+        let mediaID: Int64
+        let token = UUID()
+    }
+
+    private var didCopy: Bool { feedback?.mediaID == session.media.id }
 
     var body: some View {
-        Text(session.media.name)
+        Group {
+            if didCopy {
+                Label("已复制", systemImage: "checkmark.circle.fill")
+                    .transition(.opacity)
+            } else {
+                Text(session.media.name)
+                    .transition(.opacity)
+            }
+        }
             .font(.callout.weight(.semibold))
             .lineLimit(1)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: didCopy)
             .contentShape(Rectangle())
             .onTapGesture(count: 2, perform: copyFilename)
             .accessibilityAddTraits(.isHeader)
             .accessibilityAction(named: Text("复制文件名"), copyFilename)
             .help("双击复制文件名")
+            .onChange(of: session.media.id) { _, _ in feedback = nil }
+            .task(id: feedback) {
+                guard let feedback else { return }
+                try? await Task.sleep(for: .seconds(1.2))
+                if !Task.isCancelled, self.feedback == feedback { self.feedback = nil }
+            }
             .padding(.horizontal, 58)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.regularMaterial)
@@ -445,9 +471,13 @@ private struct PreviewTitleBar: View {
     }
 
     private func copyFilename() {
+        guard session.closingSelection == nil else { return }
+        let media = session.media
         let clipboard = NSPasteboard.general
         clipboard.clearContents()
-        clipboard.setString(session.media.name, forType: .string)
+        if clipboard.setString(media.name, forType: .string), media.kind == .image {
+            feedback = CopyFeedback(mediaID: media.id)
+        }
     }
 }
 

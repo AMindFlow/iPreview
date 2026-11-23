@@ -78,12 +78,9 @@ public sealed partial class MainWindow
             Root.UpdateLayout();
             var stage = BoundsInRoot(PreviewStage);
             var poster = thumbnail.Image;
-            if (!opening)
-            {
-                var shown = MainImage.Source as BitmapImage ?? ThumbnailOf(previewTiles[previewIndex].Media.Id)?.Image;
-                if (shown is { PixelWidth: > 0, PixelHeight: > 0 })
-                    poster = shown;
-            }
+            if (!opening && previewImageGeneration == previewGeneration &&
+                MainImage.Source is BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } shown)
+                poster = shown;
             var ratio = (double)poster.PixelWidth / poster.PixelHeight;
             var fitted = MediaBounds(stage, ratio, fill: false);
             var filled = MediaBounds(thumbnail.Bounds, ratio, fill: true);
@@ -125,6 +122,20 @@ public sealed partial class MainWindow
             pending?.Invoke();
         };
         batch.End();
+    }
+
+    private void AnimatePreviewCopyFeedback()
+    {
+        if (!new UISettings().AnimationsEnabled)
+            return;
+
+        var compositor = ElementCompositionPreview.GetElementVisual(PreviewCopyFeedback).Compositor;
+        var animation = compositor.CreateScalarKeyFrameAnimation();
+        animation.Target = "Opacity";
+        animation.Duration = TimeSpan.FromMilliseconds(120);
+        animation.InsertKeyFrame(0, 0f);
+        animation.InsertKeyFrame(1, 1f);
+        PreviewCopyFeedback.StartAnimation(animation);
     }
 
     private void StartMediaAnimation(Compositor compositor, CompositionEasingFunction easing, TimeSpan duration,

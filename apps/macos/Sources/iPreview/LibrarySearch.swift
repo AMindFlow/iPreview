@@ -102,9 +102,6 @@ struct LibrarySearchPanel: View {
             await Task.yield()
             if !Task.isCancelled { focus.wrappedValue = .searchQuery }
         }
-        .onChange(of: isPreviewing) { _, previewing in
-            if !previewing { focus.wrappedValue = .searchResults }
-        }
         .onChange(of: closingPreviewSelection) { _, mediaID in
             if let mediaID, let result = results.first(where: {
                 if case .file(let item) = $0 { return item.id == mediaID }
@@ -302,7 +299,7 @@ struct LibrarySearchPanel: View {
                     Text(result.name)
                         .font(.callout.weight(isSelected ? .semibold : .regular))
                         .lineLimit(1)
-                    Text(result.path)
+                    Text(result.details)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -406,10 +403,20 @@ private extension GlobalSearchResult {
         }
     }
 
+    var details: String {
+        switch category {
+        case .creator: "创作者 · \(path)"
+        case .album: "专辑 · \(path)"
+        case .file, .directory: path
+        }
+    }
+
     var symbol: String {
-        switch self {
-        case .directory: "folder"
-        case .file(let item): item.kind == .video ? "film" : "photo"
+        switch (self, category) {
+        case (.file(let item), _): item.kind == .video ? "film" : "photo"
+        case (_, .creator): "person.crop.square"
+        case (_, .album): "photo.on.rectangle"
+        case (.directory, _): "folder"
         }
     }
 }

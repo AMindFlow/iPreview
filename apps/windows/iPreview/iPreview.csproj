@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -24,6 +24,8 @@
                       LogicalName="iPreview.Migrations.001-initial.sql" />
     <EmbeddedResource Include="..\..\..\shared\migrations\002-pending-rename.sql"
                       LogicalName="iPreview.Migrations.002-pending-rename.sql" />
+    <EmbeddedResource Include="..\..\..\shared\migrations\003-album-organization.sql"
+                      LogicalName="iPreview.Migrations.003-album-organization.sql" />
   </ItemGroup>
   <!-- Windows App SDK omits app XAML resources from unpackaged publish (#6720). -->
   <Target Name="IncludeWinUIResourcesInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">

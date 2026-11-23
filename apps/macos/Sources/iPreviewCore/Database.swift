@@ -12,6 +12,7 @@ struct SQLiteError: LocalizedError {
 enum SQLiteValue {
     case integer(Int64)
     case text(String)
+    case null
 }
 
 final class Database {
@@ -106,6 +107,8 @@ final class Database {
                 try check(sqlite3_bind_int64(statement, position, integer))
             case .text(let text):
                 try check(sqlite3_bind_text(statement, position, text, -1, copySQLiteText))
+            case .null:
+                try check(sqlite3_bind_null(statement, position))
             }
         }
     }
