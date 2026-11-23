@@ -143,10 +143,11 @@
                 </StackPanel.RenderTransform>
                 <Button x:Name="SidebarToggleButton" Click="ToggleSidebar" Style="{StaticResource LibraryIconButton}"
                         AutomationProperties.Name="收起侧边栏" ToolTipService.ToolTip="收起侧边栏">
-                    <Grid Width="18" Height="16">
-                        <Border BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="1" CornerRadius="2" />
-                        <Rectangle Width="4" HorizontalAlignment="Left" Margin="2,2" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <FontIcon x:Name="SidebarToggleGlyph" Glyph="&#xE76B;" FontSize="8" Margin="5,0,0,0" />
+                    <Grid Width="16" Height="12">
+                        <Border BorderBrush="{ThemeResource TextFillColorSecondaryBrush}" BorderThickness="1.25" CornerRadius="2.5" />
+                        <Rectangle x:Name="SidebarToggleDivider" Width="1.25" Height="12" RadiusX="0.625" RadiusY="0.625"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4.5,0,0,0"
+                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
                 </Button>
                 <Button x:Name="ImportButton" Click="ChooseSource" Style="{StaticResource LibraryIconButton}"
