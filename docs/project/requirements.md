@@ -1,6 +1,6 @@
 # iPreview 完整需求
 
-iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流、图片、常见视频和音频、多工作区、旧库迁移与媒体元信息。桌面交付范围分别记录在 [0.1.0](releases/0.1.0.md) 和 [0.2.0](releases/0.2.0.md)。
+iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流、图片、常见视频和音频、多工作区、旧库迁移与媒体元信息。桌面交付范围分别记录在 [0.1.0](releases/0.1.0.md) 和 [0.2.0](releases/0.2.0.md)。 [0.3.0 版本登记](releases/0.3.0.md)汇总 [#75](https://github.com/AMindFlow/iPreview/issues/75) 与用户指定的首版延续需求。
 
 - [原始需求快照](requirements-original.md)保存用户提供的最初文档；其中路径与旧产品名称属于原文。下表逐项映射原始范围。
 - [一期验收登记册](releases/0.1.0.md)登记已交付功能、后续细化及 PR，实际行为由 `official/` 规格定义。
