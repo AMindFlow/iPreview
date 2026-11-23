@@ -32,6 +32,7 @@ struct CatalogChecks {
         }
 
         try checkLayouts()
+        try await checkNativeVideoFormats()
         try await checkPersistence()
         try await checkOrderingAndBatchReferenceRemoval()
         try await checkAlbumDeletion()
@@ -63,6 +64,24 @@ struct CatalogChecks {
         try verify(inspection.candidates[0].entries.map(\.relativePath) == ["Existing/01.JPG"])
         try verify(Set(inspection.candidates[1].entries.map(\.relativePath)) == ["北京/旅行/10.png", "北京/旅行/2.MOV"])
         try verify(inspection.candidates[1].albumCount == 1)
+    }
+
+    static func checkNativeVideoFormats() async throws {
+        let fixtures = try Fixtures()
+        let source = fixtures.directory("Video")
+        for name in ["clip.TS", "clip.ts.mov", "clip.mkv", "clip.webm", "clip.avi"] {
+            try fixtures.file("Video/" + name)
+        }
+        let inspection = try SourceScanner.inspect(source, dataDirectory: fixtures.databaseDirectory)
+        let candidate = try required(inspection.candidates.first)
+        try verify(Set(candidate.entries.map(\.relativePath)) == ["clip.TS", "clip.ts.mov"])
+        try verify(candidate.entries.allSatisfy { $0.kind == .video })
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: source, candidate: candidate)
+        let library = try await catalog.snapshot()
+        let index = SearchIndex(media: library.media, sources: library.sources)
+        let found = index.search("clip.ts", mode: .exact, directories: false, files: true)
+        try verify(found.map(\.name) == ["clip.TS"])
     }
 
     static func checkPersistence() async throws {
