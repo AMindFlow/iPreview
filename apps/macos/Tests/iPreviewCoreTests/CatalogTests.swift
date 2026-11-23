@@ -173,6 +173,11 @@ struct CatalogChecks {
         try await reopened.update(source: source, entries: SourceScanner.rescan(source))
         let recovered = try await reopened.sourceAlbumOrganization(for: album)
         try verify(recovered.effectiveCoverIDs == [9, 8])
+        try fixtures.file("Source/Maker/Album/Later.png")
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let upgraded = try await reopened.snapshot()
+        let added = try required(upgraded.media.first { $0.name == "Later.png" })
+        try verify(added.id > 11 && upgraded.albums.first?.mediaIDs == [11, 8])
         try await reopened.markUnavailable(source: source)
         let offline = try await reopened.sourceAlbumOrganization(for: album)
         try verify(offline.configuredCoverIDs == [9, 8] && offline.effectiveCoverIDs.isEmpty)
@@ -401,7 +406,7 @@ struct CatalogChecks {
         try fixtures.file("Kept/one.png")
         try fixtures.file("Kept/two.png")
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
-        for name in ["Removed", "Kept"] {
+        for name in ["Kept", "Removed"] {
             let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
             try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
         }
@@ -434,6 +439,15 @@ struct CatalogChecks {
         try verify(remainingTagged.isEmpty)
         let preserved = try Data(contentsOf: path)
         try verify(preserved == contents)
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let inspection = try SourceScanner.inspect(fixtures.directory("Removed"), dataDirectory: fixtures.databaseDirectory)
+        try await reopened.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        let reimported = try await reopened.snapshot()
+        let newSource = try required(reimported.sources.first { $0.name == removed.name })
+        let newMedia = try required(reimported.media.first { $0.source.id == newSource.id })
+        try verify(newSource.id > removed.id && newMedia.id > item.id && newMedia.relativePath == item.relativePath)
+        try verify(reimported.albums.first { $0.id == collection }?.mediaIDs == Array(kept))
     }
 
     static func checkAlbumDeletion() async throws {
@@ -513,6 +527,9 @@ struct CatalogChecks {
 
         // Reopen a populated version 1 database and retain all IDs and virtual references.
         try fixtures.sql("""
+            DROP TRIGGER remember_source_id;
+            DROP TRIGGER remember_media_id;
+            DROP TABLE catalog_identity_sequence;
             DROP TABLE video_work_images;
             DROP TABLE video_works;
             DROP TABLE source_album_cover_media;

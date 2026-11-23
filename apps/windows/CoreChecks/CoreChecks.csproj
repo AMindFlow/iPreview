@@ -16,5 +16,7 @@
                       LogicalName="iPreview.Migrations.003-album-organization.sql" />
     <EmbeddedResource Include="../../../shared/migrations/004-video-works.sql"
                       LogicalName="iPreview.Migrations.004-video-works.sql" />
+    <EmbeddedResource Include="../../../shared/migrations/005-source-media-identities.sql"
+                      LogicalName="iPreview.Migrations.005-source-media-identities.sql" />
   </ItemGroup>
 </Project>
