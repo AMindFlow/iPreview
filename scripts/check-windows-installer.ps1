@@ -49,6 +49,7 @@ $userFile = Join-Path $install 'user-created-sentinel.txt'
 Set-Content -LiteralPath $userFile -Value 'not owned by the installer'
 $userFileHash = (Get-FileHash -LiteralPath $userFile -Algorithm SHA256).Hash
 Set-Content -LiteralPath (Join-Path $install 'Assets\AppIcon.ico') -Value 'synthetic damaged installed asset'
+Set-Content -LiteralPath (Join-Path $install 'LibVLC\libvlc.dll') -Value 'synthetic damaged playback library'
 Run-Setup 'upgrade.log'
 Check-Payload
 
@@ -57,6 +58,9 @@ $process = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '
 if ($process.ExitCode -ne 0) { throw "Uninstallation failed with exit code $($process.ExitCode)" }
 if ((Test-Path -LiteralPath (Join-Path $install 'iPreview.exe')) -or (Test-Path -LiteralPath $shortcutPath) -or (Test-Path -LiteralPath $uninstallKey)) {
     throw 'Uninstallation left the application, shortcut or uninstall registration behind'
+}
+if (Test-Path -LiteralPath (Join-Path $install 'LibVLC')) {
+    throw 'Uninstallation left the LibVLC runtime behind'
 }
 if ((Get-FileHash -LiteralPath $catalog -Algorithm SHA256).Hash -ne $catalogHash -or
     (Get-FileHash -LiteralPath $userFile -Algorithm SHA256).Hash -ne $userFileHash) {
