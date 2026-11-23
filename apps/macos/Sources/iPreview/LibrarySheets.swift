@@ -48,7 +48,10 @@ struct ImportSheet: View {
     }
 
     private func summary(_ candidate: ImportCandidate) -> String {
-        "\(candidate.layout.title) · \(candidate.albumCount) 个专辑，\(candidate.entries.count) 项"
+        if candidate.layout == .flat && candidate.videoWorkCount > 0 {
+            return "视频作品 · \(candidate.entries.count) 项"
+        }
+        return "\(candidate.layout.title) · \(candidate.albumCount) 个专辑，\(candidate.entries.count) 项"
     }
 }
 

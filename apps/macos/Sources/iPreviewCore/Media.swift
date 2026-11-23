@@ -6,6 +6,14 @@ public enum Layout: String, Sendable, CaseIterable, Identifiable {
 
     public var id: Self { self }
 
+    public var albumDepth: Int {
+        switch self {
+        case .flat: 0
+        case .creator: 1
+        case .multiCreator: 2
+        }
+    }
+
     public var title: String {
         switch self {
         case .flat: "单个专辑"
@@ -49,8 +57,9 @@ public struct Media: Sendable, Identifiable, Hashable {
     public var name: String { components.last! }
     public var directories: [String] { [source.name] + components.dropLast() }
 
-    public var creator: String { components.count == 3 ? components[0] : source.name }
-    public var album: String { components.dropLast().last ?? source.name }
+    public var creator: String { source.layout == .multiCreator ? components[0] : source.name }
+    var albumComponents: ArraySlice<String> { components.dropLast().prefix(source.layout.albumDepth) }
+    public var album: String { albumComponents.last ?? source.name }
 
     /// Resolve a live path without accepting symlink redirection added since the scan.
     public func readableURL() throws -> URL {
@@ -89,8 +98,9 @@ public struct LibrarySnapshot: Sendable {
     public let media: [Media]
     public let albums: [VirtualAlbum]
     public let dataVersion: Int64
+    public let videoWorks: [IndexedVideoWork]
 
-    public static let empty = Self(sources: [], media: [], albums: [], dataVersion: 0)
+    public static let empty = Self(sources: [], media: [], albums: [], dataVersion: 0, videoWorks: [])
 }
 
 func compareNaturally(_ lhs: String, _ rhs: String) -> ComparisonResult {

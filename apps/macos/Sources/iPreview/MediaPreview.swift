@@ -4,7 +4,9 @@ import iPreviewCore
 
 @Observable
 final class PreviewSession {
-    let items: [Media]
+    let originalItems: [Media]
+    private(set) var items: [Media]
+    var sort = MediaSort()
     let selection: Int64
     let layout: BrowseLayout
     var index: Int
@@ -13,10 +15,17 @@ final class PreviewSession {
     var media: Media { items[index] }
 
     init(items: [Media], selection: Int64, layout: BrowseLayout) {
+        originalItems = items
         self.items = items
         self.selection = selection
         self.layout = layout
         index = items.firstIndex { $0.id == selection }!
+    }
+
+    func applyOrder(_ ordered: [Media]) {
+        let currentID = media.id
+        items = ordered
+        index = ordered.firstIndex { $0.id == currentID }!
     }
 
     func dismiss() {
@@ -425,6 +434,7 @@ private struct PreviewTitleBar: View {
     private var didCopy: Bool { feedback?.mediaID == session.media.id }
 
     var body: some View {
+        @Bindable var session = session
         Group {
             if didCopy {
                 Label("已复制", systemImage: "checkmark.circle.fill")
@@ -467,6 +477,16 @@ private struct PreviewTitleBar: View {
                 .accessibilityLabel("关闭预览")
                 .help("关闭预览（Esc）")
                 .padding(.leading, 12)
+            }
+            .overlay(alignment: .trailing) {
+                MediaSortMenu(sort: $session.sort)
+                    .disabled(session.items.count < 2 || session.closingSelection != nil)
+                    .padding(.trailing, 12)
+            }
+            .task(id: session.sort) {
+                let request = MediaSortRequest(items: session.originalItems, sort: session.sort)
+                let ordered = await request.ordered()
+                if !Task.isCancelled, session.closingSelection == nil { session.applyOrder(ordered) }
             }
     }
 

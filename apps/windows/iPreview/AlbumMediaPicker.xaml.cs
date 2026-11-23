@@ -22,13 +22,20 @@ public sealed partial class AlbumMediaPicker : UserControl
     private readonly Func<Media, Task<BitmapImage?>> thumbnail;
     private bool changingSelection;
     private CancellationTokenSource? albumCheck;
+    private readonly MediaSortSession candidateSort = new();
+    private List<Candidate> readableCandidates = [];
 
     internal AlbumMediaPicker(IEnumerable<Media> available, IEnumerable<long> existing,
                               Func<Media, Task<BitmapImage?>> thumbnailLoader)
     {
         thumbnail = thumbnailLoader;
         InitializeComponent();
-        Unloaded += (_, _) => albumCheck?.Cancel();
+        Unloaded += (_, _) =>
+        {
+            albumCheck?.Cancel();
+            candidateSort.Cancel();
+        };
+        MediaSortMenu.Attach(CandidateSortButton, () => candidateSort.Order, ChooseCandidateSort);
         var existingIDs = existing.ToHashSet();
         var groups = MediaSearch.ByPath(available.Where(item => item.Available))
             .GroupBy(item => (item.Source.Id, Creator: item.Source.Layout == Layout.MultiCreator
@@ -38,9 +45,9 @@ public sealed partial class AlbumMediaPicker : UserControl
             var source = group.First().Source;
             var label = source.Layout == Layout.MultiCreator
                 ? $"{group.Key.Creator} · {source.Name}" : source.Name;
-            var folders = group.GroupBy(item => item.RelativePath[..(item.RelativePath.LastIndexOf('/') + 1)])
+            var folders = group.GroupBy(item => SourceAlbumKey.FromMedia(item).RelativePath)
                 .Select(folder => new FolderOption(
-                    source.Layout == Layout.Flat ? source.Name : folder.Key.TrimEnd('/').Split('/')[^1],
+                    source.Layout == Layout.Flat ? source.Name : folder.Key.Split('/')[^1],
                     folder.Where(item => !existingIDs.Contains(item.Id)).Select(item => new Candidate(item)).ToList()));
             return new CreatorOption(label, source.Path, folders.ToList());
         }).ToList();
@@ -87,6 +94,8 @@ public sealed partial class AlbumMediaPicker : UserControl
     {
         albumCheck?.Cancel();
         albumCheck = null;
+        candidateSort.Cancel();
+        readableCandidates = [];
         ShowCandidates(null);
 
         if (album is null)
@@ -113,8 +122,10 @@ public sealed partial class AlbumMediaPicker : UserControl
             });
             if (check.IsCancellationRequested || !ReferenceEquals(albumCheck, check))
                 return;
-            ShowCandidates(readable);
-            CandidateStatus.Text = "此专辑没有可添加的媒体";
+            readableCandidates = readable;
+            await ApplyCandidateSort();
+            if (ReferenceEquals(albumCheck, check))
+                CandidateStatus.Text = "此专辑没有可添加的媒体";
         }
         catch (OperationCanceledException) when (check.IsCancellationRequested) { }
         finally
@@ -122,6 +133,22 @@ public sealed partial class AlbumMediaPicker : UserControl
             if (ReferenceEquals(albumCheck, check))
                 albumCheck = null;
         }
+    }
+
+    private async void ChooseCandidateSort(MediaSort order)
+    {
+        if (candidateSort.Order == order)
+            return;
+        candidateSort.Order = order;
+        await ApplyCandidateSort();
+    }
+
+    private async Task ApplyCandidateSort()
+    {
+        var original = readableCandidates;
+        var ordered = await candidateSort.ArrangeAsync(original, candidate => candidate.Media);
+        if (ordered is not null && ReferenceEquals(original, readableCandidates))
+            ShowCandidates(ordered);
     }
 
     private void ShowCandidates(List<Candidate>? items)
@@ -217,6 +244,7 @@ public sealed partial class AlbumMediaPicker : UserControl
     {
         StagedHeading.Text = $"待添加 · {staged.Count} 项";
         QueueEmpty.Visibility = staged.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CandidateSortButton.IsEnabled = Candidates.Items.Count != 0;
         SelectAllButton.IsEnabled = Candidates.SelectedItems.Count < Candidates.Items.Count;
         CanAddChanged?.Invoke(staged.Count != 0);
     }

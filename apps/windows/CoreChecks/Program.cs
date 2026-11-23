@@ -23,6 +23,7 @@ Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
+    CheckMediaSort(work);
     var creator = Path.Combine(work, "北京");
     var mixed = Path.Combine(work, "catalog");
     var flat = Path.Combine(work, "flat");
@@ -198,6 +199,9 @@ try
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
     CheckSourceAlbumOrganization(work);
+    CheckSourceDeletion(work);
+    CheckVideoWorks(work);
+    CheckVideoWorkIndex(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -217,6 +221,51 @@ static void Check(bool result, string name)
 {
     if (!result)
         throw new InvalidOperationException("Core check failed: " + name);
+}
+
+static void CheckSourceDeletion(string work)
+{
+    var removedPath = Path.Combine(work, "removed-source");
+    var keptPath = Path.Combine(work, "kept-source");
+    AddFile(removedPath, "photo.png");
+    AddFile(keptPath, "one.png");
+    AddFile(keptPath, "two.png");
+    var data = Path.Combine(work, "removal-catalog");
+    using var catalog = new Catalog(data);
+    var kept = catalog.Import(keptPath, Layout.Flat, MediaFiles.Scan(keptPath, Layout.Flat));
+    var removed = catalog.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var media = catalog.Read().Media;
+    var removedItem = media.Single(item => item.Source.Id == removed);
+    var keptItems = media.Where(item => item.Source.Id == kept).Select(item => item.Id).Reverse().ToArray();
+    var collection = catalog.CreateAlbum("Shared");
+    catalog.AppendToAlbum(collection, [keptItems[0], removedItem.Id, keptItems[1]]);
+    var tag = catalog.AddAlbumTag("Shared Tag", new(removed, ""));
+    catalog.Rescan(removed, null);
+
+    var stale = catalog.Read();
+    using var otherWindow = new Catalog(data);
+    otherWindow.CreateAlbum("Other");
+    Reject<SourceDeletionChangedException>(() => catalog.DeleteSource(removed, stale.DataVersion),
+        "a stale source deletion is rejected");
+    var current = catalog.Read();
+    Check(current.Sources.ContainsKey(removed), "a rejected deletion preserves the offline source");
+    catalog.DeleteSource(removed, current.DataVersion);
+
+    var after = otherWindow.Read();
+    Check(after.Sources.Keys.SequenceEqual([kept]) && after.Media.Count == 2, "only the removed source is unindexed");
+    Check(after.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "shared album keeps remaining members in order");
+    Check(otherWindow.ReadSourceAlbumsForTag(tag.Id).Count == 0, "removed source no longer matches tags");
+    Check(File.ReadAllText(Path.Combine(removedPath, "photo.png")) == "fixture", "removing a source preserves the file");
+
+    using var reopened = new Catalog(data);
+    var reimported = reopened.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var restored = reopened.Read();
+    var newMedia = restored.Media.Single(item => item.Source.Id == reimported);
+    Check(reimported > removed && newMedia.Id > removedItem.Id && newMedia.RelativePath == removedItem.RelativePath,
+        "reimporting the same path after restart allocates new source and media identities");
+    Check(restored.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "reimport does not restore removed album references");
 }
 
 static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long[] memberIds)
@@ -359,6 +408,12 @@ static void CheckSourceAlbumOrganization(string work)
     File.Move(outside, coverPath);
     reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
     Check(reopened.ReadSourceAlbumOrganization(album).EffectiveCoverIds.SequenceEqual([9L, 8L]), "returned cover restores order");
+    AddFile(sourcePath, "Maker/Album/Later.png");
+    reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+    var upgraded = reopened.Read();
+    Check(upgraded.Media.Single(item => item.FileName == "Later.png").Id > 11 &&
+        upgraded.AlbumMembers[20].Select(item => item.Id).SequenceEqual([11L, 8L]),
+        "migration keeps existing identities and appends new ones");
     reopened.Rescan(4, null);
     var offline = reopened.ReadSourceAlbumOrganization(album);
     Check(offline.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && offline.EffectiveCoverIds.Count == 0, "offline cover configuration persists");
@@ -370,6 +425,114 @@ static void CheckSourceAlbumOrganization(string work)
     Check(reopened.ReadAlbumTags().SequenceEqual([scenic]) && reopened.ReadSourceAlbumsForTag(trip.Id).Count == 0, "global delete removes links");
     var cleared = reopened.ReadSourceAlbumOrganization(album);
     Check(cleared.Favorite && cleared.RatingHalf is null, "clearing rating preserves favorite");
+}
+
+static void CheckVideoWorks(string root)
+{
+    foreach (var path in new[]
+    {
+        "Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg",
+        "Complete/附加写真集/写真集 10/封面.png", "Complete/附加写真集/写真集 10/图片.png",
+        "Complete/附加写真集/写真集 2/封面.jpg", "Complete/附加写真集/写真集 2/图片.png",
+        "Compact/影片.MOV", "Compact/官方样张.jpg", "Compact/其他.jpg",
+        "Compact/附加写真集/图片 10.png", "Compact/附加写真集/图片 2.png",
+        "Ordinary/影片.mp4", "Ordinary/其他.jpg",
+    })
+        AddFile(root, path);
+
+    var completeRoot = Path.Combine(root, "Complete");
+    AddFile(completeRoot, "视频/.隐藏.mp4");
+    if (MediaFiles.ProbeVideoWork(completeRoot) is not VideoWorkRecognition.Recognized(var work))
+        throw new InvalidOperationException("Core check failed: complete video work");
+    Check(work.Structure == VideoWorkStructure.Complete && work.Video.RelativePath == "视频/影片.mp4", "complete work video");
+    Check(work.Samples.Select(media => media.RelativePath).SequenceEqual(["官方样张/样张.jpg"]), "complete work samples");
+    Check(work.PhotoSets.Select(book => book.RelativePath).SequenceEqual(["附加写真集/写真集 2", "附加写真集/写真集 10"]),
+        "complete work photo sets");
+    Check(work.PhotoSets[0].Cover?.RelativePath == "附加写真集/写真集 2/封面.jpg" &&
+        work.PhotoSets[1].Photos.Select(media => media.RelativePath).SequenceEqual(["附加写真集/写真集 10/图片.png"]),
+        "complete work cover and photos");
+
+    var compactRoot = Path.Combine(root, "Compact");
+    if (MediaFiles.ProbeVideoWork(compactRoot) is not VideoWorkRecognition.Recognized(var flat))
+        throw new InvalidOperationException("Core check failed: compact video work");
+    Check(flat.Structure == VideoWorkStructure.Compact && flat.Video.RelativePath == "影片.MOV", "compact work video");
+    Check(flat.Samples.Select(media => media.RelativePath).SequenceEqual(["官方样张.jpg"]), "compact work samples");
+    var compactBook = flat.PhotoSets.Single();
+    Check(compactBook.Cover is null && compactBook.Photos.Select(media => media.RelativePath)
+        .SequenceEqual(["附加写真集/图片 2.png", "附加写真集/图片 10.png"]), "compact work flat photo set");
+
+    var ordinary = Path.Combine(root, "Ordinary");
+    Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Unrecognized &&
+        MediaFiles.Probe(ordinary).Options.Keys.Single() == Layout.Flat, "ordinary videos remain in the generic album");
+    AddFile(compactRoot, "第二个影片.mp4");
+    Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
+    AddFile(completeRoot, "附加写真集/写真集 2/封面.png");
+    Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
+}
+
+static void CheckVideoWorkIndex(string root)
+{
+    var works = Path.Combine(root, "Works");
+    var compact = Path.Combine(root, "Compact-index");
+    const string complete = "Maker/Complete/";
+    foreach (var name in new[] { "视频/影片.mp4", "官方样张/样张.jpg", "附加写真集/图册 2/封面.jpg", "附加写真集/图册 2/照片 1.jpg" })
+        AddFile(works, complete + name);
+    foreach (var name in new[] { "影片.mov", "官方样张.jpg", "附加写真集/照片 2.png" })
+        AddFile(compact, name);
+
+    var data = Path.Combine(root, "works-index");
+    using (var catalog = new Catalog(data))
+    {
+        foreach (var (path, layout) in new[] { (works, Layout.MultiCreator), (compact, Layout.Flat) })
+        {
+            var summary = MediaFiles.Probe(path);
+            Check(summary.Options.Keys.Single() == layout, "work imports using its source album level");
+            catalog.Import(summary.Path, layout, summary.Options[layout]);
+        }
+    }
+    using var reopened = new Catalog(data);
+    var snapshot = reopened.Read();
+    var nested = snapshot.VideoWorks.Single(work => work.Structure == VideoWorkStructure.Complete);
+    var flat = snapshot.VideoWorks.Single(work => work.Structure == VideoWorkStructure.Compact);
+    Check(nested.RelativePath == "Maker/Complete" && nested.Samples.Single().FileName == "样张.jpg" &&
+        nested.PhotoSets.Single().Cover?.FileName == "封面.jpg", "nested work and its roles survive restart");
+    Check(flat.RelativePath.Length == 0 && flat.PhotoSets.Single().Cover is null, "compact flat photo set survives restart");
+
+    var completeAlbum = SourceAlbumKey.FromMedia(nested.Video);
+    var compactAlbum = SourceAlbumKey.FromMedia(flat.Video);
+    long[] completeCover = [nested.Samples[0].Id, nested.PhotoSets[0].Photos[0].Id];
+    long[] compactCover = [flat.PhotoSets[0].Photos[0].Id];
+    var worksTag = reopened.AddAlbumTag("作品", completeAlbum);
+    reopened.AddAlbumTag(worksTag.Id, compactAlbum);
+    reopened.ReplaceCover(completeCover, completeAlbum);
+    reopened.ReplaceCover(compactCover, compactAlbum);
+    var completeSettings = reopened.ReadSourceAlbumOrganization(completeAlbum);
+    var compactSettings = reopened.ReadSourceAlbumOrganization(compactAlbum);
+    Check(completeSettings.EffectiveCoverIds.SequenceEqual(completeCover) &&
+        compactSettings.EffectiveCoverIds.SequenceEqual(compactCover), "nested work images serve as ordered album covers");
+    Check(completeSettings.Tags.SequenceEqual([worksTag]) && compactSettings.Tags.SequenceEqual([worksTag]),
+        "both work structures can be tagged at album level");
+
+    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[worksTag.Id];
+    var taggedPhotos = MediaSearch.Find(snapshot.Sources.Values, snapshot.Media, new("照片", false),
+        GlobalSearchScope.Files, taggedAlbums: tagged);
+    Check(taggedPhotos.Count == 2 && taggedPhotos.Select(hit => hit.SourceAlbum).ToHashSet()
+        .SetEquals([completeAlbum, compactAlbum]), "tagged album search includes nested photos for both work structures");
+    var intermediate = new SourceAlbumKey(nested.Video.Source.Id, nested.RelativePath + "/官方样张");
+    Reject<InvalidOperationException>(() => reopened.SetFavorite(true, intermediate),
+        "an intermediate work directory cannot be organized as an album");
+
+    reopened.Rescan(nested.Video.Source.Id, null);
+    Check(!reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id).Video.Available,
+        "unavailable source retains the indexed work");
+    AddFile(works, complete + "附加写真集/图册 2/照片 2.jpg");
+    var scanned = MediaFiles.Scan(works, Layout.MultiCreator);
+    reopened.Rescan(nested.Video.Source.Id, scanned);
+    var updated = reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id);
+    Check(updated.Video.Available && updated.PhotoSets.Single().Photos.Select(item => item.FileName)
+        .SequenceEqual(["照片 1.jpg", "照片 2.jpg"]), "rescan keeps identity and updates photo membership");
+    Check(scanned.All(file => File.ReadAllText(Path.Combine(works, file.RelativePath)) == "fixture"),
+        "work indexing preserves source media");
 }
 
 static void CheckSourceRename(string work)
@@ -534,6 +697,35 @@ static void CheckSourceRename(string work)
               catalog.Read().Media.Single(item => item.Id == secondId).RelativePath == newPath,
             "ambiguous recovery preserves both originals and the existing index");
     }
+}
+
+static void CheckMediaSort(string work)
+{
+    var root = Directory.CreateDirectory(Path.Combine(work, "Sort")).FullName;
+    var source = new Source(1, root, Layout.Flat, Available: true);
+    var early = DateTime.UnixEpoch.AddHours(1);
+    var late = early.AddHours(1);
+    (string Name, int Size, DateTime Modified)[] fixtures =
+        [("1.png", 20, late), ("2.png", 20, early), ("10.png", 3, early), ("20.png", 10, late)];
+    var items = fixtures.Select((fixture, index) =>
+    {
+        var path = Path.Combine(root, fixture.Name);
+        File.WriteAllBytes(path, new byte[fixture.Size]);
+        File.SetLastWriteTimeUtc(path, fixture.Modified);
+        return new Media(index + 1, source, fixture.Name, IsVideo: false, Present: true);
+    }).Reverse().ToArray();
+    File.Move(Path.Combine(root, "20.png"), Path.Combine(work, "unavailable.png"));
+
+    IEnumerable<string> Names(MediaSortField field, bool descending = false) =>
+        new MediaSort(field, descending).Arrange(items, item => item).Select(item => item.FileName);
+
+    Check(new MediaSort().Arrange(items, item => item).SequenceEqual(items), "original file order");
+    Check(Names(MediaSortField.Name).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "natural name sort");
+    Check(Names(MediaSortField.Name, true).SequenceEqual(["20.png", "10.png", "2.png", "1.png"]), "descending name sort");
+    Check(Names(MediaSortField.Size).SequenceEqual(["10.png", "1.png", "2.png", "20.png"]), "sort by file bytes");
+    Check(Names(MediaSortField.Size, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending bytes with missing last");
+    Check(Names(MediaSortField.Modified).SequenceEqual(["2.png", "10.png", "1.png", "20.png"]), "sort by modification date");
+    Check(Names(MediaSortField.Modified, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending dates with missing last");
 }
 
 static void WriteRenameIntent(string index, long source, string before, string after, string identity)

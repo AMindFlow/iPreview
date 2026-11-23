@@ -19,7 +19,7 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...3).contains(version) else {
+            guard (0...5).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -33,6 +33,14 @@ public actor Catalog {
             if version < 3 {
                 let organization = try Self.migrationURL(named: "003-album-organization", in: appBundle)
                 try database.script(String(contentsOf: organization, encoding: .utf8))
+            }
+            if version < 4 {
+                let videoWorks = try Self.migrationURL(named: "004-video-works", in: appBundle)
+                try database.script(String(contentsOf: videoWorks, encoding: .utf8))
+            }
+            if version < 5 {
+                let identities = try Self.migrationURL(named: "005-source-media-identities", in: appBundle)
+                try database.script(String(contentsOf: identities, encoding: .utf8))
             }
         }
         self.database = database
@@ -91,7 +99,9 @@ public actor Catalog {
                 let id = sqlite3_column_int64(row, 0)
                 return VirtualAlbum(id: id, name: textColumn(row, 1), mediaIDs: byAlbum[id, default: []].map(\.media))
             }
-            return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion())
+            let videoWorks = try VideoWorkIndex.read(from: database, media: media)
+            return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion(),
+                                   videoWorks: videoWorks)
         }
     }
 
@@ -112,7 +122,11 @@ public actor Catalog {
             try SourceRename(database: database).blockImport(path: root.path)
             let path = SQLiteValue.text(root.path)
             let layout = SQLiteValue.text(candidate.layout.rawValue)
-            try database.execute("INSERT OR IGNORE INTO sources (path, layout) VALUES (?, ?)", [path, layout])
+            try database.execute("""
+                INSERT INTO sources (id, path, layout)
+                SELECT last_id + 1, ?, ? FROM catalog_identity_sequence WHERE entity = 'source'
+                ON CONFLICT (path) DO NOTHING
+                """, [path, layout])
             let id = try database.select("SELECT id FROM sources WHERE path = ?", [path]) { sqlite3_column_int64($0, 0) }.first!
             try database.execute("UPDATE sources SET layout = ?, available = 1 WHERE id = ?", [layout, .integer(id)])
             try replaceMedia(sourceID: id, entries: candidate.entries)
@@ -132,6 +146,20 @@ public actor Catalog {
         try database.transaction {
             try validateScan(expectedVersion)
             try database.execute("UPDATE sources SET available = 0 WHERE id = ?", [.integer(source.id)])
+        }
+    }
+
+    public func deleteSource(_ sourceID: Int64, expectedDataVersion: Int64) throws {
+        try database.transaction {
+            guard try scanVersion() == expectedDataVersion else { throw SourceDeletionChangedError() }
+            try SourceRename(database: database).blockScan(sourceID: sourceID)
+            let source = SQLiteValue.integer(sourceID)
+            try database.execute("DELETE FROM source_album_organization WHERE source_id = ?", [source])
+            try database.execute("""
+                DELETE FROM album_media WHERE media_id IN (SELECT id FROM media WHERE source_id = ?)
+                """, [source])
+            try database.execute("DELETE FROM media WHERE source_id = ?", [source])
+            try database.execute("DELETE FROM sources WHERE id = ?", [source])
         }
     }
 
@@ -230,14 +258,12 @@ public actor Catalog {
     private func replaceMedia(sourceID: Int64, entries: [ScanEntry]) throws {
         let source = SQLiteValue.integer(sourceID)
         try database.execute("UPDATE media SET available = 0 WHERE source_id = ?", [source])
-        try database.repeated(
-            "INSERT OR IGNORE INTO media (source_id, relative_path, kind) VALUES (?, ?, ?)",
-            bindings: entries.map { [source, .text($0.relativePath), .text($0.kind.rawValue)] }
-        )
-        try database.repeated(
-            "UPDATE media SET available = 1, kind = ? WHERE source_id = ? AND relative_path = ?",
-            bindings: entries.map { [.text($0.kind.rawValue), source, .text($0.relativePath)] }
-        )
+        try database.repeated("""
+            INSERT INTO media (id, source_id, relative_path, kind)
+            SELECT last_id + 1, ?, ?, ? FROM catalog_identity_sequence WHERE entity = 'media'
+            ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1
+            """, bindings: entries.map { [source, .text($0.relativePath), .text($0.kind.rawValue)] })
+        try VideoWorkIndex.replace(in: database, source: source, entries: entries)
     }
 
     private func validatedAlbumName(_ name: String) throws -> String {
@@ -247,6 +273,10 @@ public actor Catalog {
         }
         return trimmed
     }
+}
+
+public struct SourceDeletionChangedError: LocalizedError {
+    public var errorDescription: String? { "媒体库已在其他窗口更新。请核对媒体源后重试。" }
 }
 
 public enum AlbumDeletionError: LocalizedError {
@@ -259,7 +289,6 @@ extension Catalog {
     private static let albumMembers = """
         media.source_id = ?1
         AND substr(media.relative_path, 1, length(?2)) = ?2
-        AND instr(substr(media.relative_path, length(?2) + 1), '/') = 0
         """
 
     public func albumTags() throws -> [SourceAlbumTag] {
@@ -409,9 +438,11 @@ extension Catalog {
     private func updateOrganization<Result>(_ album: SourceAlbumKey, _ update: (Int64) throws -> Result) throws -> Result {
         let key = try albumBindings(album)
         return try database.transaction {
-            let indexed = try database.select("SELECT 1 FROM media WHERE \(Self.albumMembers) LIMIT 1",
-                                              membershipBindings(album)) { _ in true }
-            guard !indexed.isEmpty else { throw AlbumOrganizationError.unknownAlbum }
+            let layout = try database.select("""
+                SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
+                WHERE \(Self.albumMembers) LIMIT 1
+                """, membershipBindings(album)) { Layout(rawValue: textColumn($0, 0))! }.first
+            guard let layout, album.matchesLayout(layout) else { throw AlbumOrganizationError.unknownAlbum }
             try database.execute("""
                 INSERT INTO source_album_organization (source_id, album_path) VALUES (?, ?)
                 ON CONFLICT (source_id, album_path) DO NOTHING

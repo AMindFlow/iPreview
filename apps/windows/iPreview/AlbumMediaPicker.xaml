@@ -15,6 +15,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ComboBox x:Name="Creators" Header="媒体源与创作者" PlaceholderText="请选择" MinWidth="0"
                           HorizontalAlignment="Stretch" SelectionChanged="CreatorChanged"
@@ -29,7 +30,12 @@
                 <ComboBox x:Name="Folders" Grid.Column="1" Header="源专辑" PlaceholderText="请选择" MinWidth="0"
                           HorizontalAlignment="Stretch" SelectionChanged="AlbumChanged"
                           DisplayMemberPath="Label" AutomationProperties.Name="源专辑" />
-                <Button x:Name="SelectAllButton" Grid.Column="2" Content="全选" Click="SelectCurrentAlbum"
+                <Button x:Name="CandidateSortButton" Grid.Column="2" IsEnabled="False" MinHeight="32" Padding="8,4"
+                        CornerRadius="8" VerticalAlignment="Bottom" AutomationProperties.Name="文件排序"
+                        ToolTipService.ToolTip="文件排序">
+                    <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+                </Button>
+                <Button x:Name="SelectAllButton" Grid.Column="3" Content="全选" Click="SelectCurrentAlbum"
                         IsEnabled="False" MinHeight="32" Padding="10,4" CornerRadius="8" VerticalAlignment="Bottom"
                         AutomationProperties.Name="全选当前专辑" ToolTipService.ToolTip="全选当前专辑" />
             </Grid>

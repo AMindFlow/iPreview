@@ -49,8 +49,8 @@ internal sealed record GlobalSearchHit(Source Source, string? Folder, string Nam
 
 internal static class MediaSearch
 {
-    private static readonly StringComparer NaturalName = StringComparer.Create(
-        CultureInfo.InvariantCulture, CompareOptions.NumericOrdering);
+    internal static readonly StringComparer NaturalName = StringComparer.Create(
+        CultureInfo.InvariantCulture, CompareOptions.NumericOrdering | CompareOptions.IgnoreCase);
     private static readonly Regex Words = new(@"[\p{L}\p{N}]+");
 
     public static IOrderedEnumerable<Media> ByPath(IEnumerable<Media> items) =>
