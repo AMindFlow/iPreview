@@ -37,6 +37,7 @@ struct CatalogChecks {
         try await checkVideoWorkIndex()
         try await checkLegacyVideoWorkRescan()
         try await checkLegacyWorkAlbumOrganization()
+        try await checkVideoFormats()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -438,6 +439,26 @@ struct CatalogChecks {
         try fixtures.file("Complete/附加写真集/写真集 2/封面.png")
         guard case .ambiguous = try SourceScanner.inspectVideoWork(completeRoot, dataDirectory: fixtures.databaseDirectory) else {
             throw CheckFailure(location: "多个封面应报告歧义")
+        }
+    }
+
+    static func checkVideoFormats() async throws {
+        let fixtures = try Fixtures()
+        let source = fixtures.directory("Video")
+        for name in ["clip.TS", "clip.ts.mov", "clip.mkv", "clip.webm", "clip.avi"] {
+            try fixtures.file("Video/" + name)
+        }
+        let inspection = try SourceScanner.inspect(source, dataDirectory: fixtures.databaseDirectory)
+        let candidate = try required(inspection.candidates.first)
+        try verify(Set(candidate.entries.map(\.relativePath)) == ["clip.TS", "clip.ts.mov", "clip.mkv", "clip.webm", "clip.avi"])
+        try verify(candidate.entries.allSatisfy { $0.kind == .video })
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: source, candidate: candidate)
+        let library = try await catalog.snapshot()
+        let index = SearchIndex(media: library.media, sources: library.sources)
+        for name in ["clip.TS", "clip.mkv", "clip.webm", "clip.avi"] {
+            let found = index.search(name.lowercased(), mode: .exact, directories: false, files: true)
+            try verify(found.map(\.name) == [name])
         }
     }
 

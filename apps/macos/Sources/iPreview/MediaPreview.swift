@@ -194,7 +194,7 @@ struct MediaPreview: View {
     }
 
     private func dismiss(returningTo selection: Int64) {
-        video.player.pause()
+        video.prepareToClose()
         closingThumbnail = thumbnail(selection)
         prepareToClose(selection, closingThumbnail != nil)
         withAnimation(transitionAnimation, completionCriteria: .logicallyComplete) {
@@ -248,14 +248,22 @@ struct MediaPreview: View {
             if let message = video.message {
                 PreviewError(message: message)
             } else {
-                VideoCanvas(player: video.player)
-                    .background {
-                        if let poster {
-                            Image(decorative: poster, scale: 1)
-                                .resizable()
-                                .scaledToFit()
-                        }
+                Group {
+                    if let fallback = video.fallback {
+                        VLCCanvas(surface: fallback.surface)
+                            .id(ObjectIdentifier(fallback))
+                            .accessibilityIdentifier("libvlc-video-surface")
+                    } else {
+                        VideoCanvas(player: video.player)
                     }
+                }
+                .background {
+                    if let poster {
+                        Image(decorative: poster, scale: 1)
+                            .resizable()
+                            .scaledToFit()
+                    }
+                }
             }
         } else {
             PhotoCanvas(media: media, poster: poster)

@@ -6,7 +6,13 @@
 ./scripts/package-windows.ps1 -PublishDirectory ./dist/iPreview-windows-x64 -OutputDirectory ./dist
 ```
 
-构建需要 Inno Setup 6；CI 当前使用 runner 预装的 6.7.1。许可见固定版本 [Inno Setup 6.7.1 license.txt](https://github.com/jrsoftware/issrc/blob/is-6_7_1/license.txt)，允许包含商业应用在内的使用。供应商官网[请求商业用户购买许可支持项目](https://jrsoftware.org/inno-setup)；本项目未购买许可或修改其条款。简体中文资源及许可在 [Languages](Languages/README.md) 中维护。
+打包脚本先检查或添加指定版本的 LibVLC 播放运行时。制作自包含 ZIP 时，在压缩发布目录前执行相同的运行时步骤：
+
+```powershell
+python scripts/libvlc-runtime.py stage ./dist/iPreview-windows-x64/LibVLC --platform windows
+```
+
+构建需要 Python 3、curl 和 Inno Setup 6；CI 当前使用 runner 预装的 6.7.1。许可见固定版本 [Inno Setup 6.7.1 license.txt](https://github.com/jrsoftware/issrc/blob/is-6_7_1/license.txt)，允许包含商业应用在内的使用。供应商官网[请求商业用户购买许可支持项目](https://jrsoftware.org/inno-setup)；本项目未购买许可或修改其条款。简体中文资源及许可在 [Languages](Languages/README.md) 中维护。
 
 安装器在当前用户权限下运行，所有运行时随包提供。默认目录为 `%LOCALAPPDATA%\Programs\iPreview`，也可选择专用应用目录。同版本覆盖会替换应用发布文件；不要选择媒体或数据库目录。卸载仅移除安装器登记的文件和入口，保留独立的 `%LOCALAPPDATA%\iPreview` 库及未由安装器安装的文件。
 

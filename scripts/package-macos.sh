@@ -16,7 +16,8 @@ minimum_version="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' ap
 # The Swift driver can stamp the deployment target as the SDK version. AppKit uses
 # the linked SDK in the executable to select the native window and control design.
 build=(swift build --configuration release --arch arm64 --manifest-cache none
-  -Xlinker -platform_version -Xlinker macos -Xlinker "$minimum_version" -Xlinker "$sdk_version")
+  -Xlinker -platform_version -Xlinker macos -Xlinker "$minimum_version" -Xlinker "$sdk_version"
+  -Xlinker -rpath -Xlinker '@executable_path/../Frameworks/LibVLC/lib')
 "${build[@]}" --product iPreview
 products="$("${build[@]}" --show-bin-path)"
 staging="$(mktemp -d "$PWD/.build/package/iPreview.XXXXXX")"
@@ -36,8 +37,10 @@ fi
 ditto "$products/iPreview_iPreviewCore.bundle" "$application/Contents/Resources/iPreview_iPreviewCore.bundle"
 install -m 644 apps/macos/Info.plist "$application/Contents/Info.plist"
 install -m 644 apps/macos/Assets/AppIcon.icns "$application/Contents/Resources/AppIcon.icns"
+python3 scripts/libvlc-runtime.py stage "$application/Contents/Frameworks/LibVLC" --platform macos \
+  --notices "$application/Contents/Resources/LibVLC"
 codesign --force --sign - "$application"
-codesign --verify --strict "$application"
+codesign --verify --deep --strict "$application"
 ditto -c -k --keepParent "$application" "$staging/iPreview-macos-arm64.zip"
 
 # Run a host-native checker against the archive without launching its arm64 executable.
@@ -45,6 +48,8 @@ check=(swift run --configuration release --manifest-cache none --scratch-path "$
 smoke="$(mktemp -d "${TMPDIR:-/tmp}/ipreview-package-check.XXXXXX")"
 ditto -x -k "$staging/iPreview-macos-arm64.zip" "$smoke"
 extracted="$smoke/iPreview.app"
+python3 scripts/libvlc-runtime.py check "$extracted/Contents/Frameworks/LibVLC" --platform macos \
+  --notices "$extracted/Contents/Resources/LibVLC"
 icon_file="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$extracted/Contents/Info.plist")"
 if [[ ! -s "$extracted/Contents/Resources/$icon_file" ]]; then
   echo "macOS ZIP is missing the bundle icon: $icon_file" >&2

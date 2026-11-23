@@ -1,0 +1,58 @@
+{
+  "ffmpeg": {
+    "archive": "ffmpeg-8.1.2.tar.xz",
+    "url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz"
+  },
+  "ebml": {
+    "archive": "libebml-1.4.6.tar.xz",
+    "url": "https://dl.matroska.org/downloads/libebml/libebml-1.4.6.tar.xz"
+  },
+  "matroska": {
+    "archive": "libmatroska-1.7.2.tar.xz",
+    "url": "https://dl.matroska.org/downloads/libmatroska/libmatroska-1.7.2.tar.xz"
+  },
+  "utfcpp": {
+    "archive": "utfcpp-3.2.5.tar.gz",
+    "url": "https://codeload.github.com/nemtrif/utfcpp/tar.gz/refs/tags/v3.2.5"
+  },
+  "opus": {
+    "archive": "opus-1.6.1.tar.gz",
+    "url": "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz"
+  },
+  "mpg123": {
+    "archive": "mpg123-1.33.6.tar.bz2",
+    "url": "https://downloads.sourceforge.net/project/mpg123/mpg123/1.33.6/mpg123-1.33.6.tar.bz2"
+  },
+  "gsm": {
+    "archive": "libgsm_1.0.13.tar.gz",
+    "url": "https://www.quut.com/gsm/gsm-1.0.13.tar.gz"
+  },
+  "openjpeg": {
+    "archive": "openjpeg-2.5.4.tar.gz",
+    "url": "https://codeload.github.com/uclouvain/openjpeg/tar.gz/refs/tags/v2.5.4"
+  },
+  "zlib": {
+    "archive": "zlib-1.3.2.tar.xz",
+    "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.xz"
+  },
+  "lame": {
+    "archive": "lame-3.100.tar.gz",
+    "url": "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz"
+  },
+  "libplacebo": {
+    "archive": "libplacebo-0.2.1.tar.gz",
+    "url": "https://codeload.github.com/haasn/libplacebo/tar.gz/refs/tags/v0.2.1"
+  },
+  "mingw64": {
+    "archive": "mingw-w64-v14.0.0.tar.bz2",
+    "url": "https://downloads.sourceforge.net/project/mingw-w64/mingw-w64/mingw-w64-release/mingw-w64-v14.0.0.tar.bz2"
+  },
+  "gettext": {
+    "archive": "gettext-0.26.tar.xz",
+    "url": "https://ftp.gnu.org/gnu/gettext/gettext-0.26.tar.xz"
+  },
+  "iconv": {
+    "archive": "libiconv-1.17.tar.gz",
+    "url": "https://ftp.gnu.org/gnu/libiconv/libiconv-1.17.tar.gz"
+  }
+}
