@@ -111,6 +111,7 @@ public sealed partial class MainWindow : Window
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
         sourceAlbumIndex = Database.ReadSourceAlbumIndex();
+        videoWorks = snapshot.VideoWorks;
 
         RevealSourceActions(null);
         SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
@@ -197,7 +198,12 @@ public sealed partial class MainWindow : Window
         if (!args.KeyStatus.WasKeyDown && SourceFolders.SelectedItem is Navigation target)
         {
             if (args.Key == VirtualKey.Space)
-                NavigateFromContent(target);
+            {
+                if (WorkAt(target) is { } work)
+                    OpenVideoWork(work);
+                else
+                    NavigateFromContent(target);
+            }
             else
                 await RenameIndexedFolder(target);
         }
@@ -244,12 +250,12 @@ public sealed partial class MainWindow : Window
         var source = VisibleSource;
         var path = current.Folder;
         var atAlbum = path is not null && path.IndexOf('/') != path.Length - 1;
-        var browseFolders = source?.Layout switch
+        var browseFolders = WorkAt(current) is null && (source?.Layout switch
         {
             Layout.MultiCreator => !atAlbum,
             Layout.Creator => path is null,
             _ => false
-        };
+        });
         BackToSourceFolder.Visibility = source is not null && path is not null ? Visibility.Visible : Visibility.Collapsed;
         SourceFolders.Visibility = browseFolders ? Visibility.Visible : Visibility.Collapsed;
         if (!browseFolders)
@@ -311,8 +317,10 @@ public sealed partial class MainWindow : Window
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
             : $"{tiles.Count} 项";
+        var work = WorkAt(current);
+        PreviewWorkButton.Visibility = work is null ? Visibility.Collapsed : Visibility.Visible;
         if (VisibleSource is { } visibleSource)
-            CountLabel.Text = MediaFiles.Display(visibleSource.Layout) + " · " + CountLabel.Text;
+            CountLabel.Text = (work is null ? MediaFiles.Display(visibleSource.Layout) : "视频作品") + " · " + CountLabel.Text;
         if (current.Source is long source && !sources[source].Available)
             CountLabel.Text += " · 媒体源离线";
         var showAlbum = current.Album is not null;
@@ -364,7 +372,7 @@ public sealed partial class MainWindow : Window
                 var choice = new RadioButton
                 {
                     GroupName = "Layout",
-                    Content = $"{MediaFiles.Display(option.Key)} · {option.Value.Count} 项",
+                    Content = $"{ImportLayoutName(option.Key, option.Value)} · {option.Value.Count} 项",
                     IsChecked = option.Key == layout
                 };
                 choice.Checked += (_, _) => layout = option.Key;
@@ -401,6 +409,10 @@ public sealed partial class MainWindow : Window
             SetBusy(false);
         }
     }
+
+    private static string ImportLayoutName(Layout layout, List<ScannedMedia> files) =>
+        layout == Layout.Flat && files.Any(file => file.VideoWork is VideoWorkMembership.Video)
+            ? "视频作品" : MediaFiles.Display(layout);
 
     private async void RescanSources(object sender, RoutedEventArgs args) =>
         await RescanSourcesAsync(current.Source is long id ? [sources[id]] : sources.Values.ToList());
@@ -723,7 +735,7 @@ public sealed partial class MainWindow : Window
         var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
             player.Pause();
-        if (!searchOpen)
+        if (!searchOpen && videoWorkSession is null)
         {
             var browser = ActiveMediaBrowser;
             var selected = tiles.FirstOrDefault(tile => tile.Media.Id == selectedId) ?? tiles.FirstOrDefault();
@@ -744,13 +756,14 @@ public sealed partial class MainWindow : Window
         previewIndex = -1;
         originalPreviewTiles = [];
         previewTiles = [];
-        LibraryHost.IsEnabled = true;
-        if (!RestoreSearchAfterPreview(selectedId))
+        PreviewOverlay.Visibility = Visibility.Collapsed;
+        if (videoWorkSession is null)
+            LibraryHost.IsEnabled = true;
+        if (!RestoreVideoWorkAfterMediaPreview(selectedId) && !RestoreSearchAfterPreview(selectedId))
         {
             FocusSelectedMedia();
             LibraryView.IsHitTestVisible = true;
         }
-        PreviewOverlay.Visibility = Visibility.Collapsed;
         StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;

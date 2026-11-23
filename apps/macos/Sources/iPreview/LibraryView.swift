@@ -28,6 +28,7 @@ struct LibraryView: View {
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
+    @ViewState private var videoWorkPreview: VideoWorkPreviewSession?
     @FocusState private var focus: Focus?
 
     enum Focus: Hashable { case browser, searchQuery, searchResults, title }
@@ -42,7 +43,7 @@ struct LibraryView: View {
         let dataVersion: Int64
     }
 
-    private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
+    private var libraryOverlayShown: Bool { preview != nil || videoWorkPreview != nil || searchDomain != nil }
 
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
@@ -55,7 +56,7 @@ struct LibraryView: View {
     }
 
     private var searchActions: LibrarySearchActions {
-        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
+        guard preview == nil, videoWorkPreview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
               addAlbumMedia == nil, organizationTarget == nil, model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
@@ -111,21 +112,36 @@ struct LibraryView: View {
                 .accessibilityHidden(preview != nil)
             }
         }
+        .overlay {
+            if let videoWorkPreview {
+                VideoWorkPreview(session: videoWorkPreview, revision: model.revision,
+                                 mediaPreviewShown: preview != nil) { item, items in
+                    preview = PreviewSession(items: items, selection: item.id, layout: .gallery)
+                } close: {
+                    self.videoWorkPreview = nil
+                    focusBrowser()
+                }
+                .allowsHitTesting(preview == nil)
+                .accessibilityHidden(preview != nil)
+            }
+        }
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 GeometryReader { geometry in
                     let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil else { return nil }
+                        guard searchDomain == nil, videoWorkPreview == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
                     MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
-                        if searchDomain == nil {
+                        if let videoWorkPreview {
+                            videoWorkPreview.selectedMediaID = selection
+                        } else if searchDomain == nil {
                             selected = selection
                             if !hasThumbnail { mediaToReveal = selection }
                         }
                     } close: {
                         self.preview = nil
-                        focus = searchDomain == nil ? .browser : .searchResults
+                        if videoWorkPreview == nil { focus = searchDomain == nil ? .browser : .searchResults }
                     }
                     .id(preview.selection)
                 }
@@ -441,6 +457,11 @@ struct LibraryView: View {
                         .buttonStyle(.borderless)
                         .disabled(model.isWorking)
                     }
+                    if let work = scope.videoWork {
+                        Button("预览作品", systemImage: "play.rectangle") { openVideoWork(work) }
+                            .buttonStyle(.borderless)
+                            .disabled(model.isWorking)
+                    }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
                     }
@@ -650,7 +671,14 @@ struct LibraryView: View {
 
                     let index = folders.firstIndex(where: { $0.page == selectedFolder }) ?? 0
                     if press.key == .space {
-                        if press.phase == .down { navigate(folders[index].page) }
+                        if press.phase == .down {
+                            let destination = folders[index].page
+                            if let work = model.contentScope(for: destination).videoWork {
+                                openVideoWork(work)
+                            } else {
+                                navigate(destination)
+                            }
+                        }
                     } else if press.key == .return {
                         if press.phase == .down { beginRename(SourceNameEdit(folder: folders[index])) }
                     } else if let destination = layout.neighbor(of: index, toward: press.key, count: folders.count) {
@@ -1064,6 +1092,11 @@ struct LibraryView: View {
         preview = PreviewSession(items: items, selection: item.id, layout: layout)
     }
 
+    private func openVideoWork(_ work: IndexedVideoWork) {
+        guard !model.isWorking else { return }
+        videoWorkPreview = VideoWorkPreviewSession(work: work)
+    }
+
     private func focusBrowser() {
         Task { @MainActor in
             await Task.yield()
@@ -1097,7 +1130,7 @@ enum LibraryPage: Hashable, Sendable {
         case .library: false
         case .source(let id): item.source.id == id
         case .creator(let id, let name): item.source.id == id && item.creator == name
-        case .folder(let id, let key): item.source.id == id && ContentScope.folderKey(item) == key
+        case .folder(let id, let key): item.source.id == id && item.relativePath.hasPrefix(key + "/")
         case .virtual: virtualMembers.contains(item.id)
         }
     }
@@ -1150,11 +1183,20 @@ struct ContentScope {
     let folders: [LibraryFolder]
     let source: Source?
     let virtualAlbum: VirtualAlbum?
+    let videoWork: IndexedVideoWork?
 
     init(page: LibraryPage, snapshot: LibrarySnapshot) {
         let active = snapshot.media.filter(\.existsInSource)
         let source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
         self.source = source
+        let workPath: String? = switch page {
+        case .source: ""
+        case .folder(_, let path): path
+        default: nil
+        }
+        videoWork = workPath.flatMap { path in
+            snapshot.videoWorks.first { $0.video.source.id == source?.id && $0.relativePath == path }
+        }
         switch page {
         case .library:
             title = "媒体库"
@@ -1164,17 +1206,17 @@ struct ContentScope {
         case .source(let id):
             title = source?.name ?? "媒体源"
             let sourceItems = active.filter { page.contains($0) }
-            switch source?.layout {
-            case .multiCreator:
+            switch (source?.layout, videoWork == nil) {
+            case (.multiCreator, true):
                 folders = Self.groupFolders(sourceItems, by: \.creator) { name, members in
                     LibraryFolder(page: .creator(id, name), name: name, members: members,
-                                  caption: "\(Set(members.map(\.album)).count) 个专辑")
+                                  caption: "\(Set(members.map(Self.folderKey)).count) 个专辑")
                 }
                 items = []
-            case .creator:
+            case (.creator, true):
                 folders = Self.albumFolders(sourceItems)
                 items = []
-            case .flat, nil:
+            default:
                 folders = []
                 items = sourceItems
             }
@@ -1186,7 +1228,7 @@ struct ContentScope {
             virtualAlbum = nil
         case .folder(_, let key):
             items = active.filter { page.contains($0) }
-            title = items.first?.album ?? key
+            title = key.split(separator: "/").last.map(String.init) ?? key
             folders = []
             virtualAlbum = nil
         case .virtual(let id):
@@ -1198,7 +1240,9 @@ struct ContentScope {
             virtualAlbum = album
         }
 
-        if let source {
+        if videoWork != nil {
+            subtitle = "视频作品 · \(items.count) 项"
+        } else if let source {
             let count = switch page {
             case .source where source.layout == .multiCreator: "\(folders.count) 位创作者"
             case .source where source.layout == .creator: "\(folders.count) 个专辑"
@@ -1214,7 +1258,8 @@ struct ContentScope {
     private static func albumFolders(_ items: [Media]) -> [LibraryFolder] {
         groupFolders(items, by: folderKey) { key, members in
             let cover = members[0]
-            return LibraryFolder(page: .folder(cover.source.id, key), name: cover.album, members: members,
+            let name = key.split(separator: "/").last.map(String.init) ?? cover.source.name
+            return LibraryFolder(page: .folder(cover.source.id, key), name: name, members: members,
                                  caption: "\(cover.creator) · \(members.count) 项")
         }
     }
@@ -1230,7 +1275,7 @@ struct ContentScope {
     }
 
     static func folderKey(_ media: Media) -> String {
-        media.components.dropLast().joined(separator: "/")
+        media.components.dropLast().prefix(media.source.layout.albumDepth).joined(separator: "/")
     }
 }
 

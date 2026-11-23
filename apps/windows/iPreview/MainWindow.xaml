@@ -256,6 +256,9 @@
                                     AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
                                 <FontIcon Glyph="&#xE8CB;" FontSize="14" />
                             </Button>
+                            <Button x:Name="PreviewWorkButton" Click="PreviewCurrentWork" Visibility="Collapsed"
+                                    Style="{StaticResource LibrarySubtleButton}" Content="预览作品"
+                                    MinHeight="26" FontSize="12" Padding="7,0" />
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -748,6 +751,59 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+        </Grid>
+
+        <Grid x:Name="VideoWorkOverlay" Visibility="Collapsed"
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="24"
+              PreviewKeyDown="VideoWorkKeyDown" TabFocusNavigation="Cycle" RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="VideoWorkBack" Click="BackFromVideoWork" Style="{StaticResource LibraryIconButton}">
+                    <FontIcon x:Name="VideoWorkBackIcon" FontSize="14" />
+                </Button>
+                <TextBlock x:Name="VideoWorkTitle" Grid.Column="1" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <Button x:Name="VideoWorkSortButton" Grid.Column="2" Visibility="Collapsed"
+                        Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="文件排序"
+                        ToolTipService.ToolTip="文件排序">
+                    <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+                </Button>
+            </Grid>
+            <GridView x:Name="VideoWorkItems" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                      IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" AutomationProperties.Name="作品内容"
+                      ItemContainerStyle="{StaticResource LibraryCardStyle}">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal" ItemWidth="194" ItemHeight="146" />
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+                <GridView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Width="172" Spacing="7">
+                            <Border Height="102" CornerRadius="10" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
+                                       Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
+                            </Border>
+                            <Grid ColumnSpacing="7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{Binding Glyph}" FontSize="14" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </StackPanel>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
         </Grid>
 
         <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent"
