@@ -19,7 +19,7 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...2).contains(version) else {
+            guard (0...3).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -29,6 +29,10 @@ public actor Catalog {
             if version < 2 {
                 let rename = try Self.migrationURL(named: "002-pending-rename", in: appBundle)
                 try database.script(String(contentsOf: rename, encoding: .utf8))
+            }
+            if version < 3 {
+                let organization = try Self.migrationURL(named: "003-album-organization", in: appBundle)
+                try database.script(String(contentsOf: organization, encoding: .utf8))
             }
         }
         self.database = database
@@ -249,6 +253,199 @@ public enum AlbumDeletionError: LocalizedError {
     case changed
 
     public var errorDescription: String? { "媒体库已在其他窗口更新。请核对合集后重试。" }
+}
+
+extension Catalog {
+    private static let albumMembers = """
+        media.source_id = ?1
+        AND substr(media.relative_path, 1, length(?2)) = ?2
+        AND instr(substr(media.relative_path, length(?2) + 1), '/') = 0
+        """
+
+    public func albumTags() throws -> [SourceAlbumTag] {
+        try database.select("SELECT id, name, normalized_name FROM tags ORDER BY normalized_name", row: Self.readTag)
+    }
+
+    public func sourceAlbums(tagID: Int64) throws -> [SourceAlbumKey] {
+        try database.select("""
+            SELECT albums.source_id, albums.album_path FROM source_album_organization AS albums
+            JOIN source_album_tags ON source_album_tags.source_album_id = albums.id
+            WHERE source_album_tags.tag_id = ? ORDER BY albums.source_id, albums.album_path
+            """, [.integer(tagID)]) {
+            SourceAlbumKey(sourceID: sqlite3_column_int64($0, 0), relativePath: textColumn($0, 1))
+        }
+    }
+
+    public func sourceAlbumOrganization(for album: SourceAlbumKey) throws -> SourceAlbumOrganization {
+        let key = try albumBindings(album)
+        return try database.transaction(write: false) {
+            let stored = try database.select("""
+                SELECT id, favorite, rating_half FROM source_album_organization WHERE source_id = ? AND album_path = ?
+                """, key) { row in
+                let rating = sqlite3_column_type(row, 2) == SQLITE_NULL ? nil : Int(sqlite3_column_int(row, 2))
+                return (id: sqlite3_column_int64(row, 0), favorite: sqlite3_column_int(row, 1) == 1, rating: rating)
+            }.first
+
+            var tags: [SourceAlbumTag] = []
+            var configured: [Int64] = []
+            if let stored {
+                let identifier = [SQLiteValue.integer(stored.id)]
+                tags = try database.select("""
+                    SELECT tags.id, tags.name, tags.normalized_name FROM tags
+                    JOIN source_album_tags ON source_album_tags.tag_id = tags.id
+                    WHERE source_album_tags.source_album_id = ? ORDER BY tags.normalized_name
+                    """, identifier, row: Self.readTag)
+                configured = try database.select("""
+                    SELECT media_id FROM source_album_cover_media WHERE source_album_id = ? ORDER BY position
+                    """, identifier) { sqlite3_column_int64($0, 0) }
+            }
+
+            let available = try availableAlbumImages(album)
+            let availableIDs = Set(available.map(\.id))
+            let fallback = available.min { compareNaturally($0.path, $1.path) == .orderedAscending }
+            let effective = !configured.isEmpty && configured.allSatisfy(availableIDs.contains)
+                ? configured : fallback.map { [$0.id] } ?? []
+            return SourceAlbumOrganization(favorite: stored?.favorite ?? false, ratingHalf: stored?.rating,
+                                           tags: tags, configuredCoverIDs: configured, effectiveCoverIDs: effective)
+        }
+    }
+
+    public func setFavorite(_ favorite: Bool, for album: SourceAlbumKey) throws {
+        try updateOrganization(album) { id in
+            try database.execute("UPDATE source_album_organization SET favorite = ? WHERE id = ?",
+                                 [.integer(favorite ? 1 : 0), .integer(id)])
+        }
+    }
+
+    public func setRatingHalf(_ rating: Int?, for album: SourceAlbumKey) throws {
+        if let rating, !(0...10).contains(rating) { throw AlbumOrganizationError.invalidRating }
+        try updateOrganization(album) { id in
+            try database.execute("UPDATE source_album_organization SET rating_half = ? WHERE id = ?",
+                                 [rating.map { .integer(Int64($0)) } ?? .null, .integer(id)])
+        }
+    }
+
+    @discardableResult
+    public func addTag(named name: String, to album: SourceAlbumKey) throws -> SourceAlbumTag {
+        let (display, normalized) = try Self.validatedTagNames(name)
+        return try updateOrganization(album) { id in
+            try database.execute("""
+                INSERT INTO tags (name, normalized_name) VALUES (?, ?)
+                ON CONFLICT (normalized_name) DO NOTHING
+                """, [.text(display), .text(normalized)])
+            let tag = try tag(named: normalized)!
+            try appendTag(tag.id, toOrganization: id)
+            return tag
+        }
+    }
+
+    public func addTag(_ tagID: Int64, to album: SourceAlbumKey) throws {
+        try updateOrganization(album) { id in
+            try validateTag(tagID)
+            try appendTag(tagID, toOrganization: id)
+        }
+    }
+
+    public func removeTag(_ tagID: Int64, from album: SourceAlbumKey) throws {
+        try database.execute("""
+            DELETE FROM source_album_tags WHERE tag_id = ? AND source_album_id IN (
+                SELECT id FROM source_album_organization WHERE source_id = ? AND album_path = ?
+            )
+            """, [.integer(tagID)] + albumBindings(album))
+    }
+
+    public func renameTag(_ tagID: Int64, to name: String) throws {
+        let (display, normalized) = try Self.validatedTagNames(name)
+        try database.transaction {
+            try validateTag(tagID)
+            if let other = try tag(named: normalized), other.id != tagID {
+                throw AlbumOrganizationError.tagNameTaken
+            }
+            try database.execute("UPDATE tags SET name = ?, normalized_name = ? WHERE id = ?",
+                                 [.text(display), .text(normalized), .integer(tagID)])
+        }
+    }
+
+    public func deleteTag(_ tagID: Int64) throws {
+        try database.execute("DELETE FROM tags WHERE id = ?", [.integer(tagID)])
+    }
+
+    public func replaceCover(_ mediaIDs: [Int64], for album: SourceAlbumKey) throws {
+        let selection = Set(mediaIDs)
+        guard mediaIDs.count <= 4, selection.count == mediaIDs.count else { throw AlbumOrganizationError.invalidCover }
+        try updateOrganization(album) { id in
+            if !mediaIDs.isEmpty {
+                let availableIDs = try availableAlbumImages(album).map(\.id)
+                guard selection.isSubset(of: availableIDs) else { throw AlbumOrganizationError.invalidCover }
+            }
+            let organization = SQLiteValue.integer(id)
+            try database.execute("DELETE FROM source_album_cover_media WHERE source_album_id = ?", [organization])
+            try database.repeated("INSERT INTO source_album_cover_media VALUES (?, ?, ?)",
+                                  bindings: mediaIDs.enumerated().map { [organization, .integer($1), .integer(Int64($0))] })
+        }
+    }
+
+    private func updateOrganization<Result>(_ album: SourceAlbumKey, _ update: (Int64) throws -> Result) throws -> Result {
+        let key = try albumBindings(album)
+        return try database.transaction {
+            let indexed = try database.select("SELECT 1 FROM media WHERE \(Self.albumMembers) LIMIT 1",
+                                              membershipBindings(album)) { _ in true }
+            guard !indexed.isEmpty else { throw AlbumOrganizationError.unknownAlbum }
+            try database.execute("""
+                INSERT INTO source_album_organization (source_id, album_path) VALUES (?, ?)
+                ON CONFLICT (source_id, album_path) DO NOTHING
+                """, key)
+            let id = try database.select("SELECT id FROM source_album_organization WHERE source_id = ? AND album_path = ?",
+                                         key) { sqlite3_column_int64($0, 0) }.first!
+            return try update(id)
+        }
+    }
+
+    private func availableAlbumImages(_ album: SourceAlbumKey) throws -> [(id: Int64, path: String)] {
+        try database.select("""
+            SELECT media.id, media.relative_path FROM media JOIN sources ON sources.id = media.source_id
+            WHERE \(Self.albumMembers) AND media.kind = 'image' AND media.available = 1 AND sources.available = 1
+            """, membershipBindings(album)) {
+            (id: sqlite3_column_int64($0, 0), path: textColumn($0, 1))
+        }
+    }
+
+    private func albumBindings(_ album: SourceAlbumKey) throws -> [SQLiteValue] {
+        guard !album.relativePath.contains("\0") else { throw AlbumOrganizationError.unknownAlbum }
+        return [.integer(album.sourceID), .text(album.relativePath)]
+    }
+
+    private func membershipBindings(_ album: SourceAlbumKey) -> [SQLiteValue] {
+        let prefix = album.relativePath.isEmpty ? "" : album.relativePath + "/"
+        return [.integer(album.sourceID), .text(prefix)]
+    }
+
+    private static func readTag(_ row: OpaquePointer) -> SourceAlbumTag {
+        SourceAlbumTag(id: sqlite3_column_int64(row, 0), name: textColumn(row, 1), normalizedName: textColumn(row, 2))
+    }
+
+    private func tag(named normalized: String) throws -> SourceAlbumTag? {
+        try database.select("SELECT id, name, normalized_name FROM tags WHERE normalized_name = ?",
+                            [.text(normalized)], row: Self.readTag).first
+    }
+
+    private func validateTag(_ tagID: Int64) throws {
+        let found = try database.select("SELECT 1 FROM tags WHERE id = ?", [.integer(tagID)]) { _ in true }
+        guard !found.isEmpty else { throw AlbumOrganizationError.unknownTag }
+    }
+
+    private func appendTag(_ tagID: Int64, toOrganization id: Int64) throws {
+        try database.execute("""
+            INSERT INTO source_album_tags (source_album_id, tag_id) VALUES (?, ?)
+            ON CONFLICT (source_album_id, tag_id) DO NOTHING
+            """, [.integer(id), .integer(tagID)])
+    }
+
+    private static func validatedTagNames(_ value: String) throws -> (display: String, normalized: String) {
+        let (display, normalized) = SourceAlbumTag.names(from: value)
+        guard !display.isEmpty, !display.contains("\0") else { throw AlbumOrganizationError.invalidTagName }
+        return (display, normalized)
+    }
 }
 
 public enum AlbumOrderError: LocalizedError {

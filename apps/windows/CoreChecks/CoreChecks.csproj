@@ -12,5 +12,7 @@
                       LogicalName="iPreview.Migrations.001-initial.sql" />
     <EmbeddedResource Include="../../../shared/migrations/002-pending-rename.sql"
                       LogicalName="iPreview.Migrations.002-pending-rename.sql" />
+    <EmbeddedResource Include="../../../shared/migrations/003-album-organization.sql"
+                      LogicalName="iPreview.Migrations.003-album-organization.sql" />
   </ItemGroup>
 </Project>

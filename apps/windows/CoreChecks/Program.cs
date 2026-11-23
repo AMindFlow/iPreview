@@ -197,6 +197,7 @@ try
         Check(catalog.Read().AlbumMembers[albumId].Single().Id == firstId, "remove album reference");
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
+    CheckSourceAlbumOrganization(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -264,6 +265,100 @@ static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long
         "deletion preserves source media contents and modification times");
 }
 
+static void CheckSourceAlbumOrganization(string work)
+{
+    var sourcePath = Path.Combine(work, "organization-source");
+    foreach (var file in new[] { "Maker/Album/Image 2.png", "Maker/Album/Image 10.jpg", "Maker/Album/Clip.mp4",
+                                "Maker/Album2/Image.png" })
+        AddFile(sourcePath, file);
+    var data = Path.Combine(work, "organization-db");
+    Directory.CreateDirectory(data);
+    var databasePath = Path.Combine(data, "library.sqlite3");
+    using (var versionTwo = new Sqlite(databasePath))
+    {
+        foreach (var migration in new[] { "001-initial.sql", "002-pending-rename.sql" })
+        {
+            using var stream = typeof(Catalog).Assembly.GetManifestResourceStream("iPreview.Migrations." + migration)!;
+            using var script = new StreamReader(stream);
+            versionTwo.ExecuteScript(script.ReadToEnd());
+        }
+        versionTwo.Execute("INSERT INTO sources (id, path, layout) VALUES (4, ?, 'multi-creator');", sourcePath);
+        versionTwo.ExecuteScript("""
+            INSERT INTO media (id, source_id, relative_path, kind)
+                VALUES (8, 4, 'Maker/Album/Image 2.png', 'image'), (9, 4, 'Maker/Album/Image 10.jpg', 'image'),
+                       (10, 4, 'Maker/Album/Clip.mp4', 'video'), (11, 4, 'Maker/Album2/Image.png', 'image');
+            INSERT INTO albums (id, name) VALUES (20, '旧版合集');
+            INSERT INTO album_media VALUES (20, 8, 1), (20, 11, 0);
+            """);
+        Check(versionTwo.Query("PRAGMA user_version;", row => row.Number(0)).Single() == 2, "populated version two fixture");
+    }
+
+    var album = new SourceAlbumKey(4, "Maker/Album");
+    var sibling = new SourceAlbumKey(4, "Maker/Album2");
+    SourceAlbumTag trip;
+    SourceAlbumTag scenic;
+    using (var catalog = new Catalog(data))
+    {
+        var baseline = catalog.ReadSourceAlbumOrganization(album);
+        Check(!baseline.Favorite && baseline.RatingHalf is null && baseline.ConfiguredCoverIds.Count == 0 &&
+            baseline.EffectiveCoverIds.SequenceEqual([8L]), "default cover follows natural order after upgrade");
+        catalog.SetFavorite(true, album);
+        catalog.SetRatingHalf(0, album);
+        catalog.SetRatingHalf(7, sibling);
+        trip = catalog.AddAlbumTag("　 ＴＲＩＰ   图片 ", album);
+        var duplicate = catalog.AddAlbumTag("trip 图片", sibling);
+        Check(duplicate == trip && trip.Name == "TRIP 图片" && trip.NormalizedName == "trip 图片", "normalized tag identity");
+        Check(SourceAlbumTag.NamesFrom("ΟΣ İ").Normalized == "οσ i\u0307", "normalized accented label identity");
+        scenic = catalog.AddAlbumTag("风景", album);
+        catalog.AddAlbumTag(trip.Id, sibling);
+        Check(catalog.ReadSourceAlbumsForTag(trip.Id).SequenceEqual([album, sibling]), "tagged source album query");
+        Reject<InvalidOperationException>(() => catalog.RenameTag(trip.Id, scenic.Name), "rename avoids tag identity collision");
+        catalog.RenameTag(trip.Id, "旅行");
+        catalog.ReplaceCover([9, 8], album);
+        Reject<ArgumentException>(() => catalog.ReplaceCover([9, 11], album), "cover excludes same-prefix sibling");
+        Reject<ArgumentException>(() => catalog.ReplaceCover([10], album), "cover excludes video");
+
+        using var failure = new Sqlite(databasePath);
+        failure.ExecuteScript("""
+            CREATE TRIGGER reject_second_cover BEFORE INSERT ON source_album_cover_media
+            WHEN NEW.position = 1 BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;
+            """);
+        Reject<InvalidOperationException>(() => catalog.ReplaceCover([8, 9], album), "cover failure rolls back delete and first insert");
+        failure.ExecuteScript("DROP TRIGGER reject_second_cover;");
+    }
+
+    using var reopened = new Catalog(data);
+    var persisted = reopened.ReadSourceAlbumOrganization(album);
+    var persistedSibling = reopened.ReadSourceAlbumOrganization(sibling);
+    Check(persisted.Favorite && persisted.RatingHalf == 0 && persisted.Tags.Any(tag => tag.Name == "旅行"), "organization persists");
+    Check(!persistedSibling.Favorite && persistedSibling.RatingHalf == 7, "half-star rating is independent");
+    Check(persisted.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && persisted.EffectiveCoverIds.SequenceEqual([9L, 8L]),
+        "ordered cover survives restart and a failed replacement");
+    Check(reopened.Read().AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
+
+    var coverPath = Path.Combine(sourcePath, "Maker/Album/Image 10.jpg");
+    var outside = Path.Combine(work, "out-of-source.jpg");
+    File.Move(coverPath, outside);
+    reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+    var fallback = reopened.ReadSourceAlbumOrganization(album);
+    Check(fallback.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && fallback.EffectiveCoverIds.SequenceEqual([8L]),
+        "missing cover falls back without dropping configuration");
+    File.Move(outside, coverPath);
+    reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+    Check(reopened.ReadSourceAlbumOrganization(album).EffectiveCoverIds.SequenceEqual([9L, 8L]), "returned cover restores order");
+    reopened.Rescan(4, null);
+    var offline = reopened.ReadSourceAlbumOrganization(album);
+    Check(offline.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && offline.EffectiveCoverIds.Count == 0, "offline cover configuration persists");
+
+    reopened.SetRatingHalf(null, album);
+    reopened.RemoveAlbumTag(trip.Id, album);
+    Check(reopened.ReadSourceAlbumsForTag(trip.Id).SequenceEqual([sibling]), "detaching preserves other albums");
+    reopened.DeleteTag(trip.Id);
+    Check(reopened.ReadAlbumTags().SequenceEqual([scenic]) && reopened.ReadSourceAlbumsForTag(trip.Id).Count == 0, "global delete removes links");
+    var cleared = reopened.ReadSourceAlbumOrganization(album);
+    Check(cleared.Favorite && cleared.RatingHalf is null, "clearing rating preserves favorite");
+}
+
 static void CheckSourceRename(string work)
 {
     var sourcePath = Path.Combine(work, "rename-source");
@@ -295,6 +390,16 @@ static void CheckSourceRename(string work)
         secondId = indexed.Single(item => item.FileName == "second.png").Id;
         albumId = catalog.CreateAlbum("物理重命名检查", coverId);
         catalog.AddToAlbum(albumId, secondId);
+        using (var organization = new Sqlite(indexPath))
+        {
+            organization.Execute("""
+                INSERT INTO source_album_organization (id, source_id, album_path, favorite, rating_half)
+                    VALUES (101, ?, 'Maker/Album', 1, 0), (102, ?, 'Maker/Album2', 0, NULL);
+                """, sourceId, sourceId);
+            organization.Execute("INSERT INTO tags (id, name, normalized_name) VALUES (103, 'Travel', 'travel');");
+            organization.Execute("INSERT INTO source_album_tags VALUES (101, 103);");
+            organization.Execute("INSERT INTO source_album_cover_media VALUES (101, ?, 0), (101, ?, 1);", coverId, secondId);
+        }
 
         const string cover = "Maker/Album/front.jpg";
         AddFile(sourcePath, "Maker/Album/not-indexed.jpg");
@@ -351,6 +456,20 @@ static void CheckSourceRename(string work)
         Check(members.Select(item => item.Id).SequenceEqual([coverId, secondId]) &&
             members[0].RelativePath == "新创作者/New Album/新版封面.jpg",
             "renaming files and ancestors retains reference order and stable IDs after rescan");
+        using (var organization = new Sqlite(indexPath))
+        {
+            var identifiers = organization.Query("""
+                SELECT id FROM source_album_organization WHERE
+                    (album_path = '新创作者/New Album' AND favorite = 1 AND rating_half = 0)
+                    OR (album_path = '新创作者/Album2' AND favorite = 0 AND rating_half IS NULL)
+                ORDER BY id;
+                """, row => row.Number(0));
+            Check(identifiers.SequenceEqual([101L, 102L]), "album organization follows folder and creator renames");
+            Check(organization.Query("SELECT tag_id FROM source_album_tags WHERE source_album_id = 101;",
+                row => row.Number(0)).SequenceEqual([103L]), "album tag stays linked");
+            Check(organization.Query("SELECT media_id FROM source_album_cover_media WHERE source_album_id = 101 ORDER BY position;",
+                row => row.Number(0)).SequenceEqual([coverId, secondId]), "cover order stays linked");
+        }
 
         var nested = Path.Combine(sourcePath, "新创作者/Album2");
         catalog.Import(nested, Layout.Flat, MediaFiles.Scan(nested, Layout.Flat));
