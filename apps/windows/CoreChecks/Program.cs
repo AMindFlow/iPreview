@@ -603,6 +603,8 @@ static void CheckLegacyWorkAlbumOrganization(string work)
     catalog.AddAlbumTag(tag.Id, compactKey);
     catalog.ReplaceCover([completePhoto.Id, complete.Samples[0].Id], completeKey);
     catalog.ReplaceCover([compactPhoto.Id], compactKey);
+    var collectionId = catalog.CreateAlbum("作品选片");
+    catalog.AppendToAlbum(collectionId, [compactPhoto.Id]);
     Reject<InvalidOperationException>(() => catalog.SetFavorite(true, new(sourceId, "Complete/官方样张")),
         "a nominal-depth internal folder is not a work album");
 
@@ -616,6 +618,13 @@ static void CheckLegacyWorkAlbumOrganization(string work)
     var group = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("官方样张", true), GlobalSearchScope.Directories).Single();
     Check(group.Category == SearchResultCategory.Directory && group.SourceAlbum is null,
         "work subdirectories retain their directory classification");
+
+    var collectionHits = MediaSearch.Find(loaded.Sources.Values, loaded.AlbumMembers[collectionId],
+        new("照片", false), GlobalSearchScope.Files, taggedAlbums: tagged);
+    Check(collectionHits.Single() is { Media: { } selectedMedia } &&
+        selectedMedia.Id == compactPhoto.Id && collectionHits[0].SourceAlbum == compactKey,
+        "collection search preserves the selected shallow work photo and its tag scope");
+
     foreach (var (photo, key) in new[] { (completePhoto, completeKey), (compactPhoto, compactKey) })
     {
         var hit = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new(photo.FileName, true), GlobalSearchScope.Files,

@@ -179,6 +179,8 @@ struct CatalogChecks {
         try await catalog.addTag(tag.id, to: compactKey)
         try await catalog.replaceCover([photographs[0].id, complete.samples[0].id], for: completeKey)
         try await catalog.replaceCover([photographs[1].id], for: compactKey)
+        let collectionID = try await catalog.createAlbum(named: "作品选片")
+        try await catalog.append(mediaIDs: [photographs[1].id], to: collectionID)
         let intermediary = SourceAlbumKey(sourceID: complete.video.source.id, relativePath: "Complete/官方样张")
         try await expectAsyncError(AlbumOrganizationError.self) {
             try await catalog.setFavorite(true, for: intermediary)
@@ -193,6 +195,16 @@ struct CatalogChecks {
         try verify(Set(workHits.compactMap(\.sourceAlbum)) == [completeKey, compactKey] && workHits.count == 2)
         let groups = index.globalSearch("官方样张", mode: .exact, directories: true, files: false)
         try verify(groups.count == 1 && groups[0].category == .directory && groups[0].sourceAlbum == nil)
+
+        let collection = try required(loaded.albums.first { $0.id == collectionID })
+        let collectionResults = index.globalSearch("照片", mode: .fuzzy, directories: false, files: true,
+                                                   taggedAlbums: albums.taggedAlbums[tag.id]) { result in
+            if case .file(let item) = result { return collection.mediaIDs.contains(item.id) }
+            return false
+        }
+        try verify(collectionResults.count == 1 && collectionResults.first?.sourceAlbum == compactKey)
+        if case .file(let item) = try required(collectionResults.first) { try verify(item.id == photographs[1].id) }
+
         for (photo, key) in zip(photographs, [completeKey, compactKey]) {
             let hits = index.globalSearch(photo.name, mode: .exact, directories: false, files: true,
                                           taggedAlbums: albums.taggedAlbums[tag.id])
