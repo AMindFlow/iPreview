@@ -12,6 +12,10 @@ foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf', '
         throw "Self-contained Windows publish is missing $file"
     }
 }
+$runtimeRoot = Join-Path $publish 'LibVLC'
+python (Join-Path $PSScriptRoot 'libvlc-runtime.py') stage $runtimeRoot --platform windows
+if ($LASTEXITCODE -ne 0) { throw 'LibVLC payload staging failed' }
+
 [xml]$project = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\apps\windows\iPreview\iPreview.csproj') -Raw
 $version = [string]$project.Project.PropertyGroup.Version
 $installerScript = Join-Path $PSScriptRoot '..\packaging\windows\iPreview.iss'

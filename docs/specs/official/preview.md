@@ -13,6 +13,14 @@
 - **来源** [作品预览 #65](https://github.com/AMindFlow/iPreview/issues/65)，承接[首版 #1](https://github.com/AMindFlow/iPreview/issues/1)。
 - **验收** 用两种作品结构从作品预览进入影片、样张和不同写真集。核对每次返回的层级和选择，验证从媒体直接预览时返回原入口。
 
+## PRE-006 常见视频格式与本地回退
+
+- **要求** 双端将 MP4、MOV、MPEG-TS、Matroska、WebM 和 AVI 纳入扫描、重扫、后缀精确搜索及视频预览。优先使用系统播放器。MKV、WebM 或 AVI 系统播放失败时，由包内 LibVLC 3.0.24 在同一预览画布回退。MP4、MOV 和 MPEG-TS 继续使用系统播放。支持范围以实际容器与音视频编码组合为准。
+- **要求** Windows 的系统会话仅推进音轨且始终无可用画面时，对同一回退格式启用本地回退。用户主动暂停期间确认需要回退时，等用户继续播放再启动回退。两种播放路径使用相同的播放、暂停、时间轴、锁定和退出交互。退出或切换项目时停止并释放原播放实例。两个播放器都无法解码视频时显示单文件错误，仍可切换媒体。只有声音的回退会话也显示该错误。
+- **设计决定** Windows 在系统播放 MKV、WebM 和 AVI 时，对同一文件静音验证首帧。验证在首帧或离开预览时结束，验证播放器播放完毕且始终没有画面时触发回退。回退限当前已索引的本地文件，按容器选用应用目录中的分流插件。运行时忽略外部 VLC 配置和插件路径，关闭网络元数据访问与 Matroska 相邻文件预读。两端标准包包含可替换的 LibVLC 动态运行时、所需播放插件、许可和构建配置。对应源码随正式发布归档。[运行时与许可](../../../packaging/libvlc/NOTICE.md)
+- **来源** [格式扩展 #63](https://github.com/AMindFlow/iPreview/issues/63)，承接 [#1](https://github.com/AMindFlow/iPreview/issues/1) 常见视频格式需求。
+- **验收** 用同批 H.264/AAC MP4、MOV、MPEG-TS、Matroska、VP9/Opus WebM 及 MPEG-4 Part 2/MP3 AVI 验证导入、重扫、完整后缀精确查找和实际播放。用 FFV1/FLAC Matroska 验证两端的 LibVLC 回退、画面、声音、暂停、定位、重播、声画同步及退出。检查损坏文件（含音轨可播但视频轨无法解码）、继续切换和离线安装。
+
 ## PRE-007 Space 打开和关闭预览
 
 - **要求** 在图库选中媒体后用 Space 打开预览。在图片或未锁定的视频预览画布再次按 Space 关闭。Space、Esc 和关闭按钮退出时，图库或搜索结果的选中态与焦点均匹配最后查看的条目。关闭视频预览时停止播放。视频锁定遵循 [PRE-011](#pre-011-视频跳转与播放锁定)，未锁定时进度条焦点遵循 [PRE-001](#pre-001-图片与视频预览)。
@@ -29,7 +37,7 @@
 
 ## 设计决定
 
-- macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement。实际媒体暴露格式缺口时，优先用对应样例验证 LibVLC 双端嵌入、打包和许可证。libmpv 是备选，FFprobe 可用于元信息读取。新增随包分发的生产依赖需要批准，按具体二进制及组件核对许可与 codec 专利。
+- macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement，已确认的格式缺口按 [PRE-006](#pre-006-常见视频格式与本地回退) 回退。后续扩大格式覆盖以实际样例和允许分发的解码组件为依据。
 
 ## PRE-009 Quick Look 式过渡
 

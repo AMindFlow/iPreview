@@ -30,6 +30,14 @@ jobs:
         run: bash scripts/package-macos.sh "${RUNNER_TEMP}/iPreview-macos-arm64.zip"
       - name: Assemble disk image
         run: bash scripts/package-macos-dmg.sh "${RUNNER_TEMP}/iPreview-macos-arm64.zip" "${RUNNER_TEMP}/iPreview-macos-arm64.dmg"
+      - name: Archive corresponding LibVLC source
+        run: python3 scripts/libvlc-runtime.py source "${RUNNER_TEMP}/libvlc-source"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: libvlc-corresponding-source
+          path: ${{ runner.temp }}/libvlc-source
+          if-no-files-found: error
+          compression-level: 0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iPreview-macos-arm64
@@ -68,7 +76,9 @@ jobs:
           qa="$(mktemp -d "${RUNNER_TEMP}/ipreview-launch.XXXXXX")"
           ditto -x -k "${RUNNER_TEMP}/ipreview-macos15/iPreview-macos-arm64.zip" "$qa"
           app="$qa/iPreview.app"
-          codesign --verify --strict "$app"
+          codesign --verify --deep --strict "$app"
+          test -f "$app/Contents/Frameworks/LibVLC/lib/libvlc.dylib"
+          test -f "$app/Contents/Frameworks/LibVLC/lib/vlc/plugins/libmkv_plugin.dylib"
 
           export IPREVIEW_DATA_DIR="$qa/catalog"
           "$app/Contents/MacOS/iPreview" >"$qa/launch.log" 2>&1 &
@@ -121,6 +131,8 @@ jobs:
           $zip = Join-Path $env:RUNNER_TEMP 'iPreview-windows-x64.zip'
           dotnet publish apps/windows/iPreview/iPreview.csproj -c Release -r win-x64 --self-contained true -o $publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/libvlc-runtime.py stage (Join-Path $publish 'LibVLC') --platform windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path "$publish\*" -DestinationPath $zip
           $expanded = Join-Path $env:RUNNER_TEMP 'iPreview-expanded'
           Expand-Archive -LiteralPath $zip -DestinationPath $expanded
@@ -129,6 +141,8 @@ jobs:
               throw "Windows ZIP is missing $file"
             }
           }
+          python scripts/libvlc-runtime.py check (Join-Path $expanded 'LibVLC') --platform windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-FileHash -Algorithm SHA256 $zip
       - name: Build and verify per-user installer
         shell: pwsh

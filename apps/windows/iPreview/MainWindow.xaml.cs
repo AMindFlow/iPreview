@@ -734,11 +734,14 @@ public sealed partial class MainWindow : Window
             return;
         }
         previewClosing = true;
+        StopNativeVideoVerification();
         previewSort.Cancel();
         ResetPreviewCopyFeedback();
         var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
             player.Pause();
+        if (fallbackVideo?.State == LibVlcNative.State.Playing)
+            fallbackVideo.Pause();
         if (!searchOpen && videoWorkSession is null)
         {
             var browser = ActiveMediaBrowser;
@@ -902,9 +905,7 @@ public sealed partial class MainWindow : Window
         {
             if (tile.Media.IsVideo)
             {
-                var file = await OpenMediaFile(tile.Media);
-                if (CanUpdatePreview(generation))
-                    StartVideo(file, generation);
+                await OpenPreviewVideo(tile.Media, generation);
                 return;
             }
 
@@ -946,26 +947,42 @@ public sealed partial class MainWindow : Window
         catch (Exception error) when (MediaFailure(error)) { }
     }
 
-    private void StartVideo(StorageFile file, int generation)
+    private void StartVideo(StorageFile file, Media media, int generation)
     {
         var mediaPlayer = new MediaPlayer();
         player = mediaPlayer;
+        var canFallback = LibVlcVideoPlayback.Supports(media.RelativePath);
         mediaPlayer.CommandManager.IsEnabled = false;
         mediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (!CanUpdatePreview(generation))
+            if (!CanUpdatePreview(generation) || !ReferenceEquals(player, mediaPlayer))
                 return;
+            if (canFallback)
+                awaitingNativeVideo = (media, generation);
             MainImage.Visibility = Visibility.Collapsed;
             if (previewImageGeneration != generation)
                 VideoSurface.PosterSource = null;
             PlayPause.IsEnabled = true;
             UpdateTime();
         });
-        mediaPlayer.MediaFailed += (_, details) => DispatcherQueue.TryEnqueue(() =>
+        mediaPlayer.MediaFailed += (_, details) =>
         {
-            if (CanUpdatePreview(generation))
-                ShowPreviewError("系统无法播放此视频。", details.ErrorMessage);
-        });
+            var message = details.ErrorMessage;
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                if (CanUpdatePreview(generation) && ReferenceEquals(player, mediaPlayer))
+                    await RecoverSystemVideo(media, generation, "系统无法播放此视频。", message);
+            });
+        };
+
+        if (canFallback)
+        {
+            mediaPlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (ReferenceEquals(player, mediaPlayer))
+                    RecoverIfNativeVideoMissing(mediaPlayer.PlaybackSession, playbackConfirmed: true);
+            });
+        }
 
         VideoSurface.PosterSource = MainImage.Source;
         VideoSurface.SetMediaPlayer(mediaPlayer);
@@ -974,11 +991,18 @@ public sealed partial class MainWindow : Window
         mediaPlayer.Source = videoSource;
         mediaPlayer.Play();
         playbackClock.Start();
+        if (canFallback)
+            _ = VerifyNativeVideo(file.Path, media, mediaPlayer, generation);
     }
 
     private void StopVideo()
     {
         playbackClock.Stop();
+        awaitingNativeVideo = null;
+        nativePausedByUser = false;
+        deferredNativeVideoRecovery = null;
+        StopNativeVideoVerification();
+        StopFallbackVideo();
         if (player is not { } active)
             return;
 
@@ -1018,19 +1042,33 @@ public sealed partial class MainWindow : Window
 
     private void UpdateTime()
     {
-        if (player is null)
+        if (fallbackVideo is { } fallback)
+        {
+            UpdateFallbackTime(fallback);
             return;
-        var session = player.PlaybackSession;
-        var duration = session.NaturalDuration;
-        var position = session.Position;
-        SetPreviewSeekEnabled(session.CanSeek && duration > TimeSpan.Zero);
+        }
+        if (player is { } active)
+        {
+            var session = active.PlaybackSession;
+            var position = session.Position;
+            var playing = !nativePausedByUser && session.PlaybackState == MediaPlaybackState.Playing;
+            // Let initial video setup settle before treating an advancing audio-only session as failed.
+            if (RecoverIfNativeVideoMissing(session, playing && position >= TimeSpan.FromSeconds(1)))
+                return;
+            UpdateVideoTime(position, session.NaturalDuration, session.CanSeek, playing);
+        }
+    }
+
+    private void UpdateVideoTime(TimeSpan position, TimeSpan duration, bool canSeek, bool isPlaying)
+    {
+        SetPreviewSeekEnabled(canSeek && duration > TimeSpan.Zero);
         settingPosition = true;
         Timeline.Maximum = Math.Max(1, duration.TotalSeconds);
         Timeline.Value = Math.Max(0, Math.Min(position.TotalSeconds, Timeline.Maximum));
         settingPosition = false;
         TimeLabel.Text = FormatTime(position);
         DurationLabel.Text = FormatTime(duration);
-        PlayPause.Content = session.PlaybackState == MediaPlaybackState.Playing ? "暂停" : "播放";
+        PlayPause.Content = isPlaying ? "暂停" : "播放";
     }
 
     private static string FormatTime(TimeSpan time) =>
@@ -1102,12 +1140,30 @@ public sealed partial class MainWindow : Window
 
     private void ToggleVideo()
     {
-        if (player is null)
+        if (fallbackVideo is { } fallback)
+        {
+            ToggleFallbackVideo(fallback);
             return;
-        if (player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
-            player.Pause();
-        else
-            player.Play();
+        }
+        if (player is not { } active)
+            return;
+        if (!nativePausedByUser && active.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        {
+            nativePausedByUser = true;
+            active.Pause();
+            UpdateTime();
+            return;
+        }
+
+        nativePausedByUser = false;
+        if (deferredNativeVideoRecovery is { } recovery)
+        {
+            if (CanUpdatePreview(recovery.Generation))
+                _ = RecoverSystemVideo(recovery.Media, recovery.Generation, recovery.Title, recovery.SystemError);
+            return;
+        }
+
+        active.Play();
         UpdateTime();
     }
 
@@ -1118,8 +1174,9 @@ public sealed partial class MainWindow : Window
 
     private void SeekVideoBy(int seconds)
     {
-        if (player?.PlaybackSession is { } session)
-            SeekVideoTo(session.Position.TotalSeconds + seconds);
+        var position = fallbackVideo?.Position ?? player?.PlaybackSession.Position;
+        if (position is { } current)
+            SeekVideoTo(current.TotalSeconds + seconds);
     }
 
     private void Seek(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs args)
@@ -1130,6 +1187,13 @@ public sealed partial class MainWindow : Window
 
     private void SeekVideoTo(double seconds)
     {
+        if (fallbackVideo is { } fallback)
+        {
+            var duration = fallback.Duration;
+            if (fallback.CanSeek && duration > TimeSpan.Zero)
+                fallback.Seek(TimeSpan.FromSeconds(Math.Clamp(seconds, 0, duration.TotalSeconds)));
+            return;
+        }
         if (player?.PlaybackSession is not { CanSeek: true } session || session.NaturalDuration <= TimeSpan.Zero)
             return;
         session.Position = TimeSpan.FromSeconds(Math.Clamp(seconds, 0, session.NaturalDuration.TotalSeconds));
