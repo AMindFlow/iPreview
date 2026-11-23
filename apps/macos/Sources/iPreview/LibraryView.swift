@@ -65,9 +65,88 @@ struct LibraryView: View {
 
     var body: some View {
         @Bindable var model = model
+        libraryContent
+        .task { await model.start() }
+        .sheet(item: $model.inspection) { inspection in
+            ImportSheet(inspection: inspection) { candidate in
+                Task {
+                    await model.register(inspection, candidate: candidate)
+                    if let imported = model.snapshot.sources.first(where: { $0.path == inspection.root.path }) {
+                        navigate(.source(imported.id))
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $creatingAlbum, onDismiss: focusBrowser) {
+            NewAlbumSheet { name in
+                Task {
+                    if let id = await model.createAlbum(named: name) {
+                        navigate(.virtual(id))
+                    }
+                }
+            }
+        }
+        .sheet(item: $editSourceName, onDismiss: focusBrowser) { edit in
+            SourceNameSheet(edit: edit) { name in
+                try await renameSourceItem(edit, to: name)
+            }
+        }
+        .sheet(item: $organizationTarget, onDismiss: focusBrowser) { target in
+            SourceAlbumOrganizationSheet(target: target, model: model)
+        }
+        .sheet(item: $addAlbumMedia) { album in
+            AlbumMediaPicker(album: album, model: model)
+        }
+        .alert("删除合集", isPresented: Binding(
+            get: { albumDeletion != nil },
+            set: { if !$0 { albumDeletion = nil } }
+        ), presenting: albumDeletion) { target in
+            Button("取消", role: .cancel) { focusBrowser() }
+                .keyboardShortcut(.defaultAction)
+            Button("删除合集", role: .destructive) {
+                Task {
+                    let albumID = target.album.id
+                    let deleted = await model.delete(albumID: albumID, expectedDataVersion: target.dataVersion)
+                    if page == .virtual(albumID), deleted || !model.snapshot.albums.contains(where: { $0.id == albumID }) {
+                        navigate(.library)
+                    }
+                }
+            }
+        } message: { target in
+            Text("将删除「\(target.album.name)」及其中的媒体引用。原始媒体文件会保留。")
+        }
+        .alert("删除媒体源", isPresented: Binding(
+            get: { sourceDeletion != nil },
+            set: { if !$0 { sourceDeletion = nil } }
+        ), presenting: sourceDeletion) { target in
+            Button("取消", role: .cancel) { focusBrowser() }
+                .keyboardShortcut(.defaultAction)
+            Button("删除媒体源", role: .destructive) {
+                Task {
+                    let source = target.source
+                    let deleted = await model.deleteSource(source, expectedDataVersion: target.dataVersion)
+                    if page.sourceID == source.id, deleted || !model.snapshot.sources.contains(where: { $0.id == source.id }) {
+                        navigate(.library)
+                    }
+                }
+            }
+        } message: { target in
+            Text("将删除「\(target.source.name)」的索引、专辑组织设置及其在合集中的媒体引用。原始文件会保留。")
+        }
+        .alert("无法完成操作", isPresented: Binding(
+            get: { model.error != nil },
+            set: { if !$0 { model.error = nil } }
+        )) {
+            Button("好") { model.error = nil }
+        } message: {
+            Text(model.error ?? "")
+        }
+    }
+
+    private var libraryContent: some View {
         let scope = model.contentScope(for: page)
 
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+        return NavigationSplitView(columnVisibility: $sidebarVisibility) {
             sidebar
                 .accessibilityHidden(libraryOverlayShown)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
@@ -146,81 +225,6 @@ struct LibraryView: View {
                     .id(preview.selection)
                 }
             }
-        }
-        .task { await model.start() }
-        .sheet(item: $model.inspection) { inspection in
-            ImportSheet(inspection: inspection) { candidate in
-                Task {
-                    await model.register(inspection, candidate: candidate)
-                    if let imported = model.snapshot.sources.first(where: { $0.path == inspection.root.path }) {
-                        navigate(.source(imported.id))
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $creatingAlbum, onDismiss: focusBrowser) {
-            NewAlbumSheet { name in
-                Task {
-                    if let id = await model.createAlbum(named: name) {
-                        navigate(.virtual(id))
-                    }
-                }
-            }
-        }
-        .sheet(item: $editSourceName, onDismiss: focusBrowser) { edit in
-            SourceNameSheet(edit: edit) { name in
-                try await renameSourceItem(edit, to: name)
-            }
-        }
-        .sheet(item: $organizationTarget, onDismiss: focusBrowser) { target in
-            SourceAlbumOrganizationSheet(target: target, model: model)
-        }
-        .sheet(item: $addAlbumMedia) { album in
-            AlbumMediaPicker(album: album, model: model)
-        }
-        .alert("删除合集", isPresented: Binding(
-            get: { albumDeletion != nil },
-            set: { if !$0 { albumDeletion = nil } }
-        ), presenting: albumDeletion) { target in
-            Button("取消", role: .cancel) { focusBrowser() }
-                .keyboardShortcut(.defaultAction)
-            Button("删除合集", role: .destructive) {
-                Task {
-                    let albumID = target.album.id
-                    let deleted = await model.delete(albumID: albumID, expectedDataVersion: target.dataVersion)
-                    if page == .virtual(albumID), deleted || !model.snapshot.albums.contains(where: { $0.id == albumID }) {
-                        navigate(.library)
-                    }
-                }
-            }
-        } message: { target in
-            Text("将删除「\(target.album.name)」及其中的媒体引用。原始媒体文件会保留。")
-        }
-        .alert("删除媒体源", isPresented: Binding(
-            get: { sourceDeletion != nil },
-            set: { if !$0 { sourceDeletion = nil } }
-        ), presenting: sourceDeletion) { target in
-            Button("取消", role: .cancel) { focusBrowser() }
-                .keyboardShortcut(.defaultAction)
-            Button("删除媒体源", role: .destructive) {
-                Task {
-                    let source = target.source
-                    let deleted = await model.deleteSource(source, expectedDataVersion: target.dataVersion)
-                    if page.sourceID == source.id, deleted || !model.snapshot.sources.contains(where: { $0.id == source.id }) {
-                        navigate(.library)
-                    }
-                }
-            }
-        } message: { target in
-            Text("将删除「\(target.source.name)」的索引、专辑组织设置及其在合集中的媒体引用。原始文件会保留。")
-        }
-        .alert("无法完成操作", isPresented: Binding(
-            get: { model.error != nil },
-            set: { if !$0 { model.error = nil } }
-        )) {
-            Button("好") { model.error = nil }
-        } message: {
-            Text(model.error ?? "")
         }
     }
 
