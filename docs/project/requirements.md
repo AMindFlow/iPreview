@@ -16,7 +16,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | --- | --- | --- |
 | ORIG-01 | 重启 picosmic，承接原本图库、键盘预览和跨目录虚拟专辑 | 0.1.0 交付[图库](../specs/official/library.md)、[键盘预览](../specs/official/preview.md)和[跨目录合集](../specs/official/virtual-albums.md)。0.2.0 加入[合集删除](../specs/official/virtual-albums.md#alb-003-合集删除)与空态按钮反馈。旧版其余工作流见[未完成清单](backlog.md)。 |
 | ORIG-02 | 旧版所有图片类型 | JPEG/JPG、PNG、WebP、GIF 及 macOS HEIC 已交付；Windows HEIC 依赖系统解码器。[PRE-001](../specs/official/preview.md#pre-001-图片与视频预览)。 |
-| ORIG-03 | 常见视频格式 | 系统框架播放 H.264/AAC MP4、MOV。额外容器和编码仍待双端缺口验证与接入，见 [PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展)。 |
+| ORIG-03 | 常见视频格式 | 0.3.0 加入 MPEG-TS、MKV、WebM 和 AVI，MKV、WebM、AVI 可用 LibVLC 回退。支持范围和实际组合见 [PRE-006](../specs/official/preview.md#pre-006-常见视频格式与本地回退)。 |
 | ORIG-04 | 常见音频格式 | 待设计、审阅与实施：[LIB-007](../specs/spike/library.md#lib-007-音频组织)。 |
 | ORIG-05 | creator → album 自动识别 | 已交付：[LIB-001](../specs/official/library.md#lib-001-目录导入与扫描)。 |
 | ORIG-06 | multi-creators → creator → album 自动识别 | 已交付，先选择创作者、再进入其专辑：[LIB-009、010](../specs/official/library.md)。 |
