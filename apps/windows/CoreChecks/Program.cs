@@ -201,6 +201,7 @@ try
     CheckSourceAlbumOrganization(work);
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
+    CheckVideoWorkIndex(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -452,6 +453,46 @@ static void CheckVideoWorks(string root)
     Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
     AddFile(completeRoot, "附加写真集/写真集 2/封面.png");
     Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
+}
+
+static void CheckVideoWorkIndex(string root)
+{
+    var works = Path.Combine(root, "Works");
+    var compact = Path.Combine(root, "Compact-index");
+    const string complete = "Maker/Complete/";
+    foreach (var name in new[] { "视频/影片.mp4", "官方样张/样张.jpg", "附加写真集/图册 2/封面.jpg", "附加写真集/图册 2/照片 1.jpg" })
+        AddFile(works, complete + name);
+    foreach (var name in new[] { "影片.mov", "官方样张.jpg", "附加写真集/照片 2.png" })
+        AddFile(compact, name);
+
+    var data = Path.Combine(root, "works-index");
+    using (var catalog = new Catalog(data))
+    {
+        foreach (var (path, layout) in new[] { (works, Layout.MultiCreator), (compact, Layout.Flat) })
+        {
+            var summary = MediaFiles.Probe(path);
+            Check(summary.Options.Keys.Single() == layout, "work imports using its source album level");
+            catalog.Import(summary.Path, layout, summary.Options[layout]);
+        }
+    }
+    using var reopened = new Catalog(data);
+    var snapshot = reopened.Read();
+    var nested = snapshot.VideoWorks.Single(work => work.Structure == VideoWorkStructure.Complete);
+    var flat = snapshot.VideoWorks.Single(work => work.Structure == VideoWorkStructure.Compact);
+    Check(nested.RelativePath == "Maker/Complete" && nested.Samples.Single().FileName == "样张.jpg" &&
+        nested.PhotoSets.Single().Cover?.FileName == "封面.jpg", "nested work and its roles survive restart");
+    Check(flat.RelativePath.Length == 0 && flat.PhotoSets.Single().Cover is null, "compact flat photo set survives restart");
+    reopened.Rescan(nested.Video.Source.Id, null);
+    Check(!reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id).Video.Available,
+        "unavailable source retains the indexed work");
+    AddFile(works, complete + "附加写真集/图册 2/照片 2.jpg");
+    var scanned = MediaFiles.Scan(works, Layout.MultiCreator);
+    reopened.Rescan(nested.Video.Source.Id, scanned);
+    var updated = reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id);
+    Check(updated.Video.Available && updated.PhotoSets.Single().Photos.Select(item => item.FileName)
+        .SequenceEqual(["照片 1.jpg", "照片 2.jpg"]), "rescan keeps identity and updates photo membership");
+    Check(scanned.All(file => File.ReadAllText(Path.Combine(works, file.RelativePath)) == "fixture"),
+        "work indexing preserves source media");
 }
 
 static void CheckSourceRename(string work)

@@ -7,7 +7,7 @@ public enum VideoWorkRecognition: Sendable {
 }
 
 public struct VideoWork: Sendable {
-    public enum Structure: Sendable {
+    public enum Structure: String, Hashable, Sendable {
         case complete
         case compact
     }
@@ -26,8 +26,25 @@ public struct VideoWork: Sendable {
 
     private static let videoFolder = "视频"
     private static let samplesName = "官方样张"
-    private static let photoSetsFolder = "附加写真集"
+    static let photoSetsFolder = "附加写真集"
     private static let coverName = "封面"
+    static let folders: Set<String> = [videoFolder, samplesName, photoSetsFolder]
+
+    func indexEntries(prefix: [String]) -> [ScanEntry] {
+        func path(_ file: ScanEntry) -> String { (prefix + [file.relativePath]).joined(separator: "/") }
+        let videoPath = path(video)
+        func image(_ file: ScanEntry, role: VideoWorkImageRole, set: Int, position: Int) -> ScanEntry {
+            ScanEntry(relativePath: path(file), kind: .image,
+                      videoWork: .image(videoPath: videoPath, role: role, set: set, position: position))
+        }
+        var entries = [ScanEntry(relativePath: videoPath, kind: .video, videoWork: .video(structure))]
+        entries += samples.enumerated().map { image($1, role: .sample, set: 0, position: $0) }
+        for (set, book) in photoSets.enumerated() {
+            if let cover = book.cover { entries.append(image(cover, role: .cover, set: set, position: 0)) }
+            entries += book.photos.enumerated().map { image($1, role: .photo, set: set, position: $0) }
+        }
+        return entries
+    }
 
     static func recognize(root: URL, entries: [ScanEntry]) -> VideoWorkRecognition {
         let byParent = Dictionary(grouping: entries) { entry -> String in
@@ -75,4 +92,33 @@ public struct VideoWork: Sendable {
     private static func sorted(_ entries: [ScanEntry]) -> [ScanEntry] {
         entries.sorted { compareNaturally($0.relativePath, $1.relativePath) == .orderedAscending }
     }
+}
+
+enum VideoWorkImageRole: String {
+    case sample, cover, photo
+}
+
+enum VideoWorkMembership: Sendable {
+    case video(VideoWork.Structure)
+    case image(videoPath: String, role: VideoWorkImageRole, set: Int, position: Int)
+}
+
+public struct IndexedVideoWork: Hashable, Identifiable, Sendable {
+    public struct PhotoSet: Hashable, Sendable {
+        public let cover: Media?
+        public let photos: [Media]
+
+        public var title: String { photos[0].components.dropLast().last! }
+    }
+
+    public let video: Media
+    public let structure: VideoWork.Structure
+    public let samples: [Media]
+    public let photoSets: [PhotoSet]
+
+    public var id: Int64 { video.id }
+    public var relativePath: String {
+        video.components.dropLast(structure == .complete ? 2 : 1).joined(separator: "/")
+    }
+    public var title: String { relativePath.split(separator: "/").last.map(String.init) ?? video.source.name }
 }
