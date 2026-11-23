@@ -164,8 +164,7 @@ internal static class MediaFiles
     internal static bool IsSupportedExtension(string extension) => IsVideoExtension(extension) || Images.Contains(extension);
 
     private static bool IsVideoExtension(string extension) =>
-        extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
-        || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase);
+        extension.ToLowerInvariant() is ".mp4" or ".mov" or ".ts" or ".mkv" or ".webm" or ".avi";
 
     private static void EnsureReadableLocalRoot(string path)
     {
