@@ -7,9 +7,9 @@ enum LibraryTheme: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .system: "跟随系统"
-        case .light: "浅色"
-        case .dark: "深色"
+        case .system: "自动"
+        case .light: "明亮"
+        case .dark: "黑暗"
         }
     }
 
@@ -158,6 +158,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     }
 
     final class AttachmentView: NSView {
+        private let minimumWidth: CGFloat = 98
         let host: NSHostingView<Controls>
         var sidebarWidth: CGFloat?
         private let accessory = TitleBarAccessory()
@@ -170,7 +171,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
             super.init(frame: .zero)
             host.sizingOptions = []
             host.safeAreaRegions = []
-            host.frame = NSRect(x: 0, y: 0, width: 64, height: 26)
+            host.frame = NSRect(x: 0, y: 0, width: minimumWidth, height: 26)
             accessory.view = host
             accessory.layoutAttribute = .left
             accessory.onLayout = { [weak self] in self?.updateWidth() }
@@ -195,7 +196,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
         func updateWidth(animated: Bool = false) {
             guard installedWindow != nil else { return }
             let leading = host.convert(host.bounds, to: nil).minX
-            let width = max(64, (sidebarWidth ?? 0) - leading - 8)
+            let width = max(minimumWidth, (sidebarWidth ?? 0) - leading - 8)
             if let targetWidth, abs(targetWidth - width) <= 0.5 { return }
             targetWidth = width
             if animated {
@@ -215,6 +216,80 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
             }
             installedWindow = nil
             targetWidth = nil
+        }
+    }
+}
+
+struct LibraryThemeButton: View {
+    @Binding var theme: LibraryTheme
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+    @State private var showingMenu = false
+
+    private var isDark: Bool {
+        theme == .dark || (theme == .system && colorScheme == .dark)
+    }
+
+    var body: some View {
+        Button {
+            if NSEvent.modifierFlags.contains(.option) {
+                showingMenu = true
+            } else {
+                theme = isDark ? .light : .dark
+            }
+        } label: {
+            Group {
+                if hovering && isEnabled {
+                    HStack(spacing: 2) {
+                        Image(systemName: "sun.max")
+                        Text("/")
+                        Image(systemName: "moon")
+                    }
+                    .font(.system(size: 9, weight: .medium))
+                } else {
+                    Image(systemName: isDark ? "moon" : "sun.max")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .frame(width: 30, height: 26)
+        }
+        .buttonStyle(LibraryIconButtonStyle())
+        .onHover { hovering in
+            self.hovering = hovering
+            if isEnabled && hovering && NSEvent.modifierFlags.contains(.option) { showingMenu = true }
+        }
+        .onModifierKeysChanged(mask: .option) { _, keys in
+            if isEnabled && hovering && keys.contains(.option) { showingMenu = true }
+        }
+        .accessibilityLabel(theme == .system ? "主题：自动（\(isDark ? "黑暗" : "明亮")）" : "主题：\(theme.title)")
+        .accessibilityIdentifier("library-theme")
+        .accessibilityAction(named: Text("选择主题")) { showingMenu = true }
+        .help("点击切换明暗。按住 Option 显示主题菜单。")
+        .popover(isPresented: $showingMenu, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(LibraryTheme.allCases, id: \.self) { option in
+                    Button {
+                        theme = option
+                        showingMenu = false
+                    } label: {
+                        HStack {
+                            Text(option.title)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .opacity(theme == option ? 1 : 0)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(minWidth: 88)
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(theme == option ? .isSelected : [])
+                }
+            }
+            .padding(8)
         }
     }
 }

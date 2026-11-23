@@ -152,20 +152,24 @@ struct LibraryView: View {
     }
 
     private var windowControls: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             sidebarToggle
-            Button(action: chooseFolder) {
-                Image(systemName: "folder.badge.plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 26, height: 26)
+            Spacer(minLength: 12)
+            HStack(spacing: 4) {
+                Button(action: chooseFolder) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(LibraryIconButtonStyle())
+                .accessibilityLabel("导入文件夹")
+                .help("导入文件夹")
+                .disabled(!canChooseFolder)
+                LibraryThemeButton(theme: $theme)
+                    .disabled(libraryOverlayShown)
             }
-            .buttonStyle(LibraryIconButtonStyle())
-            .accessibilityLabel("导入文件夹")
-            .help("导入文件夹")
-            .disabled(!canChooseFolder)
         }
-        .frame(width: 64, height: 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .frame(height: 26)
         .opacity(preview == nil ? 1 : 0)
         .accessibilityHidden(libraryOverlayShown)
     }
@@ -266,24 +270,6 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityLabel("媒体库导航")
-        .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-            Menu {
-                Picker("主题", selection: $theme) {
-                    ForEach(LibraryTheme.allCases, id: \.self) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Label("主题", systemImage: "circle.lefthalf.filled")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .accessibilityLabel("主题：\(theme.title)")
-            .help("主题：\(theme.title)")
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
         .accessibilityHidden(libraryOverlayShown)
     }
 
