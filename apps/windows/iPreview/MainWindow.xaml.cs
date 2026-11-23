@@ -460,6 +460,8 @@ public sealed partial class MainWindow : Window
         }
         catch (InvalidOperationException error)
         {
+            if (libraryDataVersion != Database.DataVersion)
+                Reload(Selection?.Media.Id);
             ShowNotice("重新扫描失败", error.Message);
         }
         finally
