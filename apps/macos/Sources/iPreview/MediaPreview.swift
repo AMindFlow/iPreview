@@ -194,7 +194,7 @@ struct MediaPreview: View {
     }
 
     private func dismiss(returningTo selection: Int64) {
-        video.pause()
+        video.prepareToClose()
         closingThumbnail = thumbnail(selection)
         prepareToClose(selection, closingThumbnail != nil)
         withAnimation(transitionAnimation, completionCriteria: .logicallyComplete) {
@@ -251,6 +251,7 @@ struct MediaPreview: View {
                 Group {
                     if let fallback = video.fallback {
                         VLCCanvas(surface: fallback.surface)
+                            .id(ObjectIdentifier(fallback))
                             .accessibilityIdentifier("libvlc-video-surface")
                     } else {
                         VideoCanvas(player: video.player)

@@ -112,14 +112,25 @@ final class VideoPlayback {
         if isPlaying {
             pause()
         } else if let fallback {
-            fallback.play()
+            if fallback.state == .ended {
+                let url = fallback.url
+                stopFallback()
+                startFallback(url, nativeError: nil)
+            } else {
+                fallback.play()
+            }
         } else {
             if duration > 0 && elapsed >= duration - 0.1 { seek(0) }
             player.play()
         }
     }
 
-    func pause() {
+    func prepareToClose() {
+        session = nil
+        pause()
+    }
+
+    private func pause() {
         if let fallback { fallback.pause() } else { player.pause() }
     }
 

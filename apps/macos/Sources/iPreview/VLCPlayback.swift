@@ -13,6 +13,7 @@ final class VLCPlayback {
     private static let releaseQueue = DispatchQueue(label: "iPreview.VLCRelease", qos: .userInitiated)
 
     let surface = Surface()
+    let url: URL
     private let runtime: VLCRuntime
     private let instance: OpaquePointer
     private let player: OpaquePointer
@@ -22,8 +23,6 @@ final class VLCPlayback {
     init(url: URL) throws {
         let demux: String
         switch url.pathExtension.lowercased() {
-        case "mp4", "mov": demux = "mp4"
-        case "ts": demux = "ts"
         case "mkv", "webm": demux = "mkv"
         case "avi": demux = "avi"
         default: throw VLCPlaybackError.unsupportedFormat
@@ -50,6 +49,7 @@ final class VLCPlayback {
             runtime.release(instance)
             throw VLCPlaybackError.initialization
         }
+        self.url = url
         self.runtime = runtime
         self.instance = instance
         self.player = player
