@@ -135,6 +135,20 @@ public actor Catalog {
         }
     }
 
+    public func deleteSource(_ sourceID: Int64, expectedDataVersion: Int64) throws {
+        try database.transaction {
+            guard try scanVersion() == expectedDataVersion else { throw SourceDeletionChangedError() }
+            try SourceRename(database: database).blockScan(sourceID: sourceID)
+            let source = SQLiteValue.integer(sourceID)
+            try database.execute("DELETE FROM source_album_organization WHERE source_id = ?", [source])
+            try database.execute("""
+                DELETE FROM album_media WHERE media_id IN (SELECT id FROM media WHERE source_id = ?)
+                """, [source])
+            try database.execute("DELETE FROM media WHERE source_id = ?", [source])
+            try database.execute("DELETE FROM sources WHERE id = ?", [source])
+        }
+    }
+
     public func renameSourceItem(sourceID: Int64, path: String, mediaID: Int64?, to name: String,
                                  expectedFolderMemberID: Int64? = nil) throws -> String {
         try SourceRename(database: database).rename(sourceID: sourceID, path: path, mediaID: mediaID, to: name,
@@ -247,6 +261,10 @@ public actor Catalog {
         }
         return trimmed
     }
+}
+
+public struct SourceDeletionChangedError: LocalizedError {
+    public var errorDescription: String? { "媒体库已在其他窗口更新。请核对媒体源后重试。" }
 }
 
 public enum AlbumDeletionError: LocalizedError {

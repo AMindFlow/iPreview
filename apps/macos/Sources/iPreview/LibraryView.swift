@@ -16,6 +16,8 @@ struct LibraryView: View {
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
     @ViewState private var albumDeletion: AlbumDeletion?
+    @ViewState private var sourceDeletion: SourceDeletion?
+    @ViewState private var revealedSource: Int64?
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var titleEdit: LibraryTitleEdit?
     @ViewState private var titleDraft = ""
@@ -33,11 +35,16 @@ struct LibraryView: View {
         let dataVersion: Int64
     }
 
+    private struct SourceDeletion {
+        let source: Source
+        let dataVersion: Int64
+    }
+
     private var libraryOverlayShown: Bool { preview != nil || searchDomain != nil }
 
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
-            && !creatingAlbum && albumDeletion == nil && editSourceName == nil && addAlbumMedia == nil
+            && !creatingAlbum && albumDeletion == nil && sourceDeletion == nil && editSourceName == nil && addAlbumMedia == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -45,7 +52,7 @@ struct LibraryView: View {
     }
 
     private var searchActions: LibrarySearchActions {
-        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil,
+        guard preview == nil, titleEdit == nil, editSourceName == nil, !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
               addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
@@ -166,6 +173,24 @@ struct LibraryView: View {
         } message: { target in
             Text("将删除「\(target.album.name)」及其中的媒体引用。原始媒体文件会保留。")
         }
+        .alert("删除媒体源", isPresented: Binding(
+            get: { sourceDeletion != nil },
+            set: { if !$0 { sourceDeletion = nil } }
+        ), presenting: sourceDeletion) { target in
+            Button("取消", role: .cancel) { focusBrowser() }
+                .keyboardShortcut(.defaultAction)
+            Button("删除媒体源", role: .destructive) {
+                Task {
+                    let source = target.source
+                    let deleted = await model.deleteSource(source, expectedDataVersion: target.dataVersion)
+                    if page.sourceID == source.id, deleted || !model.snapshot.sources.contains(where: { $0.id == source.id }) {
+                        navigate(.library)
+                    }
+                }
+            }
+        } message: { target in
+            Text("将删除「\(target.source.name)」的索引、专辑组织设置及其在合集中的媒体引用。原始文件会保留。")
+        }
         .alert("无法完成操作", isPresented: Binding(
             get: { model.error != nil },
             set: { if !$0 { model.error = nil } }
@@ -243,22 +268,31 @@ struct LibraryView: View {
                     .help("搜索所有媒体源（⇧⌘F）")
                 }
                 VStack(alignment: .leading, spacing: 5) {
-                    Label("源", systemImage: "folder")
-                        .padding(.horizontal, 11)
-                        .frame(height: 32)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Label("源", systemImage: "folder")
+                        Spacer()
+                        Button(action: chooseFolder) { Image(systemName: "plus") }
+                            .buttonStyle(LibraryIconButtonStyle())
+                            .disabled(!canChooseFolder)
+                            .accessibilityLabel("添加媒体源")
+                            .help("添加媒体源")
+                    }
+                    .padding(.horizontal, 11)
+                    .frame(height: 32)
+                    .foregroundStyle(.secondary)
 
                     ForEach(model.snapshot.sources) { source in
-                        sidebarRow(source.name, icon: source.layout.sidebarSymbol,
-                                   active: page.sourceID == source.id,
-                                   status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
-                                   offline: !source.isAvailable) {
-                            navigate(.source(source.id))
-                        }
-                        .help(source.path)
-                        .contextMenu {
-                            Button("重新扫描") { Task { await model.rescan(source) } }
-                                .disabled(model.isWorking)
+                        SourceSwipeRow(isRevealed: revealedSource == source.id, enabled: canChooseFolder,
+                                       setRevealed: { revealedSource = $0 ? source.id : nil },
+                                       rescan: { rescanSource(source) }, delete: { confirmSourceDeletion(source) }) {
+                            sidebarRow(source.name, icon: source.layout.sidebarSymbol,
+                                       active: page.sourceID == source.id,
+                                       status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
+                                       offline: !source.isAvailable) {
+                                revealedSource = nil
+                                navigate(.source(source.id))
+                            }
+                            .help(source.path)
                         }
                     }
                 }
@@ -298,6 +332,16 @@ struct LibraryView: View {
         .scrollIndicators(.hidden)
         .accessibilityLabel("媒体库导航")
         .accessibilityHidden(libraryOverlayShown)
+    }
+
+    private func rescanSource(_ source: Source) {
+        revealedSource = nil
+        Task { await model.rescan(source) }
+    }
+
+    private func confirmSourceDeletion(_ source: Source) {
+        revealedSource = nil
+        sourceDeletion = SourceDeletion(source: source, dataVersion: model.snapshot.dataVersion)
     }
 
     private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,

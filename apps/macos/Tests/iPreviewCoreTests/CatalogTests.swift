@@ -36,6 +36,7 @@ struct CatalogChecks {
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
         try await checkAlbumDeletion()
+        try await checkSourceDeletion()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -263,6 +264,47 @@ struct CatalogChecks {
         let afterBytes = try paths.map { try Data(contentsOf: $0) }
         let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         try verify(afterBytes == bytes && afterTimes == times)
+    }
+
+    static func checkSourceDeletion() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("Removed/photo.png")
+        try fixtures.file("Kept/one.png")
+        try fixtures.file("Kept/two.png")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["Removed", "Kept"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+        let imported = try await catalog.snapshot()
+        let removed = try required(imported.sources.first { $0.name == "Removed" })
+        let item = try required(imported.media.first { $0.source.id == removed.id })
+        let path = try item.readableURL()
+        let contents = try Data(contentsOf: path)
+        let kept = imported.media.filter { $0.source.id != removed.id }.map(\.id).reversed()
+        let memberOrder = Array(kept.prefix(1)) + [item.id] + Array(kept.dropFirst())
+        let collection = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: memberOrder, to: collection)
+        let tag = try await catalog.addTag(named: "Shared Tag", to: SourceAlbumKey(sourceID: removed.id, relativePath: ""))
+        try await catalog.markUnavailable(source: removed)
+
+        let stale = try await catalog.snapshot()
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        _ = try await otherWindow.createAlbum(named: "Other")
+        try await expectAsyncError(SourceDeletionChangedError.self) {
+            try await catalog.deleteSource(removed.id, expectedDataVersion: stale.dataVersion)
+        }
+        let refreshed = try await catalog.snapshot()
+        try verify(refreshed.sources.contains { $0.id == removed.id })
+        try await catalog.deleteSource(removed.id, expectedDataVersion: refreshed.dataVersion)
+
+        let after = try await otherWindow.snapshot()
+        let remainingTagged = try await otherWindow.sourceAlbums(tagID: tag.id)
+        try verify(after.sources.map(\.name) == ["Kept"] && after.media.count == 2)
+        try verify(after.albums.first { $0.id == collection }?.mediaIDs == Array(kept))
+        try verify(remainingTagged.isEmpty)
+        let preserved = try Data(contentsOf: path)
+        try verify(preserved == contents)
     }
 
     static func checkAlbumDeletion() async throws {

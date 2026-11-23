@@ -198,6 +198,7 @@ try
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
     CheckSourceAlbumOrganization(work);
+    CheckSourceDeletion(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -217,6 +218,42 @@ static void Check(bool result, string name)
 {
     if (!result)
         throw new InvalidOperationException("Core check failed: " + name);
+}
+
+static void CheckSourceDeletion(string work)
+{
+    var removedPath = Path.Combine(work, "removed-source");
+    var keptPath = Path.Combine(work, "kept-source");
+    AddFile(removedPath, "photo.png");
+    AddFile(keptPath, "one.png");
+    AddFile(keptPath, "two.png");
+    var data = Path.Combine(work, "removal-catalog");
+    using var catalog = new Catalog(data);
+    var removed = catalog.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var kept = catalog.Import(keptPath, Layout.Flat, MediaFiles.Scan(keptPath, Layout.Flat));
+    var media = catalog.Read().Media;
+    var removedItem = media.Single(item => item.Source.Id == removed);
+    var keptItems = media.Where(item => item.Source.Id == kept).Select(item => item.Id).Reverse().ToArray();
+    var collection = catalog.CreateAlbum("Shared");
+    catalog.AppendToAlbum(collection, [keptItems[0], removedItem.Id, keptItems[1]]);
+    var tag = catalog.AddAlbumTag("Shared Tag", new(removed, ""));
+    catalog.Rescan(removed, null);
+
+    var stale = catalog.Read();
+    using var otherWindow = new Catalog(data);
+    otherWindow.CreateAlbum("Other");
+    Reject<SourceDeletionChangedException>(() => catalog.DeleteSource(removed, stale.DataVersion),
+        "a stale source deletion is rejected");
+    var current = catalog.Read();
+    Check(current.Sources.ContainsKey(removed), "a rejected deletion preserves the offline source");
+    catalog.DeleteSource(removed, current.DataVersion);
+
+    var after = otherWindow.Read();
+    Check(after.Sources.Keys.SequenceEqual([kept]) && after.Media.Count == 2, "only the removed source is unindexed");
+    Check(after.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "shared album keeps remaining members in order");
+    Check(otherWindow.ReadSourceAlbumsForTag(tag.Id).Count == 0, "removed source no longer matches tags");
+    Check(File.ReadAllText(Path.Combine(removedPath, "photo.png")) == "fixture", "removing a source preserves the file");
 }
 
 static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long[] memberIds)

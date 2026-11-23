@@ -91,6 +91,7 @@ public sealed partial class MainWindow : Window
         {
             ShowNotice("无法打开媒体库", error.Message);
             ImportButton.IsEnabled = false;
+            AddSourceButton.IsEnabled = false;
             CreateAlbumButton.IsEnabled = false;
             Rescan.IsEnabled = false;
         }
@@ -106,6 +107,7 @@ public sealed partial class MainWindow : Window
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
 
+        RevealSourceActions(null);
         SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
             .Select(source => new Navigation(source.Available ? source.Name : $"{source.Name}（离线）",
                 Source: source.Id, Glyph: source.Layout switch
@@ -117,6 +119,8 @@ public sealed partial class MainWindow : Window
         AlbumNavigation.ItemsSource = albums.Select(album => new Navigation(album.Name, Album: album.Id,
             Glyph: "\uE7B8")).ToList();
 
+        if (current.Source is long sourceId && !sources.ContainsKey(sourceId))
+            current = Library;
         if (current.Album is long albumId)
             current = albums.Find(album => album.Id == albumId) is { } album
                 ? new(album.Name, Album: albumId) : Library;
@@ -141,6 +145,7 @@ public sealed partial class MainWindow : Window
     private void NavigateTo(Navigation target, long? selectedMedia = null)
     {
         current = target;
+        RevealSourceActions(null);
         Notice.IsOpen = false;
         UpdateNavigationSelection();
         ShowItems(selectedMedia);
@@ -379,14 +384,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void RescanSources(object sender, RoutedEventArgs args)
+    private async void RescanSources(object sender, RoutedEventArgs args) =>
+        await RescanSourcesAsync(current.Source is long id ? [sources[id]] : sources.Values.ToList());
+
+    private async Task RescanSourcesAsync(IReadOnlyList<Source> scanSources)
     {
         if (busy || catalog is null)
             return;
         SetBusy(true);
         try
         {
-            List<Source> scanSources = current.Source is long id ? [sources[id]] : sources.Values.ToList();
             var offline = new List<string>();
             var pending = new List<string>();
             foreach (var source in scanSources)
@@ -397,7 +404,7 @@ public sealed partial class MainWindow : Window
                     continue;
                 }
                 List<ScannedMedia>? scan = null;
-                var scanVersion = Database.DataVersion;
+                var scanVersion = libraryDataVersion;
                 try
                 {
                     scan = await Task.Run(() => MediaFiles.Scan(source.Path, source.Layout));
@@ -435,6 +442,7 @@ public sealed partial class MainWindow : Window
     {
         busy = value;
         ImportButton.IsEnabled = !value && catalog is not null;
+        AddSourceButton.IsEnabled = ImportButton.IsEnabled;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
