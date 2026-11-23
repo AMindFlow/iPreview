@@ -59,9 +59,11 @@ internal static class MediaFiles
 
     public static List<ScannedMedia> Scan(string root, Layout layout)
     {
-        var directories = ReadDirectoryTree(root, (int)layout);
-        return directories[Layout.Flat].Any(item => item.VideoWork is VideoWorkMembership.Video)
-            ? directories[Layout.Flat] : directories[layout];
+        var directories = ReadDirectoryTree(root, (int)layout, retainingLayoutDepth: true);
+        var workEntries = directories.Values.SelectMany(level => level)
+            .Where(item => item.VideoWork is not null).ToList();
+        var workPaths = workEntries.Select(item => item.RelativePath).ToHashSet(StringComparer.Ordinal);
+        return directories[layout].Where(item => !workPaths.Contains(item.RelativePath)).Concat(workEntries).ToList();
     }
 
     public static bool IsLocalRootAvailable(string path)
@@ -107,33 +109,38 @@ internal static class MediaFiles
         return path;
     }
 
-    private static Dictionary<Layout, List<ScannedMedia>> ReadDirectoryTree(string path, int maximumDepth = 2)
+    private static Dictionary<Layout, List<ScannedMedia>> ReadDirectoryTree(
+        string path, int maximumDepth = 2, bool retainingLayoutDepth = false)
     {
         EnsureReadableLocalRoot(path);
         var files = Enum.GetValues<Layout>().ToDictionary(layout => layout, _ => new List<ScannedMedia>());
-        Scan(path, path, 0);
+        Scan(path, path, 0, recognizeWorks: true);
         return files;
 
-        void Scan(string root, string directory, int depth)
+        void Scan(string root, string directory, int depth, bool recognizeWorks)
         {
             var children = ReadChildren(directory);
             var direct = ReadFiles(directory, children);
             var prefix = depth == 0 ? "" : RelativePath(root, directory) + "/";
             var level = files[(Layout)depth];
-            if (ProbeVideoWork(directory, children, direct) is VideoWorkRecognition.Recognized(var work))
+            var scoped = direct.Select(item => item with { RelativePath = prefix + item.RelativePath });
+            if (recognizeWorks && ProbeVideoWork(directory, children, direct) is VideoWorkRecognition.Recognized(var work))
             {
                 var tagged = work.IndexEntries(prefix);
                 var included = tagged.Select(item => item.RelativePath).ToHashSet(StringComparer.Ordinal);
                 level.AddRange(tagged);
-                level.AddRange(direct.Select(item => item with { RelativePath = prefix + item.RelativePath })
-                    .Where(item => !included.Contains(item.RelativePath)));
-                return;
+                level.AddRange(scoped.Where(item => !included.Contains(item.RelativePath)));
+                if (!retainingLayoutDepth)
+                    return;
+                // A saved layout can contain ordinary media at an additional level inside a work.
+                recognizeWorks = false;
             }
+            else
+                level.AddRange(scoped);
 
-            level.AddRange(direct.Select(item => item with { RelativePath = prefix + item.RelativePath }));
             if (depth < maximumDepth)
                 foreach (var child in children.OfType<DirectoryInfo>())
-                    Scan(root, child.FullName, depth + 1);
+                    Scan(root, child.FullName, depth + 1, recognizeWorks);
         }
     }
 
