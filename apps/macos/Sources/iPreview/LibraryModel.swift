@@ -89,18 +89,20 @@ final class LibraryModel {
 
     func rescan(_ source: Source) async {
         await change { catalog in
-            let version = try await catalog.scanVersion(for: source.id)
-            guard version == snapshot.dataVersion else {
+            do {
+                let version = try await catalog.scanVersion(for: source.id)
+                guard version == snapshot.dataVersion else { throw SourceRenameError.staleScan }
+                do {
+                    let entries = try await Task.detached(priority: .userInitiated) {
+                        try SourceScanner.rescan(source)
+                    }.value
+                    try await catalog.update(source: source, entries: entries, expectedVersion: version)
+                } catch ScanError.inaccessibleRoot {
+                    try await catalog.markUnavailable(source: source, expectedVersion: version)
+                }
+            } catch SourceRenameError.staleScan {
                 try await refresh(catalog, rebuildSearch: true)
                 throw SourceRenameError.staleScan
-            }
-            do {
-                let entries = try await Task.detached(priority: .userInitiated) {
-                    try SourceScanner.rescan(source)
-                }.value
-                try await catalog.update(source: source, entries: entries, expectedVersion: version)
-            } catch ScanError.inaccessibleRoot {
-                try await catalog.markUnavailable(source: source, expectedVersion: version)
             }
         }
     }
