@@ -1,0 +1,49 @@
+{
+  "version": "3.0.24",
+  "revision": "6de05adcbaf2e8b85fe86aad4169393098628119",
+  "release": "https://download.videolan.org/videolan/vlc/3.0.24/",
+  "source": {
+    "archive": "vlc-3.0.24.tar.xz",
+    "sha256": "e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf"
+  },
+  "macos": {
+    "archive": "macosx/vlc-3.0.24-arm64.dmg",
+    "sha256": "64a89d93cdd30b0e97131743e246373db82d6826ea882d265d46d74b136da2b7",
+    "libraries": {
+      "lib/libvlc.5.dylib": "lib/libvlc.dylib",
+      "lib/libvlccore.9.dylib": "lib/libvlccore.dylib"
+    },
+    "plugins": ["audio_output/auhal", "video_output/vout_macosx"]
+  },
+  "windows": {
+    "archive": "win64/vlc-3.0.24-win64.zip",
+    "sha256": "fcf30850371ad10c9373cc4f0f4501e7dee49e3e9ae9f20c72fb2661a1ca6323",
+    "libraries": {
+      "libvlc.dll": "libvlc.dll",
+      "libvlccore.dll": "libvlccore.dll"
+    },
+    "plugins": ["audio_output/mmdevice", "audio_output/wasapi"]
+  },
+  "plugins": [
+    "access/filesystem",
+    "audio_filter/audio_format",
+    "audio_filter/ugly_resampler",
+    "audio_mixer/float_mixer",
+    "audio_output/amem",
+    "codec/avcodec",
+    "codec/mpg123",
+    "codec/opus",
+    "demux/avi",
+    "demux/mkv",
+    "packetizer/packetizer_copy",
+    "packetizer/packetizer_h264",
+    "packetizer/packetizer_mpeg4audio",
+    "packetizer/packetizer_mpeg4video",
+    "packetizer/packetizer_mpegaudio",
+    "stream_filter/cache_read",
+    "text_renderer/tdummy",
+    "video_chroma/swscale",
+    "video_chroma/yuvp",
+    "video_output/vmem"
+  ]
+}
