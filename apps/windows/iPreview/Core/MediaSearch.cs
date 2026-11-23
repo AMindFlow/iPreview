@@ -28,6 +28,9 @@ internal sealed record GlobalSearchHit(Source Source, string? Folder, string Nam
             _ => SearchResultCategory.Directory
         };
 
+    public SourceAlbumKey? SourceAlbum => Media is { } item ? SourceAlbumKey.FromMedia(item)
+        : Category == SearchResultCategory.Album ? new SourceAlbumKey(Source.Id, Folder?.TrimEnd('/') ?? "") : null;
+
     public string Details => Category switch
     {
         SearchResultCategory.Creator => $"创作者 · {Location}",
@@ -58,12 +61,14 @@ internal static class MediaSearch
 
     public static List<GlobalSearchHit> Find(IEnumerable<Source> sources, IEnumerable<Media> items,
                                              GlobalSearchTerm term, GlobalSearchScope scope,
-                                             string? folderRoot = null)
+                                             string? folderRoot = null, IReadOnlySet<SourceAlbumKey>? taggedAlbums = null)
     {
-        if (term.Text.Length == 0)
+        if (term.Text.Length == 0 && taggedAlbums is null)
             return [];
 
-        var rankName = Matcher(Normalize(term.Text), term.Exact);
+        Func<string, bool, int> rankName = term.Text.Length == 0 ? (_, _) => 0 : Matcher(Normalize(term.Text), term.Exact);
+        bool Includes(GlobalSearchHit hit) => taggedAlbums is null ||
+            hit.SourceAlbum is { } album && taggedAlbums.Contains(album);
         var seen = new HashSet<(long Source, string Folder)>();
         var matches = new List<(GlobalSearchHit Hit, int Rank)>();
         void AddFolder(Source source, string folder, string label, string location)
@@ -71,8 +76,9 @@ internal static class MediaSearch
             if (!seen.Add((source.Id, folder)))
                 return;
             var rank = rankName(label, false);
-            if (rank != int.MaxValue)
-                matches.Add((new(source, folder.Length == 0 ? null : folder, label, location), rank));
+            var hit = new GlobalSearchHit(source, folder.Length == 0 ? null : folder, label, location);
+            if (rank != int.MaxValue && Includes(hit))
+                matches.Add((hit, rank));
         }
         if (scope != GlobalSearchScope.Files && folderRoot is null)
             foreach (var source in sources)
@@ -94,9 +100,10 @@ internal static class MediaSearch
             if (scope == GlobalSearchScope.Directories)
                 continue;
             var rank = rankName(parts[^1], true);
-            if (rank != int.MaxValue)
-                matches.Add((new(item.Source, folder.Length == 0 ? null : folder, parts[^1],
-                    DirectoryDisplay(item.Source, folder), item), rank));
+            var hit = new GlobalSearchHit(item.Source, folder.Length == 0 ? null : folder, parts[^1],
+                DirectoryDisplay(item.Source, folder), item);
+            if (rank != int.MaxValue && Includes(hit))
+                matches.Add((hit, rank));
         }
 
         return matches.OrderBy(match => match.Rank)

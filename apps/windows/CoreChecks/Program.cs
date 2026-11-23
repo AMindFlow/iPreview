@@ -334,7 +334,20 @@ static void CheckSourceAlbumOrganization(string work)
     Check(!persistedSibling.Favorite && persistedSibling.RatingHalf == 7, "half-star rating is independent");
     Check(persisted.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && persisted.EffectiveCoverIds.SequenceEqual([9L, 8L]),
         "ordered cover survives restart and a failed replacement");
-    Check(reopened.Read().AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
+    var library = reopened.Read();
+    Check(library.AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
+    var organizationIndex = reopened.ReadSourceAlbumIndex();
+    Check(organizationIndex.ConfiguredCovers[album].SequenceEqual([9L, 8L]), "card cover order matches stored selection");
+    Check(SourceAlbumTag.Suggestions("旅", organizationIndex.Tags).Select(tag => tag.Id).SequenceEqual([trip.Id]),
+        "tag suggestion uses the current display name");
+    var filtered = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.All,
+        taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
+    Check(filtered.Count == 4 && filtered.Count(hit => hit.Category == SearchResultCategory.Album) == 1 &&
+        filtered.All(hit => hit.SourceAlbum == album), "tag scope includes only its album and member files");
+    var filteredFiles = MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
+    Check(filteredFiles.Count == 2 && filteredFiles.All(hit => hit.SourceAlbum == album),
+        "filename search remains confined to tagged media");
 
     var coverPath = Path.Combine(sourcePath, "Maker/Album/Image 10.jpg");
     var outside = Path.Combine(work, "out-of-source.jpg");

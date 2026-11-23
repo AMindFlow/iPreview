@@ -266,6 +266,30 @@ extension Catalog {
         try database.select("SELECT id, name, normalized_name FROM tags ORDER BY normalized_name", row: Self.readTag)
     }
 
+    public func sourceAlbumIndex() throws -> SourceAlbumIndex {
+        try database.transaction(write: false) {
+            let links = try database.select("""
+                SELECT organization.source_id, organization.album_path, source_album_tags.tag_id
+                FROM source_album_tags JOIN source_album_organization AS organization
+                ON organization.id = source_album_tags.source_album_id
+                """) { row in
+                (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
+                 id: sqlite3_column_int64(row, 2))
+            }
+            let covers = try database.select("""
+                SELECT organization.source_id, organization.album_path, cover.media_id
+                FROM source_album_cover_media AS cover JOIN source_album_organization AS organization
+                ON organization.id = cover.source_album_id ORDER BY cover.position
+                """) { row in
+                (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
+                 id: sqlite3_column_int64(row, 2))
+            }
+            return SourceAlbumIndex(tags: try albumTags(),
+                                    taggedAlbums: Dictionary(grouping: links, by: \.id).mapValues { Set($0.map(\.key)) },
+                                    configuredCovers: Dictionary(grouping: covers, by: \.key).mapValues { $0.map(\.id) })
+        }
+    }
+
     public func sourceAlbums(tagID: Int64) throws -> [SourceAlbumKey] {
         try database.select("""
             SELECT albums.source_id, albums.album_path FROM source_album_organization AS albums
@@ -301,10 +325,7 @@ extension Catalog {
             }
 
             let available = try availableAlbumImages(album)
-            let availableIDs = Set(available.map(\.id))
-            let fallback = available.min { compareNaturally($0.path, $1.path) == .orderedAscending }
-            let effective = !configured.isEmpty && configured.allSatisfy(availableIDs.contains)
-                ? configured : fallback.map { [$0.id] } ?? []
+            let effective = SourceAlbumIndex.coverIDs(configured: configured, available: available)
             return SourceAlbumOrganization(favorite: stored?.favorite ?? false, ratingHalf: stored?.rating,
                                            tags: tags, configuredCoverIDs: configured, effectiveCoverIDs: effective)
         }

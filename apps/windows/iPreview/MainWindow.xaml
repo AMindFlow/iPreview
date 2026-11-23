@@ -37,6 +37,13 @@
                     <Setter Property="CornerRadius" Value="8" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 </Style>
+                <DataTemplate x:Key="AlbumCoverChoiceTemplate">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Image Width="52" Height="38" Stretch="UniformToFill"
+                               Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
+                        <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </StackPanel>
+                </DataTemplate>
                 <DataTemplate x:Key="NavigationEntryTemplate">
                     <Grid ColumnSpacing="9" ToolTipService.ToolTip="{Binding Help}">
                         <Grid.ColumnDefinitions>
@@ -174,6 +181,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
                                 Style="{StaticResource LibraryIconButton}" Margin="0,0,6,0"
@@ -189,6 +197,9 @@
                                      PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
                                      TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
                         </Grid>
+                        <Border x:Name="SourceAlbumCover" Grid.Column="2" Width="62" Height="42"
+                                Margin="8,0,0,0" CornerRadius="6" Visibility="Collapsed"
+                                Background="{ThemeResource ControlFillColorSecondaryBrush}" />
                     </Grid>
                     <Grid Grid.Row="1" ColumnSpacing="10" MinHeight="28">
                         <Grid.ColumnDefinitions>
@@ -207,6 +218,10 @@
                             </StackPanel>
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="OrganizeSourceAlbum" Content="专辑组织" Click="OpenSourceAlbumOrganization"
+                                    Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
+                            <Button x:Name="ManageAlbumTags" Content="管理标签" Click="OpenGlobalTagManagement"
+                                    Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -498,10 +513,8 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
-                                    <Border CornerRadius="12" Background="{ThemeResource ControlFillColorSecondaryBrush}">
-                                        <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
-                                               Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
-                                    </Border>
+                                    <Border CornerRadius="12" Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                            Loaded="LoadFolderCover" DataContextChanged="UpdateFolderCover" />
                                     <TextBlock Grid.Row="1" Text="{Binding Label}" FontWeight="SemiBold" FontSize="13"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Row="2" Text="{Binding Caption}" FontSize="12"
@@ -587,6 +600,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE721;" FontSize="20" VerticalAlignment="Center"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -602,7 +616,9 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
-                        <Button Grid.Column="3" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
+                        <Button x:Name="SearchTagFilter" Grid.Column="3" CornerRadius="12"
+                                AutomationProperties.Name="标签筛选" ToolTipService.ToolTip="标签筛选。输入 # 查询标签。" />
+                        <Button Grid.Column="4" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
                                 VerticalAlignment="Center" Width="32" Height="32" Padding="0" CornerRadius="12"
                                 Background="Transparent" BorderThickness="0"
                                 AutomationProperties.Name="关闭搜索">
@@ -613,8 +629,30 @@
                     <TextBlock x:Name="SearchStatus" Visibility="Collapsed" Margin="3,3,0,3"
                                TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                AutomationProperties.LiveSetting="Polite" />
+                    <ListView x:Name="SearchTagSuggestions" Visibility="Collapsed" MaxHeight="205" SelectionMode="Single"
+                              IsItemClickEnabled="True" ItemClick="ChooseTagSuggestion" AutomationProperties.Name="标签联想">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8EC;" FontSize="13" />
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                     <ListView x:Name="SearchResults" Visibility="Collapsed" MaxHeight="299" SelectionMode="Single"
                               SingleSelectionFollowsFocus="True" AutomationProperties.Name="搜索结果">
+                        <ListView.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Key}" Margin="8,4" FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.HeadingLevel="Level2"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ListView.GroupStyle>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -666,7 +704,7 @@
                                     <KeyboardAccelerator Key="Number0" Modifiers="Control" Invoked="SwitchSearchDomainShortcut" />
                                 </Button.KeyboardAccelerators>
                             </Button>
-                            <TextBlock x:Name="SearchExactHint" Grid.Column="3" Text="输入 @ 后按空格精确匹配"
+                            <TextBlock x:Name="SearchExactHint" Grid.Column="3" Text="输入 # 搜索标签 · @ 后按空格精确匹配"
                                        FontSize="12" Margin="6,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
