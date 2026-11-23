@@ -195,11 +195,30 @@ public sealed partial class MainWindow
         };
         AutomationProperties.SetName(items, "封面图片");
         var selection = new List<Tile>();
+        var sorting = new MediaSortSession();
+        var restoringSelection = false;
+        items.Unloaded += (_, _) => sorting.Cancel();
+        var sortButton = new Button { Content = new FontIcon { Glyph = "\uE8CB", FontSize = 14 } };
+        AutomationProperties.SetName(sortButton, "文件排序");
+        ToolTipService.SetToolTip(sortButton, "文件排序");
+        MediaSortMenu.Attach(sortButton, () => sorting.Order, async order =>
+        {
+            sorting.Order = order;
+            if (await sorting.ArrangeAsync(available, tile => tile.Media) is not { } sorted || !items.IsLoaded)
+                return;
+            restoringSelection = true;
+            items.ItemsSource = sorted;
+            foreach (var tile in selection)
+                items.SelectedItems.Add(tile);
+            restoringSelection = false;
+        });
         var selectedNames = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var apply = OrganizationButton("设为封面", () => save(selection.Select(tile => tile.Media.Id).ToArray()));
         apply.IsEnabled = false;
         items.SelectionChanged += (_, args) =>
         {
+            if (restoringSelection)
+                return;
             foreach (var removed in args.RemovedItems.OfType<Tile>())
                 selection.Remove(removed);
             foreach (var added in args.AddedItems.OfType<Tile>())
@@ -213,6 +232,7 @@ public sealed partial class MainWindow
             selectedNames.Text = string.Join("  ", selection.Select((tile, index) => $"{index + 1}. {tile.FileName}"));
         };
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        actions.Children.Add(sortButton);
         actions.Children.Add(OrganizationButton("取消", cancel));
         actions.Children.Add(apply);
         target.Children.Add(items);

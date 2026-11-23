@@ -23,6 +23,7 @@ struct SourceAlbumOrganizationSheet: View {
     @ViewState private var renamingTag: SourceAlbumTag?
     @ViewState private var deletingTag: SourceAlbumTag?
     @ViewState private var coverDraft: [Int64]?
+    @ViewState private var coverSort = MediaSort()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -172,6 +173,7 @@ struct SourceAlbumOrganizationSheet: View {
                         Button("恢复自动") { apply { try await $0.replaceCover([], for: key) } }
                     }
                 } else {
+                    MediaSortMenu(sort: $coverSort)
                     Button("取消") { coverDraft = nil }
                     Button("设为封面") {
                         guard let selected = coverDraft, !selected.isEmpty else { return }
@@ -181,14 +183,16 @@ struct SourceAlbumOrganizationSheet: View {
                 }
             }
             if let coverDraft {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 9) {
-                        ForEach(images) { item in
-                            coverChoice(item, selection: coverDraft)
+                SortedMedia(request: MediaSortRequest(items: images, sort: coverSort, revision: model.revision)) { ordered in
+                    ScrollView {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 9) {
+                            ForEach(ordered) { item in
+                                coverChoice(item, selection: coverDraft)
+                            }
                         }
                     }
+                    .frame(height: 202)
                 }
-                .frame(height: 202)
             } else {
                 let byID = Dictionary(uniqueKeysWithValues: images.map { ($0.id, $0) })
                 AlbumCoverArtwork(media: organization.effectiveCoverIDs.compactMap { byID[$0] }, revision: model.revision)
