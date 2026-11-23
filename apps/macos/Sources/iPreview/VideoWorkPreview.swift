@@ -63,7 +63,12 @@ struct VideoWorkPreview: View {
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if session.insideGroup { MediaSortMenu(sort: $sort) }
+                if session.insideGroup {
+                    MediaSortMenu(sort: Binding(get: { sort }, set: { value in
+                        if session.selectedMediaID == nil { session.selectedMediaID = files.first?.id }
+                        sort = value
+                    }))
+                }
             }
             .padding(.horizontal, 24)
             ScrollViewReader { reader in
@@ -111,6 +116,9 @@ struct VideoWorkPreview: View {
                     await Task.yield()
                     if let selected = session.selectedMediaID { reader.scrollTo(selected) }
                     focused = true
+                }
+                .onChange(of: files.map(\.id)) {
+                    if let selected = session.selectedMediaID { reader.scrollTo(selected) }
                 }
                 .onChange(of: session.insideGroup) {
                     if session.insideGroup {
