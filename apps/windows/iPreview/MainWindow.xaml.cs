@@ -734,6 +734,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         previewClosing = true;
+        StopNativeVideoVerification();
         previewSort.Cancel();
         ResetPreviewCopyFeedback();
         var selectedId = previewTiles[previewIndex].Media.Id;
@@ -990,12 +991,15 @@ public sealed partial class MainWindow : Window
         mediaPlayer.Source = videoSource;
         mediaPlayer.Play();
         playbackClock.Start();
+        if (canFallback)
+            _ = VerifyNativeVideo(file.Path, media, mediaPlayer, generation);
     }
 
     private void StopVideo()
     {
         playbackClock.Stop();
         awaitingNativeVideo = null;
+        StopNativeVideoVerification();
         StopFallbackVideo();
         if (player is not { } active)
             return;
