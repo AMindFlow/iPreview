@@ -23,6 +23,7 @@ public struct GlobalSearchTerm: Sendable {
 public struct IndexedDirectory: Hashable, Sendable {
     public let source: Source
     public let relativePath: String
+    public let workAlbumPath: String?
 
     public var components: [String] {
         relativePath.isEmpty ? [source.name] : [source.name] + relativePath.components(separatedBy: "/")
@@ -61,9 +62,12 @@ public enum GlobalSearchResult: Hashable, Sendable, Identifiable {
 
     public var category: SearchResultCategory {
         switch self {
-        case .file: .file
+        case .file: return .file
         case .directory(let directory):
-            switch (directory.source.layout, directory.components.count - 1) {
+            if let work = directory.workAlbumPath {
+                return work == directory.relativePath ? .album : .directory
+            }
+            return switch (directory.source.layout, directory.components.count - 1) {
             case (.creator, 0), (.multiCreator, 1): .creator
             case (.flat, 0), (.creator, 1), (.multiCreator, 2): .album
             default: .directory
@@ -94,10 +98,16 @@ public struct SearchIndex: Sendable {
             Entry(media: $0, directories: $0.directories.map(parameters(for:)), file: parameters(for: $0.name))
         }
 
+        let workRoots = Set(media.compactMap { item -> SourceAlbumKey? in
+            guard item.workAlbumPath != nil else { return nil }
+            return SourceAlbumKey(media: item)
+        })
         var seen: Set<IndexedDirectory> = []
         var folders: [(IndexedDirectory, Name)] = []
         func addFolder(_ source: Source, path: String, name: String) {
-            let folder = IndexedDirectory(source: source, relativePath: path)
+            let key = SourceAlbumKey(sourceID: source.id, relativePath: path)
+            let folder = IndexedDirectory(source: source, relativePath: path,
+                                          workAlbumPath: key.containingWork(in: workRoots)?.relativePath)
             if seen.insert(folder).inserted { folders.append((folder, parameters(for: name))) }
         }
         for source in sources { addFolder(source, path: "", name: source.name) }

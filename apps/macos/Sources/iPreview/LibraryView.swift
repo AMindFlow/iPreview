@@ -418,7 +418,8 @@ struct LibraryView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                if let album = page.sourceAlbum(in: scope.source), !scope.items.isEmpty {
+                if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
+                   !scope.items.isEmpty {
                     AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
                                       revision: model.revision)
                         .frame(width: 62, height: 42)
@@ -452,7 +453,8 @@ struct LibraryView: View {
                         .buttonStyle(.borderless)
                         .disabled(model.isWorking)
                     }
-                    if let album = page.sourceAlbum(in: scope.source), !scope.items.isEmpty {
+                    if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
+                       !scope.items.isEmpty {
                         Button {
                             organizationTarget = .album(name: scope.title, key: album, media: scope.items)
                         } label: {
@@ -707,7 +709,7 @@ struct LibraryView: View {
         let isSelected = selectedFolder == folder.page
         return Button { navigate(folder.page) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source).map {
+                AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
                     model.sourceAlbumIndex.covers(for: $0, members: folder.members)
                 } ?? [folder.cover], revision: model.revision)
                     .aspectRatio(1.47, contentMode: .fit)
@@ -1120,7 +1122,9 @@ enum LibraryPage: Hashable, Sendable {
         let id = directory.source.id
         let path = directory.relativePath
         if path.isEmpty { return .source(id) }
-        if directory.source.layout == .multiCreator && !path.contains("/") { return .creator(id, path) }
+        if directory.workAlbumPath == nil && directory.source.layout == .multiCreator && !path.contains("/") {
+            return .creator(id, path)
+        }
         return .folder(id, path)
     }
 
@@ -1139,7 +1143,7 @@ enum LibraryPage: Hashable, Sendable {
         }
     }
 
-    func sourceAlbum(in source: Source?) -> SourceAlbumKey? {
+    func sourceAlbum(in source: Source?, workAlbumPath: String? = nil) -> SourceAlbumKey? {
         guard let source else { return nil }
         let path: String
         switch self {
@@ -1148,7 +1152,9 @@ enum LibraryPage: Hashable, Sendable {
         default: return nil
         }
         let key = SourceAlbumKey(sourceID: source.id, relativePath: path)
-        return key.matchesLayout(source.layout) ? key : nil
+        let isAlbum = workAlbumPath.map { SourceAlbumKey(sourceID: source.id, relativePath: $0) == key }
+            ?? key.matchesLayout(source.layout)
+        return isAlbum ? key : nil
     }
 
     var sourceID: Int64? {

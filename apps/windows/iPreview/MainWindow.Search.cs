@@ -450,10 +450,9 @@ public sealed partial class MainWindow
         var target = current;
         if (searchAllSources || current.Album is null)
         {
-            var label = result.Folder is { } folder
-                ? SourceRename.SplitPath(folder.TrimEnd('/')).Leaf
-                : result.Source.Name;
-            target = new Navigation(label, Source: result.Source.Id, Folder: result.Folder);
+            var folder = result.Media?.WorkAlbumPath is { } work ? (work.Length == 0 ? null : work + "/") : result.Folder;
+            var label = folder is null ? result.Source.Name : SourceRename.SplitPath(folder.TrimEnd('/')).Leaf;
+            target = new Navigation(label, Source: result.Source.Id, Folder: folder);
         }
         CloseSearch(restoreFocus: false);
         NavigateTo(target, result.Media?.Id);

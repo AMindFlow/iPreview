@@ -18,15 +18,25 @@ internal readonly record struct GlobalSearchTerm(string Text, bool Exact)
     }
 }
 
-internal sealed record GlobalSearchHit(Source Source, string? Folder, string Name, string Location, Media? Media = null)
+internal sealed record GlobalSearchHit(Source Source, string? Folder, string Name, string Location, Media? Media = null,
+    string? WorkAlbumPath = null)
 {
-    public SearchResultCategory Category => Media is not null ? SearchResultCategory.File
-        : (Source.Layout, Folder?.Count(character => character == '/') ?? 0) switch
+    public SearchResultCategory Category
+    {
+        get
         {
-            (Layout.Creator, 0) or (Layout.MultiCreator, 1) => SearchResultCategory.Creator,
-            (Layout.Flat, 0) or (Layout.Creator, 1) or (Layout.MultiCreator, 2) => SearchResultCategory.Album,
-            _ => SearchResultCategory.Directory
-        };
+            if (Media is not null)
+                return SearchResultCategory.File;
+            if (WorkAlbumPath is not null)
+                return (Folder?.TrimEnd('/') ?? "") == WorkAlbumPath ? SearchResultCategory.Album : SearchResultCategory.Directory;
+            return (Source.Layout, Folder?.Count(character => character == '/') ?? 0) switch
+            {
+                (Layout.Creator, 0) or (Layout.MultiCreator, 1) => SearchResultCategory.Creator,
+                (Layout.Flat, 0) or (Layout.Creator, 1) or (Layout.MultiCreator, 2) => SearchResultCategory.Album,
+                _ => SearchResultCategory.Directory
+            };
+        }
+    }
 
     public SourceAlbumKey? SourceAlbum => Media is { } item ? SourceAlbumKey.FromMedia(item)
         : Category == SearchResultCategory.Album ? new SourceAlbumKey(Source.Id, Folder?.TrimEnd('/') ?? "") : null;
@@ -69,6 +79,8 @@ internal static class MediaSearch
         Func<string, bool, int> rankName = term.Text.Length == 0 ? (_, _) => 0 : Matcher(Normalize(term.Text), term.Exact);
         bool Includes(GlobalSearchHit hit) => taggedAlbums is null ||
             hit.SourceAlbum is { } album && taggedAlbums.Contains(album);
+        var workRoots = items.Where(item => item.WorkAlbumPath is not null)
+            .Select(SourceAlbumKey.FromMedia).ToHashSet();
         var seen = new HashSet<(long Source, string Folder)>();
         var matches = new List<(GlobalSearchHit Hit, int Rank)>();
         void AddFolder(Source source, string folder, string label, string location)
@@ -76,7 +88,9 @@ internal static class MediaSearch
             if (!seen.Add((source.Id, folder)))
                 return;
             var rank = rankName(label, false);
-            var hit = new GlobalSearchHit(source, folder.Length == 0 ? null : folder, label, location);
+            var work = new SourceAlbumKey(source.Id, folder.TrimEnd('/')).ContainingWork(workRoots);
+            var hit = new GlobalSearchHit(source, folder.Length == 0 ? null : folder, label, location,
+                WorkAlbumPath: work?.RelativePath);
             if (rank != int.MaxValue && Includes(hit))
                 matches.Add((hit, rank));
         }
