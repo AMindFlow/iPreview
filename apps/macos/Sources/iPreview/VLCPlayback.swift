@@ -17,6 +17,7 @@ final class VLCPlayback {
     private let runtime: VLCRuntime
     private let instance: OpaquePointer
     private let player: OpaquePointer
+    private let media: OpaquePointer
     private var started = false
     private(set) var couldNotStart = false
 
@@ -28,7 +29,7 @@ final class VLCPlayback {
         default: throw VLCPlaybackError.unsupportedFormat
         }
         let runtime = try Self.runtime.get()
-        let options = ["--no-video-title-show", "--no-media-library", "--no-plugins-cache", "--no-sub-autodetect-file"]
+        let options = ["--no-video-title-show", "--no-media-library", "--no-plugins-cache", "--no-sub-autodetect-file", "--stats"]
         let allocated = options.map { strdup($0)! }
         defer { allocated.forEach { free($0) } }
         let arguments: [UnsafePointer<CChar>?] = allocated.map { UnsafePointer($0) }
@@ -53,12 +54,24 @@ final class VLCPlayback {
         self.runtime = runtime
         self.instance = instance
         self.player = player
+        // The player retains this media descriptor until it is released.
+        self.media = media
         surface.onAttach = { [weak self] in self?.start() }
     }
 
     var state: State { State(rawValue: runtime.getState(player))! }
     var duration: Double { max(0, Double(runtime.getLength(player)) / 1000) }
     var elapsed: Double { max(0, Double(runtime.getTime(player)) / 1000) }
+    var hasSelectedVideoTrack: Bool { runtime.getVideoTrack(player) >= 0 }
+    var hasDisplayedPicture: Bool {
+        // LibVLC 3's libvlc_media_stats_t has 15 four-byte fields.
+        // i_displayed_pictures follows the input, demux and decoder counters at byte 32.
+        withUnsafeTemporaryAllocation(byteCount: 60, alignment: MemoryLayout<CInt>.alignment) { buffer in
+            let bytes = buffer.baseAddress!
+            guard runtime.getMediaStats(media, bytes) != 0 else { return false }
+            return bytes.load(fromByteOffset: 32, as: CInt.self) > 0
+        }
+    }
 
     func play() {
         guard started else { return }
@@ -132,6 +145,7 @@ private final class VLCRuntime: @unchecked Sendable {
     let createMedia: @convention(c) (OpaquePointer, UnsafePointer<CChar>) -> OpaquePointer?
     let setMediaOption: @convention(c) (OpaquePointer, UnsafePointer<CChar>) -> Void
     let releaseMedia: HandleAction
+    let getMediaStats: @convention(c) (OpaquePointer, UnsafeMutableRawPointer) -> CInt
     let createPlayer: @convention(c) (OpaquePointer) -> OpaquePointer?
     let releasePlayer: HandleAction
     let setSurface: @convention(c) (OpaquePointer, UnsafeMutableRawPointer?) -> Void
@@ -142,6 +156,7 @@ private final class VLCRuntime: @unchecked Sendable {
     let getLength: TimeQuery
     let getTime: TimeQuery
     let setTime: @convention(c) (OpaquePointer, Int64) -> Void
+    let getVideoTrack: @convention(c) (OpaquePointer) -> CInt
 
     init() throws {
         guard let path = Bundle.main.privateFrameworksURL?.appendingPathComponent("LibVLC/lib/libvlc.dylib"),
@@ -158,6 +173,7 @@ private final class VLCRuntime: @unchecked Sendable {
             createMedia = try load("libvlc_media_new_path")
             setMediaOption = try load("libvlc_media_add_option")
             releaseMedia = try load("libvlc_media_release")
+            getMediaStats = try load("libvlc_media_get_stats")
             createPlayer = try load("libvlc_media_player_new_from_media")
             releasePlayer = try load("libvlc_media_player_release")
             setSurface = try load("libvlc_media_player_set_nsobject")
@@ -168,6 +184,7 @@ private final class VLCRuntime: @unchecked Sendable {
             getLength = try load("libvlc_media_player_get_length")
             getTime = try load("libvlc_media_player_get_time")
             setTime = try load("libvlc_media_player_set_time")
+            getVideoTrack = try load("libvlc_video_get_track")
         } catch {
             dlclose(library)
             throw error
