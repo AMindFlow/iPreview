@@ -10,7 +10,7 @@
 python3 scripts/generate-fixtures.py /tmp/iPreview-fixtures.zip
 ```
 
-该脚本生成四类基础目录和 `视频作品/完整结构`、`视频作品/简化结构` 两棵 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)样例。0.1.0 的 `samples/iPreview-fixtures.zip` 还保留损坏视频补例，`samples/supplement.zip` 提供长视频15秒跳转、同名不同后缀、长名称、`@` 字面量及多行层级导航等样例。两端解压到各自 `~/Temporary/iPreview/` 复用，按版本清单核对哈希并记录实际使用的样例。
+该脚本生成四类基础目录和 `视频作品/完整结构`、`视频作品/简化结构` 两棵 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)样例。0.1.0 的 `samples/iPreview-fixtures.zip` 还保留损坏视频补例，`samples/supplement.zip` 提供长视频15秒跳转、同名不同后缀、长名称、`@` 字面量及多行层级导航等样例。两端解压到各自 `~/Temporary/iPreview/` 复用，按版本清单核对哈希并记录实际使用的样例。
 
 | 来源 | 预期导入结果 |
 | --- | --- |
@@ -61,7 +61,7 @@ QA 结束后退出应用，从正常安装入口启动并按该次交付口径�
 
 ### 视频作品索引与预览
 
-双端分别导入「完整结构」「简化结构」，并从父目录导入，核对作品归属、重启恢复和离线重连重扫。打开「预览作品」或选中作品目录按 Space。用方向键选影碟、官方样张和各写真集，按两次 Space 从作品进入影片或照片。照片排序、媒体退出后选择恢复以及连续按 Esc 的逐层返回均需复验。再从浏览页直接选择文件按 Space，单次 Esc 返回浏览页。对照样例文件快照。见 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)、[PRE-004](../specs/spike/preview.md#pre-004-视频作品的影碟与图册预览)。
+双端分别导入「完整结构」「简化结构」，并从父目录导入，核对作品归属、重启恢复和离线重连重扫。打开「预览作品」或选中作品目录按 Space。用方向键选影碟、官方样张和各写真集，按两次 Space 从作品进入影片或照片。照片排序、媒体退出后选择恢复以及连续按 Esc 的逐层返回均需复验。再从浏览页直接选择文件按 Space，单次 Esc 返回浏览页。对照样例文件快照。见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)、[PRE-004](../specs/official/preview.md#pre-004-视频作品的影碟与图册预览)。
 
 ## 搜索
 
