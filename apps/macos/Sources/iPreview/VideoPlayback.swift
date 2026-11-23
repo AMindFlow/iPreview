@@ -87,18 +87,32 @@ final class VideoPlayback {
             let fallback = try VLCPlayback(url: url)
             self.fallback = fallback
             fallbackClock = Task { @MainActor [weak self] in
+                var displayedPicture = false
+                var reachedEnd = false
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(125))
                     guard !Task.isCancelled, let self else { return }
                     let state = fallback.state
-                    if fallback.couldNotStart || state == .failed {
+                    let position = fallback.elapsed
+                    displayedPicture = displayedPicture || fallback.hasDisplayedPicture
+                    let terminal = state == .ended || state == .stopped
+                    // LibVLC reports end before publishing its final counters.
+                    let settledEnd = terminal && reachedEnd
+                    reachedEnd = terminal
+                    // A selected track may have a late first frame. Fail early only when
+                    // playback has advanced without a selected video track.
+                    let missingVideo = !displayedPicture && (
+                        settledEnd ||
+                        (state == .playing && position >= 1 && !fallback.hasSelectedVideoTrack)
+                    )
+                    if fallback.couldNotStart || state == .failed || missingVideo {
                         self.stopFallback()
                         self.showFailure(nativeError)
                         return
                     }
                     let length = fallback.duration
                     if length > 0 { self.duration = length }
-                    self.elapsed = state == .ended ? self.duration : fallback.elapsed
+                    self.elapsed = state == .ended ? self.duration : position
                     self.isPlaying = state.isPlaying
                 }
             }
