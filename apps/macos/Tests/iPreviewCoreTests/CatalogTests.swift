@@ -33,6 +33,7 @@ struct CatalogChecks {
 
         try checkLayouts()
         try checkVideoWorks()
+        try await checkVideoWorkIndex()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -43,6 +44,46 @@ struct CatalogChecks {
         try await checkStaleFolderAnchor()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
+    }
+
+    static func checkVideoWorkIndex() async throws {
+        let fixtures = try Fixtures()
+        let complete = "Works/Maker/Complete"
+        let compact = "Compact"
+        for file in ["视频/影片.mp4", "官方样张/样张.jpg", "附加写真集/图册 2/封面.jpg", "附加写真集/图册 2/照片 1.jpg"] {
+            try fixtures.file(complete + "/" + file)
+        }
+        for file in ["影片.mov", "官方样张.jpg", "附加写真集/照片 2.png"] {
+            try fixtures.file(compact + "/" + file)
+        }
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for (path, layout) in [("Works", Layout.multiCreator), (compact, .flat)] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(path), dataDirectory: fixtures.databaseDirectory)
+            try verify(inspection.candidates.map(\.layout) == [layout])
+            let candidate = try required(inspection.candidates.first)
+            try verify(candidate.videoWorkCount == 1 && candidate.albumCount == 1)
+            try await catalog.importSource(root: inspection.root, candidate: candidate)
+        }
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let initial = try await reopened.snapshot()
+        let work = try required(initial.videoWorks.first { $0.structure == .complete })
+        let flat = try required(initial.videoWorks.first { $0.structure == .compact })
+        try verify(work.relativePath == "Maker/Complete" && work.samples.map(\.name) == ["样张.jpg"])
+        try verify(work.photoSets.first?.cover?.name == "封面.jpg")
+        try verify(flat.relativePath.isEmpty && flat.photoSets.first?.cover == nil)
+        try await reopened.markUnavailable(source: work.video.source)
+        let offline = try await reopened.snapshot()
+        try verify(offline.videoWorks.first { $0.id == work.id }?.video.isAvailable == false)
+        try fixtures.file(complete + "/附加写真集/图册 2/照片 2.jpg")
+        let scanned = try SourceScanner.rescan(work.video.source)
+        try await reopened.update(source: work.video.source, entries: scanned)
+        let rescanned = try await reopened.snapshot()
+        let updated = try required(rescanned.videoWorks.first { $0.id == work.id })
+        try verify(updated.video.isAvailable && updated.photoSets[0].photos.map(\.name) == ["照片 1.jpg", "照片 2.jpg"])
+        for file in scanned {
+            let contents = try Data(contentsOf: work.video.source.url.appendingPathComponent(file.relativePath))
+            try verify(contents == Data("fixture".utf8))
+        }
     }
 
     static func checkSourceAlbumOrganization() async throws {
@@ -397,6 +438,8 @@ struct CatalogChecks {
 
         // Reopen a populated version 1 database and retain all IDs and virtual references.
         try fixtures.sql("""
+            DROP TABLE video_work_images;
+            DROP TABLE video_works;
             DROP TABLE source_album_cover_media;
             DROP TABLE source_album_tags;
             DROP TABLE tags;

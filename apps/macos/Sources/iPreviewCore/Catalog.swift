@@ -19,7 +19,7 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...3).contains(version) else {
+            guard (0...4).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -33,6 +33,10 @@ public actor Catalog {
             if version < 3 {
                 let organization = try Self.migrationURL(named: "003-album-organization", in: appBundle)
                 try database.script(String(contentsOf: organization, encoding: .utf8))
+            }
+            if version < 4 {
+                let videoWorks = try Self.migrationURL(named: "004-video-works", in: appBundle)
+                try database.script(String(contentsOf: videoWorks, encoding: .utf8))
             }
         }
         self.database = database
@@ -91,7 +95,9 @@ public actor Catalog {
                 let id = sqlite3_column_int64(row, 0)
                 return VirtualAlbum(id: id, name: textColumn(row, 1), mediaIDs: byAlbum[id, default: []].map(\.media))
             }
-            return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion())
+            let videoWorks = try VideoWorkIndex.read(from: database, media: media)
+            return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion(),
+                                   videoWorks: videoWorks)
         }
     }
 
@@ -238,6 +244,7 @@ public actor Catalog {
             "UPDATE media SET available = 1, kind = ? WHERE source_id = ? AND relative_path = ?",
             bindings: entries.map { [.text($0.kind.rawValue), source, .text($0.relativePath)] }
         )
+        try VideoWorkIndex.replace(in: database, source: source, entries: entries)
     }
 
     private func validatedAlbumName(_ name: String) throws -> String {
