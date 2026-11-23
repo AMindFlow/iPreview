@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Data;
 using Windows.System;
 using Windows.UI.Core;
 
@@ -17,6 +18,21 @@ public sealed partial class MainWindow
     private int searchRevision;
     private GlobalSearchScope searchResultKind;
     private List<GlobalSearchHit> searchHits = [];
+    private List<SourceAlbumTag> searchTagSuggestions = [];
+    private SourceAlbumTag? searchTag;
+    private bool suggestingTags;
+
+    private sealed class SearchResultGroup(SearchResultCategory category, IEnumerable<GlobalSearchHit> hits)
+        : List<GlobalSearchHit>(hits)
+    {
+        public string Key { get; } = category switch
+        {
+            SearchResultCategory.Creator => "创作者",
+            SearchResultCategory.Album => "专辑",
+            SearchResultCategory.Directory => "目录",
+            _ => "文件"
+        };
+    }
     private Control? searchReturnFocus;
     private TextBox? composingInput;
 
@@ -75,6 +91,8 @@ public sealed partial class MainWindow
             SearchFiles.IsChecked = SearchDirectories.IsChecked = false;
             SearchInput.Text = "";
             searchExact = false;
+            searchTag = null;
+            UpdateSearchTagFilter();
             UpdateSearchExactIndicator();
             searchOpen = true;
             SearchOverlay.Visibility = Visibility.Visible;
@@ -134,6 +152,7 @@ public sealed partial class MainWindow
         SearchOverlay.Visibility = Visibility.Collapsed;
         LibraryView.IsHitTestVisible = true;
         SetSearchHits([]);
+        SetTagSuggestions(null);
         SearchStatus.Visibility = Visibility.Collapsed;
         var previousFocus = searchReturnFocus;
         searchReturnFocus = null;
@@ -182,7 +201,12 @@ public sealed partial class MainWindow
     {
         SearchExactBadge.Visibility = searchExact ? Visibility.Visible : Visibility.Collapsed;
         SearchExactHint.Visibility = searchExact ? Visibility.Collapsed : Visibility.Visible;
-        SearchKeyHelp.Text = searchExact
+        UpdateSearchKeyHelp();
+    }
+
+    private void UpdateSearchKeyHelp()
+    {
+        SearchKeyHelp.Text = suggestingTags ? "↑ / ↓ 选择    Enter 应用标签" : searchExact
             ? "↑ / ↓ 选择    Enter 前往    Space 预览    Esc 取消精确匹配"
             : "↑ / ↓ 选择    Enter 前往    Space 预览    Esc 关闭";
     }
@@ -192,8 +216,19 @@ public sealed partial class MainWindow
         var generation = ++searchRevision;
         var query = new GlobalSearchTerm(SearchInput.Text.Trim(), searchExact);
         SetSearchHits([]);
-        SearchStatus.Visibility = query.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        if (query.Text.Length == 0)
+        if (query.Text.Length > 0 && query.Text[0] is '#' or '＃')
+        {
+            SetTagSuggestions(SourceAlbumTag.Suggestions(query.Text[1..], sourceAlbumIndex.Tags));
+            SearchStatus.Visibility = searchTagSuggestions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            SearchStatus.Text = "没有匹配标签";
+            return;
+        }
+        SetTagSuggestions(null);
+        var taggedAlbums = searchTag is null ? null
+            : sourceAlbumIndex.TaggedAlbums.GetValueOrDefault(searchTag.Id) ?? [];
+        var hasQuery = query.Text.Length > 0 || taggedAlbums is not null;
+        SearchStatus.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasQuery)
             return;
 
         SearchStatus.Text = "正在搜索…";
@@ -225,7 +260,7 @@ public sealed partial class MainWindow
         }
         try
         {
-            var hits = await Task.Run(() => MediaSearch.Find(searchSources, searchMedia, query, kind, folderRoot));
+            var hits = await Task.Run(() => MediaSearch.Find(searchSources, searchMedia, query, kind, folderRoot, taggedAlbums));
             if (generation != searchRevision)
                 return;
             SetSearchHits(hits);
@@ -241,10 +276,68 @@ public sealed partial class MainWindow
 
     private void SetSearchHits(List<GlobalSearchHit> hits)
     {
-        searchHits = hits;
-        SearchResults.ItemsSource = hits;
-        SearchResults.SelectedItem = hits.FirstOrDefault();
-        SearchResults.Visibility = hits.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var groups = hits.GroupBy(hit => hit.Category).OrderBy(group => group.Key)
+            .Select(group => new SearchResultGroup(group.Key, group)).ToList();
+        searchHits = groups.SelectMany(group => group).ToList();
+        SearchResults.ItemsSource = groups.Count == 0 ? null
+            : new CollectionViewSource { Source = groups, IsSourceGrouped = true }.View;
+        SearchResults.SelectedItem = searchHits.FirstOrDefault();
+        SearchResults.Visibility = searchHits.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void SetTagSuggestions(List<SourceAlbumTag>? suggestions)
+    {
+        suggestingTags = suggestions is not null;
+        UpdateSearchKeyHelp();
+        searchTagSuggestions = suggestions ?? [];
+        SearchTagSuggestions.ItemsSource = searchTagSuggestions;
+        SearchTagSuggestions.SelectedIndex = -1;
+        SearchTagSuggestions.Visibility = searchTagSuggestions.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private async void ChooseTagSuggestion(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is SourceAlbumTag tag)
+            await ApplySearchTag(tag);
+    }
+
+    private void UpdateSearchTagFilter()
+    {
+        SearchTagFilter.Content = searchTag is null ? new FontIcon { Glyph = "\uE8EC", FontSize = 13 } : searchTag.Name;
+        SearchTagFilter.IsEnabled = sourceAlbumIndex.Tags.Count > 0;
+        if (searchTag is not null)
+            AutomationProperties.SetName(SearchTagFilter, $"标签筛选：{searchTag.Name}");
+        else
+            AutomationProperties.SetName(SearchTagFilter, "标签筛选");
+
+        var menu = new MenuFlyout();
+        if (searchTag is not null)
+        {
+            var clear = new MenuFlyoutItem { Text = "清除标签筛选" };
+            clear.Click += async (_, _) => await ApplySearchTag(null);
+            menu.Items.Add(clear);
+        }
+        foreach (var tag in sourceAlbumIndex.Tags)
+        {
+            var item = new MenuFlyoutItem { Text = tag.Name };
+            item.Click += async (_, _) => await ApplySearchTag(tag);
+            menu.Items.Add(item);
+        }
+        SearchTagFilter.Flyout = menu;
+    }
+
+    private Task ApplySearchTag(SourceAlbumTag? tag)
+    {
+        if (suggestingTags)
+        {
+            consumingExactPrefix = true;
+            SearchInput.Text = "";
+            consumingExactPrefix = false;
+        }
+        searchTag = tag;
+        UpdateSearchTagFilter();
+        SearchInput.Focus(FocusState.Programmatic);
+        return RefreshSearch();
     }
 
     private async void ResultKindClicked(object sender, RoutedEventArgs args) =>
@@ -280,21 +373,42 @@ public sealed partial class MainWindow
             return;
         }
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
-        var resultFocused = focused is ListViewItem row && SearchResults.ItemFromContainer(row) is GlobalSearchHit;
+        var focusedResult = focused is ListViewItem row ? SearchResults.ItemFromContainer(row) as GlobalSearchHit : null;
+        var resultFocused = focusedResult is not null;
         switch (args.Key)
         {
             case VirtualKey.Up when editingQuery || resultFocused:
             case VirtualKey.Down when editingQuery || resultFocused:
+                if (suggestingTags)
+                {
+                    if (searchTagSuggestions.Count == 0)
+                        return;
+                    args.Handled = true;
+                    int delta = args.Key == VirtualKey.Up ? -1 : 1;
+                    var currentSuggestion = SearchTagSuggestions.SelectedIndex;
+                    var next = currentSuggestion < 0 && delta < 0 ? searchTagSuggestions.Count - 1
+                        : Math.Clamp(currentSuggestion + delta, 0, searchTagSuggestions.Count - 1);
+                    SearchTagSuggestions.SelectedIndex = next;
+                    SearchTagSuggestions.ScrollIntoView(searchTagSuggestions[next]);
+                    return;
+                }
                 if (searchHits.Count == 0)
                     return;
                 args.Handled = true;
                 var direction = args.Key == VirtualKey.Up ? -1 : 1;
                 var index = editingQuery
                     ? direction < 0 ? searchHits.Count - 1 : 0
-                    : Math.Clamp(SearchResults.SelectedIndex + direction, 0, searchHits.Count - 1);
+                    : Math.Clamp(searchHits.IndexOf(focusedResult!) + direction, 0, searchHits.Count - 1);
                 FocusSearchResult(searchHits[index]);
                 break;
             case VirtualKey.Enter when editingQuery || resultFocused:
+                if (suggestingTags)
+                {
+                    args.Handled = true;
+                    if (!args.KeyStatus.WasKeyDown && searchTagSuggestions.Count > 0)
+                        await ApplySearchTag(searchTagSuggestions[Math.Max(0, SearchTagSuggestions.SelectedIndex)]);
+                    return;
+                }
                 if (SearchResults.SelectedItem is not GlobalSearchHit result)
                     return;
                 args.Handled = true;

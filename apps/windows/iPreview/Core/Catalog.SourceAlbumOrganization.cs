@@ -2,9 +2,22 @@ using System.Text;
 
 namespace IPreview;
 
-internal readonly record struct SourceAlbumKey(long SourceId, string RelativePath);
+internal readonly record struct SourceAlbumKey(long SourceId, string RelativePath)
+{
+    public static SourceAlbumKey FromMedia(Media item) =>
+        new(item.Source.Id, SourceRename.SplitPath(item.RelativePath).Parent.TrimEnd('/'));
+}
 internal sealed record SourceAlbumTag(long Id, string Name, string NormalizedName)
 {
+    public static List<SourceAlbumTag> Suggestions(string prefix, IReadOnlyList<SourceAlbumTag> tags)
+    {
+        var (_, query) = NamesFrom(prefix);
+        return tags.Where(tag => tag.NormalizedName.Contains(query, StringComparison.Ordinal))
+            .OrderBy(tag => tag.NormalizedName == query ? 0
+                : tag.NormalizedName.StartsWith(query, StringComparison.Ordinal) ? 1 : 2)
+            .ThenBy(tag => tag.NormalizedName, StringComparer.Ordinal).ToList();
+    }
+
     public static (string Display, string Normalized) NamesFrom(string input)
     {
         var display = string.Join(' ', input.Normalize(NormalizationForm.FormKC).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -14,6 +27,29 @@ internal sealed record SourceAlbumTag(long Id, string Name, string NormalizedNam
 }
 internal sealed record SourceAlbumOrganization(bool Favorite, int? RatingHalf, IReadOnlyList<SourceAlbumTag> Tags,
     IReadOnlyList<long> ConfiguredCoverIds, IReadOnlyList<long> EffectiveCoverIds);
+
+internal sealed record SourceAlbumIndex(List<SourceAlbumTag> Tags,
+    Dictionary<long, HashSet<SourceAlbumKey>> TaggedAlbums, Dictionary<SourceAlbumKey, long[]> ConfiguredCovers)
+{
+    public static SourceAlbumIndex Empty { get; } = new([], [], []);
+
+    public IReadOnlyList<Media> Covers(SourceAlbumKey album, IEnumerable<Media> members)
+    {
+        var available = members.Where(item => item.Available && !item.IsVideo).ToDictionary(item => item.Id);
+        var ids = CoverIds(ConfiguredCovers.GetValueOrDefault(album) ?? [],
+            available.Values.Select(item => (item.Id, item.RelativePath)));
+        return ids.Select(id => available[id]).ToArray();
+    }
+
+    internal static IReadOnlyList<long> CoverIds(IReadOnlyList<long> configured, IEnumerable<(long Id, string Path)> images)
+    {
+        var available = images.ToList();
+        var availableIds = available.Select(image => image.Id).ToHashSet();
+        return configured.Count > 0 && configured.All(availableIds.Contains)
+            ? configured : MediaSearch.ByNaturalPath(available, image => image.Path)
+                .ThenBy(image => image.Path, StringComparer.Ordinal).Take(1).Select(image => image.Id).ToList();
+    }
+}
 
 internal sealed partial class Catalog
 {
@@ -25,6 +61,23 @@ internal sealed partial class Catalog
 
     public List<SourceAlbumTag> ReadAlbumTags() =>
         database.Query("SELECT id, name, normalized_name FROM tags ORDER BY normalized_name;", ReadTag);
+
+    public SourceAlbumIndex ReadSourceAlbumIndex() => database.InTransaction(() =>
+    {
+        var links = database.Query("""
+            SELECT organization.source_id, organization.album_path, source_album_tags.tag_id
+            FROM source_album_tags JOIN source_album_organization AS organization
+            ON organization.id = source_album_tags.source_album_id;
+            """, row => (Key: new SourceAlbumKey(row.Number(0), row.Text(1)), Id: row.Number(2)));
+        var covers = database.Query("""
+            SELECT organization.source_id, organization.album_path, cover.media_id
+            FROM source_album_cover_media AS cover JOIN source_album_organization AS organization
+            ON organization.id = cover.source_album_id ORDER BY cover.position;
+            """, row => (Key: new SourceAlbumKey(row.Number(0), row.Text(1)), Id: row.Number(2)));
+        return new SourceAlbumIndex(ReadAlbumTags(),
+            links.GroupBy(link => link.Id).ToDictionary(group => group.Key, group => group.Select(link => link.Key).ToHashSet()),
+            covers.GroupBy(cover => cover.Key).ToDictionary(group => group.Key, group => group.Select(cover => cover.Id).ToArray()));
+    }, write: false);
 
     public List<SourceAlbumKey> ReadSourceAlbumsForTag(long tagId) => database.Query("""
         SELECT albums.source_id, albums.album_path FROM source_album_organization AS albums
@@ -57,11 +110,7 @@ internal sealed partial class Catalog
                     """, row => row.Number(0), entry.Id);
             }
 
-            var available = AvailableAlbumImages(album);
-            var availableIds = available.Select(image => image.Id).ToHashSet();
-            var effective = configured.Count > 0 && configured.All(availableIds.Contains)
-                ? configured : MediaSearch.ByNaturalPath(available, image => image.Path)
-                    .ThenBy(image => image.Path, StringComparer.Ordinal).Take(1).Select(image => image.Id).ToList();
+            var effective = SourceAlbumIndex.CoverIds(configured, AvailableAlbumImages(album));
             return new SourceAlbumOrganization(entry.Favorite, entry.Rating, tags, configured, effective);
         }, write: false);
     }

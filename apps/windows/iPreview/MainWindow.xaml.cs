@@ -19,7 +19,7 @@ namespace IPreview;
 public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
-        long? Album = null, string Glyph = "\uE8B7", string Help = "", Tile? Cover = null, string Caption = "")
+        long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null, string Caption = "")
     {
         public override string ToString() => Label;
     }
@@ -110,6 +110,7 @@ public sealed partial class MainWindow : Window
         media = snapshot.Media;
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
+        sourceAlbumIndex = Database.ReadSourceAlbumIndex();
         videoWorks = snapshot.VideoWorks;
 
         RevealSourceActions(null);
@@ -274,8 +275,10 @@ public sealed partial class MainWindow : Window
                 var count = choosingCreator
                     ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
                     : group.Count();
+                IReadOnlyList<Media> cover = choosingCreator ? [group.First()]
+                    : sourceAlbumIndex.Covers(new(source!.Id, folder.TrimEnd('/')), group);
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
-                    Cover: new Tile(group.First(), 0), Caption: $"{count} {(choosingCreator ? "个专辑" : "项")}");
+                    Cover: cover, Caption: $"{count} {(choosingCreator ? "个专辑" : "项")}");
             }).ToList();
         SourceFolders.ItemsSource = folders;
         if (SourceFolders.Items.Count > 0)
@@ -308,6 +311,8 @@ public sealed partial class MainWindow : Window
         RefreshMediaBrowser(selected);
         Heading.Text = current.Label;
         RefreshTitleEditor();
+        ShowSourceAlbumControls(scopedMedia);
+        ManageAlbumTags.Visibility = current == Library ? Visibility.Visible : Visibility.Collapsed;
         var choosingCreator = VisibleSource?.Layout == Layout.MultiCreator && current.Folder is null;
         CountLabel.Text = browsingFolders
             ? $"{SourceFolders.Items.Count}{(choosingCreator ? " 位创作者" : " 个专辑")}"
@@ -472,6 +477,7 @@ public sealed partial class MainWindow : Window
         AddSourceButton.IsEnabled = ImportButton.IsEnabled;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
+        OrganizeSourceAlbum.IsEnabled = ManageAlbumTags.IsEnabled = !value && catalog is not null;
         BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
