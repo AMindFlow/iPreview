@@ -4,22 +4,30 @@
     <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved"
           PointerReleased="AlbumAdjustmentPointerReleased" PointerCaptureLost="AlbumAdjustmentPointerInterrupted"
           PointerCanceled="AlbumAdjustmentPointerInterrupted" PointerWheelChanged="AlbumAdjustmentPointerWheelChanged">
+        <Grid.Resources>
+            <Style x:Key="LibrarySubtleButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+            <Style x:Key="LibraryIconButton" TargetType="Button" BasedOn="{StaticResource LibrarySubtleButton}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinHeight" Value="26" />
+                <Setter Property="Height" Value="26" />
+                <Setter Property="CornerRadius" Value="5" />
+            </Style>
+            <Style x:Key="LibraryCardStyle" TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                <Setter Property="Padding" Value="2" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="VerticalContentAlignment" Value="Top" />
+            </Style>
+        </Grid.Resources>
         <ContentControl x:Name="LibraryHost" IsTabStop="False"
                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid x:Name="LibraryView" PreviewKeyDown="LibraryKeyDown">
             <Grid.Resources>
-                <Style x:Key="LibrarySubtleButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-                    <Setter Property="MinHeight" Value="32" />
-                    <Setter Property="CornerRadius" Value="8" />
-                </Style>
-                <Style x:Key="LibraryIconButton" TargetType="Button" BasedOn="{StaticResource LibrarySubtleButton}">
-                    <Setter Property="Width" Value="28" />
-                    <Setter Property="MinWidth" Value="28" />
-                    <Setter Property="Padding" Value="0" />
-                    <Setter Property="MinHeight" Value="26" />
-                    <Setter Property="Height" Value="26" />
-                    <Setter Property="CornerRadius" Value="5" />
-                </Style>
                 <Style x:Key="ViewModeButton" TargetType="ToggleButton">
                     <Setter Property="Width" Value="30" />
                     <Setter Property="MinWidth" Value="30" />
@@ -49,12 +57,6 @@
                                    TextTrimming="CharacterEllipsis" />
                     </Grid>
                 </DataTemplate>
-                <Style x:Key="LibraryCardStyle" TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
-                    <Setter Property="Padding" Value="2" />
-                    <Setter Property="Margin" Value="0" />
-                    <Setter Property="HorizontalContentAlignment" Value="Left" />
-                    <Setter Property="VerticalContentAlignment" Value="Top" />
-                </Style>
             </Grid.Resources>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -102,15 +104,45 @@
                                 </Button.Flyout>
                             </Button>
                         </Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="9" Margin="10,11,0,0" Height="32">
-                            <FontIcon Glyph="&#xE8B7;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Text="源" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <Grid Margin="10,11,0,0" Height="32">
+                            <StackPanel Orientation="Horizontal" Spacing="9">
+                                <FontIcon Glyph="&#xE8B7;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="源" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button x:Name="AddSourceButton" Click="ChooseSource" HorizontalAlignment="Right"
+                                    Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="添加媒体源"
+                                    ToolTipService.ToolTip="添加媒体源">
+                                <FontIcon Glyph="&#xE710;" FontSize="13" />
+                            </Button>
+                        </Grid>
                         <ListView x:Name="SourceNavigation" SelectionMode="Single" IsItemClickEnabled="True"
                                   IsMultiSelectCheckBoxEnabled="False" ItemClick="Navigate" PreviewKeyDown="NavigationListKeyDown"
-                                  ItemTemplate="{StaticResource NavigationEntryTemplate}" ItemContainerStyle="{StaticResource SidebarEntryStyle}"
+                                  ItemContainerStyle="{StaticResource SidebarEntryStyle}"
                                   ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                  AutomationProperties.Name="源" />
+                                  AutomationProperties.Name="源">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Loaded="SourceRowLoaded" Unloaded="SourceRowUnloaded" Background="Transparent"
+                                          PointerWheelChanged="SourceRowWheelChanged" MinHeight="26">
+                                        <ContentControl x:Name="SourceDescription" Content="{Binding}"
+                                                        ContentTemplate="{StaticResource NavigationEntryTemplate}"
+                                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                                        IsTabStop="False" />
+                                        <StackPanel x:Name="SourceActions" Orientation="Horizontal" HorizontalAlignment="Right"
+                                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="Collapsed">
+                                            <Button Style="{StaticResource LibraryIconButton}" Click="RescanSidebarSource"
+                                                    AutomationProperties.Name="重新扫描" ToolTipService.ToolTip="重新扫描">
+                                                <FontIcon Glyph="&#xE72C;" FontSize="13" />
+                                            </Button>
+                                            <Button Style="{StaticResource LibraryIconButton}" Click="DeleteSidebarSource"
+                                                    AutomationProperties.Name="删除媒体源" ToolTipService.ToolTip="删除媒体源">
+                                                <FontIcon Glyph="&#xE74D;" FontSize="13" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                         <Grid Margin="10,11,0,0" Height="32">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -207,6 +239,13 @@
                             </StackPanel>
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BrowserSortButton" Style="{StaticResource LibraryIconButton}" Visibility="Collapsed"
+                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
+                                <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+                            </Button>
+                            <Button x:Name="PreviewWorkButton" Click="PreviewCurrentWork" Visibility="Collapsed"
+                                    Style="{StaticResource LibrarySubtleButton}" Content="预览作品"
+                                    MinHeight="26" FontSize="12" Padding="7,0" />
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -678,6 +717,59 @@
             </Border>
         </Grid>
 
+        <Grid x:Name="VideoWorkOverlay" Visibility="Collapsed"
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="24"
+              PreviewKeyDown="VideoWorkKeyDown" TabFocusNavigation="Cycle" RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid x:Name="VideoWorkHeader" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="VideoWorkBack" Click="BackFromVideoWork" Style="{StaticResource LibraryIconButton}">
+                    <FontIcon x:Name="VideoWorkBackIcon" FontSize="14" />
+                </Button>
+                <TextBlock x:Name="VideoWorkTitle" Grid.Column="1" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <Button x:Name="VideoWorkSortButton" Grid.Column="2" Visibility="Collapsed"
+                        Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="文件排序"
+                        ToolTipService.ToolTip="文件排序">
+                    <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+                </Button>
+            </Grid>
+            <GridView x:Name="VideoWorkItems" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                      IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" AutomationProperties.Name="作品内容"
+                      ItemContainerStyle="{StaticResource LibraryCardStyle}">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal" ItemWidth="194" ItemHeight="146" />
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+                <GridView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Width="172" Spacing="7">
+                            <Border Height="102" CornerRadius="10" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
+                                       Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
+                            </Border>
+                            <Grid ColumnSpacing="7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{Binding Glyph}" FontSize="14" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </StackPanel>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+        </Grid>
+
         <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent"
               PreviewKeyDown="PreviewKeyDown" TabFocusNavigation="Cycle">
             <Grid.Resources>
@@ -702,7 +794,11 @@
                             AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
-                    <Grid Margin="52,0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <Button x:Name="PreviewSortButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Right"
+                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
+                        <FontIcon Glyph="&#xE8CB;" FontSize="15" />
+                    </Button>
+                    <Grid x:Name="PreviewFilename" HorizontalAlignment="Center" VerticalAlignment="Center"
                           DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
                         <TextBlock x:Name="PreviewTitle" TextTrimming="CharacterEllipsis" TextAlignment="Center"
                                    FontWeight="SemiBold" AutomationProperties.HelpText="双击复制文件名" />

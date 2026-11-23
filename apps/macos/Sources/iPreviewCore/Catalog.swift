@@ -19,7 +19,7 @@ public actor Catalog {
         try database.script("PRAGMA foreign_keys = ON")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...4).contains(version) else {
+            guard (0...5).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -37,6 +37,10 @@ public actor Catalog {
             if version < 4 {
                 let videoWorks = try Self.migrationURL(named: "004-video-works", in: appBundle)
                 try database.script(String(contentsOf: videoWorks, encoding: .utf8))
+            }
+            if version < 5 {
+                let identities = try Self.migrationURL(named: "005-source-media-identities", in: appBundle)
+                try database.script(String(contentsOf: identities, encoding: .utf8))
             }
         }
         self.database = database
@@ -118,7 +122,11 @@ public actor Catalog {
             try SourceRename(database: database).blockImport(path: root.path)
             let path = SQLiteValue.text(root.path)
             let layout = SQLiteValue.text(candidate.layout.rawValue)
-            try database.execute("INSERT OR IGNORE INTO sources (path, layout) VALUES (?, ?)", [path, layout])
+            try database.execute("""
+                INSERT INTO sources (id, path, layout)
+                SELECT last_id + 1, ?, ? FROM catalog_identity_sequence WHERE entity = 'source'
+                ON CONFLICT (path) DO NOTHING
+                """, [path, layout])
             let id = try database.select("SELECT id FROM sources WHERE path = ?", [path]) { sqlite3_column_int64($0, 0) }.first!
             try database.execute("UPDATE sources SET layout = ?, available = 1 WHERE id = ?", [layout, .integer(id)])
             try replaceMedia(sourceID: id, entries: candidate.entries)
@@ -138,6 +146,20 @@ public actor Catalog {
         try database.transaction {
             try validateScan(expectedVersion)
             try database.execute("UPDATE sources SET available = 0 WHERE id = ?", [.integer(source.id)])
+        }
+    }
+
+    public func deleteSource(_ sourceID: Int64, expectedDataVersion: Int64) throws {
+        try database.transaction {
+            guard try scanVersion() == expectedDataVersion else { throw SourceDeletionChangedError() }
+            try SourceRename(database: database).blockScan(sourceID: sourceID)
+            let source = SQLiteValue.integer(sourceID)
+            try database.execute("DELETE FROM source_album_organization WHERE source_id = ?", [source])
+            try database.execute("""
+                DELETE FROM album_media WHERE media_id IN (SELECT id FROM media WHERE source_id = ?)
+                """, [source])
+            try database.execute("DELETE FROM media WHERE source_id = ?", [source])
+            try database.execute("DELETE FROM sources WHERE id = ?", [source])
         }
     }
 
@@ -236,14 +258,11 @@ public actor Catalog {
     private func replaceMedia(sourceID: Int64, entries: [ScanEntry]) throws {
         let source = SQLiteValue.integer(sourceID)
         try database.execute("UPDATE media SET available = 0 WHERE source_id = ?", [source])
-        try database.repeated(
-            "INSERT OR IGNORE INTO media (source_id, relative_path, kind) VALUES (?, ?, ?)",
-            bindings: entries.map { [source, .text($0.relativePath), .text($0.kind.rawValue)] }
-        )
-        try database.repeated(
-            "UPDATE media SET available = 1, kind = ? WHERE source_id = ? AND relative_path = ?",
-            bindings: entries.map { [.text($0.kind.rawValue), source, .text($0.relativePath)] }
-        )
+        try database.repeated("""
+            INSERT INTO media (id, source_id, relative_path, kind)
+            SELECT last_id + 1, ?, ?, ? FROM catalog_identity_sequence WHERE entity = 'media'
+            ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1
+            """, bindings: entries.map { [source, .text($0.relativePath), .text($0.kind.rawValue)] })
         try VideoWorkIndex.replace(in: database, source: source, entries: entries)
     }
 
@@ -254,6 +273,10 @@ public actor Catalog {
         }
         return trimmed
     }
+}
+
+public struct SourceDeletionChangedError: LocalizedError {
+    public var errorDescription: String? { "媒体库已在其他窗口更新。请核对媒体源后重试。" }
 }
 
 public enum AlbumDeletionError: LocalizedError {

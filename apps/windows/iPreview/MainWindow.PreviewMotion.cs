@@ -21,6 +21,8 @@ public sealed partial class MainWindow
 
     private PreviewThumbnail? ThumbnailOf(long? mediaId)
     {
+        if (videoWorkSession is not null)
+            return null;
         if (mediaId is null || previewBrowser is not { IsLoaded: true } browser)
             return null;
         var tile = tiles.FirstOrDefault(item => item.Media.Id == mediaId);

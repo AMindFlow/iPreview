@@ -87,12 +87,7 @@ struct MediaListRow: View {
     let selected: Bool
     let shaded: Bool
     let checked: Bool
-    @ViewState private var facts: Facts?
-
-    private struct Facts: Sendable {
-        let modified: Date?
-        let size: Int?
-    }
+    @ViewState private var facts: MediaFileFacts?
 
     var body: some View {
         MediaListColumns {
@@ -129,11 +124,7 @@ struct MediaListRow: View {
         .task(id: revision) {
             facts = nil
             if media.isAvailable {
-                let result = await Task.detached(priority: .utility) {
-                    let url = try? media.readableURL()
-                    let values = try? url?.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-                    return Facts(modified: values?.contentModificationDate, size: values?.fileSize)
-                }.value
+                let result = await Task.detached(priority: .utility) { MediaFileFacts(media) }.value
                 if !Task.isCancelled { facts = result }
             }
         }

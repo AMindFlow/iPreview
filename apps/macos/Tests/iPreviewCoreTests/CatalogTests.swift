@@ -32,6 +32,7 @@ struct CatalogChecks {
         }
 
         try checkLayouts()
+        try await checkMediaSort()
         try checkVideoWorks()
         try await checkVideoWorkIndex()
         try await checkLegacyVideoWorkRescan()
@@ -39,6 +40,7 @@ struct CatalogChecks {
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
         try await checkAlbumDeletion()
+        try await checkSourceDeletion()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -213,6 +215,11 @@ struct CatalogChecks {
         try await reopened.update(source: source, entries: SourceScanner.rescan(source))
         let recovered = try await reopened.sourceAlbumOrganization(for: album)
         try verify(recovered.effectiveCoverIDs == [9, 8])
+        try fixtures.file("Source/Maker/Album/Later.png")
+        try await reopened.update(source: source, entries: SourceScanner.rescan(source))
+        let upgraded = try await reopened.snapshot()
+        let added = try required(upgraded.media.first { $0.name == "Later.png" })
+        try verify(added.id > 11 && upgraded.albums.first?.mediaIDs == [11, 8])
         try await reopened.markUnavailable(source: source)
         let offline = try await reopened.sourceAlbumOrganization(for: album)
         try verify(offline.configuredCoverIDs == [9, 8] && offline.effectiveCoverIDs.isEmpty)
@@ -248,6 +255,38 @@ struct CatalogChecks {
         try verify(inspection.candidates[0].entries.map(\.relativePath) == ["Existing/01.JPG"])
         try verify(Set(inspection.candidates[1].entries.map(\.relativePath)) == ["北京/旅行/10.png", "北京/旅行/2.MOV"])
         try verify(inspection.candidates[1].albumCount == 1)
+    }
+
+    static func checkMediaSort() async throws {
+        let fixtures = try Fixtures()
+        let root = fixtures.directory("Sort")
+        let early = Date(timeIntervalSince1970: 1_000)
+        let late = Date(timeIntervalSince1970: 2_000)
+
+        for (name, size, time) in [("1.png", 20, late), ("2.png", 20, early),
+                                   ("10.png", 3, early), ("20.png", 10, late)] {
+            try fixtures.file("Sort/" + name)
+            let url = root.appendingPathComponent(name)
+            try Data(repeating: 1, count: size).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: time], ofItemAtPath: url.path)
+        }
+
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let inspected = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: root, candidate: try required(inspected.candidates.first))
+        let indexed = try await catalog.snapshot().media.reversed()
+        let items = Array(indexed)
+        // Leave a stale entry in the catalog to exercise live metadata failure.
+        try FileManager.default.moveItem(at: root.appendingPathComponent("20.png"),
+                                          to: fixtures.directory("unavailable.png"))
+
+        try verify(MediaSort().arrange(items) == items)
+        try verify(MediaSort(field: .name).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
+        try verify(MediaSort(field: .name, descending: true).arrange(items).map(\.name) == ["20.png", "10.png", "2.png", "1.png"])
+        try verify(MediaSort(field: .size).arrange(items).map(\.name) == ["10.png", "1.png", "2.png", "20.png"])
+        try verify(MediaSort(field: .size, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
+        try verify(MediaSort(field: .modified).arrange(items).map(\.name) == ["2.png", "10.png", "1.png", "20.png"])
+        try verify(MediaSort(field: .modified, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
     }
 
     static func checkVideoWorks() throws {
@@ -403,6 +442,56 @@ struct CatalogChecks {
         try verify(afterBytes == bytes && afterTimes == times)
     }
 
+    static func checkSourceDeletion() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("Removed/photo.png")
+        try fixtures.file("Kept/one.png")
+        try fixtures.file("Kept/two.png")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["Kept", "Removed"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+        let imported = try await catalog.snapshot()
+        let removed = try required(imported.sources.first { $0.name == "Removed" })
+        let item = try required(imported.media.first { $0.source.id == removed.id })
+        let path = try item.readableURL()
+        let contents = try Data(contentsOf: path)
+        let kept = imported.media.filter { $0.source.id != removed.id }.map(\.id).reversed()
+        let memberOrder = Array(kept.prefix(1)) + [item.id] + Array(kept.dropFirst())
+        let collection = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: memberOrder, to: collection)
+        let tag = try await catalog.addTag(named: "Shared Tag", to: SourceAlbumKey(sourceID: removed.id, relativePath: ""))
+        try await catalog.markUnavailable(source: removed)
+
+        let stale = try await catalog.snapshot()
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        _ = try await otherWindow.createAlbum(named: "Other")
+        try await expectAsyncError(SourceDeletionChangedError.self) {
+            try await catalog.deleteSource(removed.id, expectedDataVersion: stale.dataVersion)
+        }
+        let refreshed = try await catalog.snapshot()
+        try verify(refreshed.sources.contains { $0.id == removed.id })
+        try await catalog.deleteSource(removed.id, expectedDataVersion: refreshed.dataVersion)
+
+        let after = try await otherWindow.snapshot()
+        let remainingTagged = try await otherWindow.sourceAlbums(tagID: tag.id)
+        try verify(after.sources.map(\.name) == ["Kept"] && after.media.count == 2)
+        try verify(after.albums.first { $0.id == collection }?.mediaIDs == Array(kept))
+        try verify(remainingTagged.isEmpty)
+        let preserved = try Data(contentsOf: path)
+        try verify(preserved == contents)
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let inspection = try SourceScanner.inspect(fixtures.directory("Removed"), dataDirectory: fixtures.databaseDirectory)
+        try await reopened.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        let reimported = try await reopened.snapshot()
+        let newSource = try required(reimported.sources.first { $0.name == removed.name })
+        let newMedia = try required(reimported.media.first { $0.source.id == newSource.id })
+        try verify(newSource.id > removed.id && newMedia.id > item.id && newMedia.relativePath == item.relativePath)
+        try verify(reimported.albums.first { $0.id == collection }?.mediaIDs == Array(kept))
+    }
+
     static func checkAlbumDeletion() async throws {
         let fixtures = try Fixtures()
         try fixtures.file("First/01.png")
@@ -480,6 +569,9 @@ struct CatalogChecks {
 
         // Reopen a populated version 1 database and retain all IDs and virtual references.
         try fixtures.sql("""
+            DROP TRIGGER remember_source_id;
+            DROP TRIGGER remember_media_id;
+            DROP TABLE catalog_identity_sequence;
             DROP TABLE video_work_images;
             DROP TABLE video_works;
             DROP TABLE source_album_cover_media;

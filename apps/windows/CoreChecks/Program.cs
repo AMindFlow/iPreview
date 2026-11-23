@@ -23,6 +23,7 @@ Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
+    CheckMediaSort(work);
     var creator = Path.Combine(work, "北京");
     var mixed = Path.Combine(work, "catalog");
     var flat = Path.Combine(work, "flat");
@@ -198,6 +199,7 @@ try
         Check(File.Exists(MediaFiles.OpenPath(online)), "removing a reference preserves original");
     }
     CheckSourceAlbumOrganization(work);
+    CheckSourceDeletion(work);
     CheckVideoWorks(work);
     CheckVideoWorkIndex(work);
     CheckLegacyVideoWorkRescan(work);
@@ -220,6 +222,51 @@ static void Check(bool result, string name)
 {
     if (!result)
         throw new InvalidOperationException("Core check failed: " + name);
+}
+
+static void CheckSourceDeletion(string work)
+{
+    var removedPath = Path.Combine(work, "removed-source");
+    var keptPath = Path.Combine(work, "kept-source");
+    AddFile(removedPath, "photo.png");
+    AddFile(keptPath, "one.png");
+    AddFile(keptPath, "two.png");
+    var data = Path.Combine(work, "removal-catalog");
+    using var catalog = new Catalog(data);
+    var kept = catalog.Import(keptPath, Layout.Flat, MediaFiles.Scan(keptPath, Layout.Flat));
+    var removed = catalog.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var media = catalog.Read().Media;
+    var removedItem = media.Single(item => item.Source.Id == removed);
+    var keptItems = media.Where(item => item.Source.Id == kept).Select(item => item.Id).Reverse().ToArray();
+    var collection = catalog.CreateAlbum("Shared");
+    catalog.AppendToAlbum(collection, [keptItems[0], removedItem.Id, keptItems[1]]);
+    var tag = catalog.AddAlbumTag("Shared Tag", new(removed, ""));
+    catalog.Rescan(removed, null);
+
+    var stale = catalog.Read();
+    using var otherWindow = new Catalog(data);
+    otherWindow.CreateAlbum("Other");
+    Reject<SourceDeletionChangedException>(() => catalog.DeleteSource(removed, stale.DataVersion),
+        "a stale source deletion is rejected");
+    var current = catalog.Read();
+    Check(current.Sources.ContainsKey(removed), "a rejected deletion preserves the offline source");
+    catalog.DeleteSource(removed, current.DataVersion);
+
+    var after = otherWindow.Read();
+    Check(after.Sources.Keys.SequenceEqual([kept]) && after.Media.Count == 2, "only the removed source is unindexed");
+    Check(after.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "shared album keeps remaining members in order");
+    Check(otherWindow.ReadSourceAlbumsForTag(tag.Id).Count == 0, "removed source no longer matches tags");
+    Check(File.ReadAllText(Path.Combine(removedPath, "photo.png")) == "fixture", "removing a source preserves the file");
+
+    using var reopened = new Catalog(data);
+    var reimported = reopened.Import(removedPath, Layout.Flat, MediaFiles.Scan(removedPath, Layout.Flat));
+    var restored = reopened.Read();
+    var newMedia = restored.Media.Single(item => item.Source.Id == reimported);
+    Check(reimported > removed && newMedia.Id > removedItem.Id && newMedia.RelativePath == removedItem.RelativePath,
+        "reimporting the same path after restart allocates new source and media identities");
+    Check(restored.AlbumMembers[collection].Select(item => item.Id).SequenceEqual(keptItems),
+        "reimport does not restore removed album references");
 }
 
 static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long[] memberIds)
@@ -349,6 +396,12 @@ static void CheckSourceAlbumOrganization(string work)
     File.Move(outside, coverPath);
     reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
     Check(reopened.ReadSourceAlbumOrganization(album).EffectiveCoverIds.SequenceEqual([9L, 8L]), "returned cover restores order");
+    AddFile(sourcePath, "Maker/Album/Later.png");
+    reopened.Rescan(4, MediaFiles.Scan(sourcePath, Layout.MultiCreator));
+    var upgraded = reopened.Read();
+    Check(upgraded.Media.Single(item => item.FileName == "Later.png").Id > 11 &&
+        upgraded.AlbumMembers[20].Select(item => item.Id).SequenceEqual([11L, 8L]),
+        "migration keeps existing identities and appends new ones");
     reopened.Rescan(4, null);
     var offline = reopened.ReadSourceAlbumOrganization(album);
     Check(offline.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && offline.EffectiveCoverIds.Count == 0, "offline cover configuration persists");
@@ -648,6 +701,35 @@ static void CheckSourceRename(string work)
               catalog.Read().Media.Single(item => item.Id == secondId).RelativePath == newPath,
             "ambiguous recovery preserves both originals and the existing index");
     }
+}
+
+static void CheckMediaSort(string work)
+{
+    var root = Directory.CreateDirectory(Path.Combine(work, "Sort")).FullName;
+    var source = new Source(1, root, Layout.Flat, Available: true);
+    var early = DateTime.UnixEpoch.AddHours(1);
+    var late = early.AddHours(1);
+    (string Name, int Size, DateTime Modified)[] fixtures =
+        [("1.png", 20, late), ("2.png", 20, early), ("10.png", 3, early), ("20.png", 10, late)];
+    var items = fixtures.Select((fixture, index) =>
+    {
+        var path = Path.Combine(root, fixture.Name);
+        File.WriteAllBytes(path, new byte[fixture.Size]);
+        File.SetLastWriteTimeUtc(path, fixture.Modified);
+        return new Media(index + 1, source, fixture.Name, IsVideo: false, Present: true);
+    }).Reverse().ToArray();
+    File.Move(Path.Combine(root, "20.png"), Path.Combine(work, "unavailable.png"));
+
+    IEnumerable<string> Names(MediaSortField field, bool descending = false) =>
+        new MediaSort(field, descending).Arrange(items, item => item).Select(item => item.FileName);
+
+    Check(new MediaSort().Arrange(items, item => item).SequenceEqual(items), "original file order");
+    Check(Names(MediaSortField.Name).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "natural name sort");
+    Check(Names(MediaSortField.Name, true).SequenceEqual(["20.png", "10.png", "2.png", "1.png"]), "descending name sort");
+    Check(Names(MediaSortField.Size).SequenceEqual(["10.png", "1.png", "2.png", "20.png"]), "sort by file bytes");
+    Check(Names(MediaSortField.Size, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending bytes with missing last");
+    Check(Names(MediaSortField.Modified).SequenceEqual(["2.png", "10.png", "1.png", "20.png"]), "sort by modification date");
+    Check(Names(MediaSortField.Modified, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending dates with missing last");
 }
 
 static void WriteRenameIntent(string index, long source, string before, string after, string identity)
