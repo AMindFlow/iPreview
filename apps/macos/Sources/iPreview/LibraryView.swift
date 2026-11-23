@@ -526,6 +526,8 @@ struct LibraryView: View {
                             .font(.system(size: 35, weight: .light))
                         Image(systemName: "plus")
                             .font(.system(size: 15, weight: .regular))
+                            // Center the plus on the front card.
+                            .offset(y: 3)
                     }
                     .foregroundStyle(Color.libraryInk.opacity(0.64))
                     .frame(width: 74, height: 70)
