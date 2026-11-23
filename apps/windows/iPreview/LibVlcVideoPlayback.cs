@@ -180,6 +180,9 @@ internal sealed class LibVlcVideoPlayback : IDisposable
 
     internal void Play()
     {
+        // A finished LibVLC 3 input must be stopped before starting it again.
+        if (State == LibVlcNative.State.Ended)
+            LibVlcNative.Stop(player);
         if (LibVlcNative.Play(player) != 0)
             throw LibVlcNative.Failure("LibVLC 无法开始播放。");
     }
