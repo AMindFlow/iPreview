@@ -1098,10 +1098,7 @@ public sealed partial class MainWindow : Window
         VideoLock.IsChecked = locked;
         VideoLock.Content = locked ? "已锁定" : "未锁定";
 
-        UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
-        UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
-        UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
-        UpdateDirection(PreviewDown, NeighborBottom, BrowseDirection.Down);
+        UpdatePreviewNavigation();
 
         if (locked)
         {
@@ -1116,10 +1113,19 @@ public sealed partial class MainWindow : Window
         };
         var lockHint = VideoControls.Visibility == Visibility.Visible ? "    Enter 锁定" : "";
         PreviewHint.Text = $"{navigation}    Space / Esc 退出{lockHint}";
+    }
+
+    private void UpdatePreviewNavigation()
+    {
+        UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
+        UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
+        UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
+        UpdateDirection(PreviewDown, NeighborBottom, BrowseDirection.Down);
 
         void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
         {
-            var available = !locked && previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
+            var available = !previewVideoLocked &&
+                previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
             button.Visibility = neighbor.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         }
     }
