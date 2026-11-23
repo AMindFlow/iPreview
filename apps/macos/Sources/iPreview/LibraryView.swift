@@ -510,11 +510,8 @@ struct LibraryView: View {
                             .offset(y: 3)
                     }
                     .foregroundStyle(Color.libraryInk.opacity(0.64))
-                    .frame(width: 74, height: 70)
-                    .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(EmptyAlbumAddButtonStyle())
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
                 Text("合集为空").font(.title3.weight(.semibold))

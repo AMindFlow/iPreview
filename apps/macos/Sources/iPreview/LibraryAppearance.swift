@@ -221,6 +221,34 @@ struct LibraryIconButtonStyle: ButtonStyle {
     }
 }
 
+struct EmptyAlbumAddButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 15)
+        let isPressed = isEnabled && configuration.isPressed
+        let highlighted = isEnabled && (isHovered || isPressed)
+        let highlight = contrast == .increased ? Color.primary : Color.ipreviewAccent
+
+        configuration.label
+            .frame(width: 74, height: 70)
+            .background(isPressed ? Color.primary.opacity(0.14) : Color.mediaSurface.opacity(0.48), in: shape)
+            .overlay {
+                shape.strokeBorder(highlight, lineWidth: isPressed ? 2 : 1.5)
+                    .opacity(highlighted ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
+    }
+}
+
 struct LibraryBrowseModePicker: View {
     @Binding var selection: MediaBrowseMode
 
