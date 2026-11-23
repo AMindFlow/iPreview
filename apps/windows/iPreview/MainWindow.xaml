@@ -516,10 +516,8 @@
                                 HorizontalAlignment="Center" Padding="4">
                             <Grid Width="66" Height="66">
                                 <FontIcon Glyph="&#xE8B7;" FontSize="40" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <Border Width="25" Height="25" CornerRadius="13" Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                    <FontIcon Glyph="&#xE710;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                                </Border>
+                                <FontIcon Glyph="&#xE710;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0" />
                             </Grid>
                         </Button>
                         <TextBlock Text="合集为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
