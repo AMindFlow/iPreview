@@ -62,72 +62,7 @@ struct LibraryView: View {
 
     var body: some View {
         @Bindable var model = model
-        let scope = model.contentScope(for: page)
-
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            sidebar
-                .accessibilityHidden(libraryOverlayShown)
-                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
-            VStack(alignment: .leading, spacing: 0) {
-                header(scope)
-                content(scope)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .accessibilityHidden(libraryOverlayShown)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .navigationSplitViewStyle(.balanced)
-        .focusedSceneValue(\.libraryBrowseMode, canChangeBrowseMode ? $browseMode : nil)
-        .focusedSceneValue(\.librarySearchActions, searchActions)
-        .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
-        .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
-        .background {
-            LibraryTitleBarControls(sidebarWidth: sidebarVisibility == .detailOnly ? nil : sidebarWidth,
-                                    controls: windowControls)
-                .frame(width: 0, height: 0)
-            if let preview {
-                PreviewWindowChrome(session: preview)
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-            }
-        }
-        .overlay {
-            if let searchDomain {
-                LibrarySearchPanel(index: model.searchIndex, revision: model.revision, page: page,
-                                   albumMembers: Set(page.virtualMembers(in: model.snapshot)),
-                                   domain: searchDomain, isPreviewing: preview != nil,
-                                   closingPreviewSelection: preview?.closingSelection, focus: $focus,
-                                   switchDomain: { showSearch(searchDomain == .global ? .current : .global) },
-                                   dismiss: dismissSearch, open: openSearchResult) { item, results in
-                    open(item, among: results, layout: .list)
-                }
-                .allowsHitTesting(preview == nil)
-                .accessibilityHidden(preview != nil)
-            }
-        }
-        .overlayPreferenceValue(PreviewOriginKey.self) { origins in
-            if let preview {
-                GeometryReader { geometry in
-                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil else { return nil }
-                        return origins.thumbnail(for: id, in: geometry)
-                    }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
-                        if searchDomain == nil {
-                            selected = selection
-                            if !hasThumbnail { mediaToReveal = selection }
-                        }
-                    } close: {
-                        self.preview = nil
-                        focus = searchDomain == nil ? .browser : .searchResults
-                    }
-                    .id(preview.selection)
-                }
-            }
-        }
+        libraryContent
         .task { await model.start() }
         .sheet(item: $model.inspection) { inspection in
             ImportSheet(inspection: inspection) { candidate in
@@ -199,6 +134,75 @@ struct LibraryView: View {
             Button("好") { model.error = nil }
         } message: {
             Text(model.error ?? "")
+        }
+    }
+
+    private var libraryContent: some View {
+        let scope = model.contentScope(for: page)
+
+        return NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            sidebar
+                .accessibilityHidden(libraryOverlayShown)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
+                .toolbar(removing: .sidebarToggle)
+        } detail: {
+            VStack(alignment: .leading, spacing: 0) {
+                header(scope)
+                content(scope)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .accessibilityHidden(libraryOverlayShown)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(\.libraryBrowseMode, canChangeBrowseMode ? $browseMode : nil)
+        .focusedSceneValue(\.librarySearchActions, searchActions)
+        .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
+        .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
+        .background {
+            LibraryTitleBarControls(sidebarWidth: sidebarVisibility == .detailOnly ? nil : sidebarWidth,
+                                    controls: windowControls)
+                .frame(width: 0, height: 0)
+            if let preview {
+                PreviewWindowChrome(session: preview)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
+        }
+        .overlay {
+            if let searchDomain {
+                LibrarySearchPanel(index: model.searchIndex, revision: model.revision, page: page,
+                                   albumMembers: Set(page.virtualMembers(in: model.snapshot)),
+                                   domain: searchDomain, isPreviewing: preview != nil,
+                                   closingPreviewSelection: preview?.closingSelection, focus: $focus,
+                                   switchDomain: { showSearch(searchDomain == .global ? .current : .global) },
+                                   dismiss: dismissSearch, open: openSearchResult) { item, results in
+                    open(item, among: results, layout: .list)
+                }
+                .allowsHitTesting(preview == nil)
+                .accessibilityHidden(preview != nil)
+            }
+        }
+        .overlayPreferenceValue(PreviewOriginKey.self) { origins in
+            if let preview {
+                GeometryReader { geometry in
+                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
+                        guard searchDomain == nil else { return nil }
+                        return origins.thumbnail(for: id, in: geometry)
+                    }
+                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
+                        if searchDomain == nil {
+                            selected = selection
+                            if !hasThumbnail { mediaToReveal = selection }
+                        }
+                    } close: {
+                        self.preview = nil
+                        focus = searchDomain == nil ? .browser : .searchResults
+                    }
+                    .id(preview.selection)
+                }
+            }
         }
     }
 
