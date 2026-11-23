@@ -959,7 +959,7 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(async () =>
             {
                 if (CanUpdatePreview(generation) && ReferenceEquals(player, mediaPlayer))
-                    await StartFallbackVideo(media, generation, message);
+                    await RecoverSystemVideo(media, generation, "系统无法播放此视频。", message);
             });
         };
 

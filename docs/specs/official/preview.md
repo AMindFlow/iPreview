@@ -16,7 +16,7 @@
 ## PRE-006 系统视频格式扩展
 
 - **要求** 两端沿用 [PRE-001](#pre-001-图片与视频预览) 的系统播放框架及失败提示。新增双端 MPEG-TS（`.ts`），Windows 另支持 Matroska（`.mkv`）、WebM（`.webm`）和 AVI（`.avi`）。扫描、重扫和精确搜索使用相同的本机后缀；可用音视频编码取决于本机播放路径。
-- **Windows 回退** 系统播放器无法打开或播放时，在同一预览画布用随附的 LibVLC 3.0.24 播放已索引的本地视频。沿用播放、暂停、时间轴、锁定和退出。切换文件或退出后释放回退播放器。
+- **Windows 回退** 本地 MKV、WebM 或 AVI 的系统播放失败时，在同一预览画布调用随附的 LibVLC 3.0.24。MP4、MOV 和 MPEG-TS 沿用系统播放与报错。沿用播放、暂停、时间轴、锁定和退出。切换文件或退出后释放回退播放器。
 - **来源** [#63](https://github.com/AMindFlow/iPreview/issues/63)，承接 [#1](https://github.com/AMindFlow/iPreview/issues/1) 常见视频格式需求。后续解码范围见 [PRE-006 扩展](../spike/preview.md#pre-006-常见视频格式扩展)。
 - **验收** 两端用相同 H.264/AAC MP4、MOV、MPEG-TS 样例验证导入、重扫、全后缀精确检索及预览。Windows 再验证 H.264/AAC Matroska、VP9/Opus WebM 和 MPEG-4 Part 2/MP3 AVI。记录画面、声音、进度、结束及退出停止播放；另用系统无法播放的 FFV1/Matroska 样例验证 LibVLC 内嵌画面和控制。两种播放路径均失败时显示单文件错误。
 

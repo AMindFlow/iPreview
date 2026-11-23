@@ -21,12 +21,18 @@ public sealed partial class MainWindow
         catch (Exception error) when (MediaFailure(error))
         {
             if (CanUpdatePreview(generation))
-                await StartFallbackVideo(media, generation, error.Message);
+                await RecoverSystemVideo(media, generation, "无法打开此视频。", error.Message);
         }
     }
 
-    private async Task StartFallbackVideo(Media media, int generation, string systemError)
+    private async Task RecoverSystemVideo(Media media, int generation, string title, string systemError)
     {
+        if (!LibVlcVideoPlayback.Supports(media.RelativePath))
+        {
+            ShowPreviewError(title, systemError);
+            return;
+        }
+
         StopVideo();
         MainImage.Visibility = Visibility.Visible;
         VideoSurface.Visibility = Visibility.Collapsed;

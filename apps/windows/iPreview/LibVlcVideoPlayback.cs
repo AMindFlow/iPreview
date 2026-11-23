@@ -38,14 +38,7 @@ internal sealed class LibVlcVideoPlayback : IDisposable
     internal LibVlcVideoPlayback(string path)
     {
         displayVideo = Display;
-        var demux = Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".mp4" or ".mov" => "mp4",
-            ".ts" => "ts",
-            ".mkv" or ".webm" => "mkv",
-            ".avi" => "avi",
-            _ => throw new IOException("LibVLC 不支持此预览文件的后缀。")
-        };
+        var demux = DemuxFor(path) ?? throw new IOException("LibVLC 不支持此预览文件的后缀。");
 
         string[] arguments = [
             "--ignore-config", "--no-plugins-cache", "--no-metadata-network-access",
@@ -92,6 +85,15 @@ internal sealed class LibVlcVideoPlayback : IDisposable
             throw;
         }
     }
+
+    internal static bool Supports(string path) => DemuxFor(path) is not null;
+
+    private static string? DemuxFor(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".mkv" or ".webm" => "mkv",
+        ".avi" => "avi",
+        _ => null
+    };
 
     private static uint Setup(ref nint opaque, nint chroma, ref uint width, ref uint height, nint pitches, nint lines)
     {
