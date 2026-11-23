@@ -29,7 +29,11 @@ final class VLCPlayback {
         default: throw VLCPlaybackError.unsupportedFormat
         }
         let runtime = try Self.runtime.get()
-        let options = ["--no-video-title-show", "--no-media-library", "--no-plugins-cache", "--no-sub-autodetect-file", "--stats"]
+        let options = [
+            "--ignore-config", "--no-plugins-cache", "--no-metadata-network-access",
+            "--no-sub-autodetect-file", "--no-mkv-preload-local-dir", "--no-video-title-show",
+            "--no-media-library", "--stats",
+        ]
         let allocated = options.map { strdup($0)! }
         defer { allocated.forEach { free($0) } }
         let arguments: [UnsafePointer<CChar>?] = allocated.map { UnsafePointer($0) }
@@ -159,6 +163,8 @@ private final class VLCRuntime: @unchecked Sendable {
     let getVideoTrack: @convention(c) (OpaquePointer) -> CInt
 
     init() throws {
+        // LibVLC otherwise scans plugin directories supplied by the parent process.
+        unsetenv("VLC_PLUGIN_PATH")
         guard let path = Bundle.main.privateFrameworksURL?.appendingPathComponent("LibVLC/lib/libvlc.dylib"),
               let library = dlopen(path.path, RTLD_NOW | RTLD_LOCAL) else {
             throw VLCPlaybackError.missingRuntime
