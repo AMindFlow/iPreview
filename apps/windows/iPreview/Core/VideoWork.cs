@@ -103,7 +103,8 @@ internal sealed record IndexedVideoPhotoSet(Media? Cover, IReadOnlyList<Media> P
 internal sealed record IndexedVideoWork(Media Video, VideoWorkStructure Structure,
     IReadOnlyList<Media> Samples, IReadOnlyList<IndexedVideoPhotoSet> PhotoSets)
 {
-    public string RelativePath => string.Join("/", Video.RelativePath.Split('/')
-        .SkipLast(Structure == VideoWorkStructure.Complete ? 2 : 1));
+    public string RelativePath => AlbumPath(Video.RelativePath, Structure);
+    public static string AlbumPath(string videoPath, VideoWorkStructure structure) =>
+        string.Join('/', videoPath.Split('/').SkipLast(structure == VideoWorkStructure.Complete ? 2 : 1));
     public string Title => RelativePath.Length == 0 ? Video.Source.Name : RelativePath.Split('/')[^1];
 }

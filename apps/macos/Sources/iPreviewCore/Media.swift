@@ -51,6 +51,7 @@ public struct Media: Sendable, Identifiable, Hashable {
     public let relativePath: String
     public let kind: MediaKind
     public let existsInSource: Bool
+    public internal(set) var workAlbumPath: String?
 
     public var isAvailable: Bool { source.isAvailable && existsInSource }
     public var components: [String] { relativePath.components(separatedBy: "/") }
@@ -58,7 +59,11 @@ public struct Media: Sendable, Identifiable, Hashable {
     public var directories: [String] { [source.name] + components.dropLast() }
 
     public var creator: String { source.layout == .multiCreator ? components[0] : source.name }
-    public var album: String { components.dropLast().last ?? source.name }
+    var albumComponents: ArraySlice<String> { components.dropLast().prefix(source.layout.albumDepth) }
+    public var album: String {
+        if let workAlbumPath { return workAlbumPath.split(separator: "/").last.map(String.init) ?? source.name }
+        return albumComponents.last ?? source.name
+    }
 
     /// Resolve a live path without accepting symlink redirection added since the scan.
     public func readableURL() throws -> URL {

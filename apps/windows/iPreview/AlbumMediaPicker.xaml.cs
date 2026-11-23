@@ -45,9 +45,9 @@ public sealed partial class AlbumMediaPicker : UserControl
             var source = group.First().Source;
             var label = source.Layout == Layout.MultiCreator
                 ? $"{group.Key.Creator} · {source.Name}" : source.Name;
-            var folders = group.GroupBy(item => item.RelativePath[..(item.RelativePath.LastIndexOf('/') + 1)])
+            var folders = group.GroupBy(item => SourceAlbumKey.FromMedia(item).RelativePath)
                 .Select(folder => new FolderOption(
-                    source.Layout == Layout.Flat ? source.Name : folder.Key.TrimEnd('/').Split('/')[^1],
+                    source.Layout == Layout.Flat ? source.Name : folder.Key.Split('/')[^1],
                     folder.Where(item => !existingIDs.Contains(item.Id)).Select(item => new Candidate(item)).ToList()));
             return new CreatorOption(label, source.Path, folders.ToList());
         }).ToList();
