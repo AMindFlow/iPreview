@@ -10,7 +10,12 @@ public struct SourceAlbumKey: Hashable, Sendable {
     }
 
     public init(media: Media) {
-        self.init(sourceID: media.source.id, relativePath: media.components.dropLast().joined(separator: "/"))
+        self.init(sourceID: media.source.id, relativePath: media.albumComponents.joined(separator: "/"))
+    }
+
+    public func matchesLayout(_ layout: Layout) -> Bool {
+        let depth = relativePath.isEmpty ? 0 : relativePath.split(separator: "/", omittingEmptySubsequences: false).count
+        return depth == layout.albumDepth
     }
 
     public static func == (left: Self, right: Self) -> Bool {

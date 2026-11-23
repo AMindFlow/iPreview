@@ -58,7 +58,8 @@ public struct Media: Sendable, Identifiable, Hashable {
     public var directories: [String] { [source.name] + components.dropLast() }
 
     public var creator: String { source.layout == .multiCreator ? components[0] : source.name }
-    public var album: String { components.dropLast().last ?? source.name }
+    var albumComponents: ArraySlice<String> { components.dropLast().prefix(source.layout.albumDepth) }
+    public var album: String { albumComponents.last ?? source.name }
 
     /// Resolve a live path without accepting symlink redirection added since the scan.
     public func readableURL() throws -> URL {

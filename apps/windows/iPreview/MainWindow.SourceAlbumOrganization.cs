@@ -10,10 +10,16 @@ public sealed partial class MainWindow
 {
     private SourceAlbumIndex sourceAlbumIndex = SourceAlbumIndex.Empty;
 
-    private SourceAlbumKey? VisibleAlbumKey => VisibleSource is { } source &&
-        (source.Layout == Layout.Flat || source.Layout == Layout.Creator && current.Folder is not null ||
-         source.Layout == Layout.MultiCreator && current.Folder?.Count(c => c == '/') == 2)
-        ? new SourceAlbumKey(source.Id, current.Folder?.TrimEnd('/') ?? "") : null;
+    private SourceAlbumKey? VisibleAlbumKey
+    {
+        get
+        {
+            if (VisibleSource is not { } source)
+                return null;
+            var key = new SourceAlbumKey(source.Id, current.Folder?.TrimEnd('/') ?? "");
+            return key.MatchesLayout(source.Layout) ? key : null;
+        }
+    }
 
     private void ShowSourceAlbumControls(IEnumerable<Media> members)
     {
