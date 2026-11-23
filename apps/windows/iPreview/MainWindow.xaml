@@ -251,11 +251,6 @@
                                         </ResourceDictionary.ThemeDictionaries>
                                     </ResourceDictionary>
                                 </StackPanel.Resources>
-                                <ToggleButton x:Name="IconModeButton" IsChecked="True" Click="ChangeBrowseMode"
-                                              Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
-                                              ToolTipService.ToolTip="图标（Ctrl+3）">
-                                    <FontIcon Glyph="&#xE8A9;" FontSize="13" />
-                                </ToggleButton>
                                 <ToggleButton x:Name="ListModeButton" Click="ChangeBrowseMode"
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="列表"
                                               ToolTipService.ToolTip="列表（Ctrl+1）">
@@ -265,6 +260,11 @@
                                               Style="{StaticResource ViewModeButton}" AutomationProperties.Name="画廊"
                                               ToolTipService.ToolTip="画廊（Ctrl+2）">
                                     <FontIcon Glyph="&#xE91B;" FontSize="13" />
+                                </ToggleButton>
+                                <ToggleButton x:Name="IconModeButton" Click="ChangeBrowseMode"
+                                              Style="{StaticResource ViewModeButton}" AutomationProperties.Name="图标"
+                                              ToolTipService.ToolTip="图标（Ctrl+3）">
+                                    <FontIcon Glyph="&#xE8A9;" FontSize="13" />
                                 </ToggleButton>
                             </StackPanel>
                         </Border>
@@ -354,11 +354,12 @@
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                             </Grid>
                         </Border>
+                        <!-- ListView navigation scrolls to the row itself. Skip the ScrollViewer's extra focus margin. -->
                         <ListView x:Name="DetailsList" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
                                   SingleSelectionFollowsFocus="True"
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
-                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                     <Setter Property="Padding" Value="0" />
@@ -660,10 +661,15 @@
                             AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
-                    <TextBlock x:Name="PreviewTitle" Margin="52,0" TextTrimming="CharacterEllipsis" TextAlignment="Center"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                               DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名"
-                               AutomationProperties.HelpText="双击复制文件名" />
+                    <Grid Margin="52,0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                          DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
+                        <TextBlock x:Name="PreviewTitle" TextTrimming="CharacterEllipsis" TextAlignment="Center"
+                                   FontWeight="SemiBold" AutomationProperties.HelpText="双击复制文件名" />
+                        <StackPanel x:Name="PreviewCopyFeedback" Visibility="Collapsed" Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE73E;" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="已复制" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"

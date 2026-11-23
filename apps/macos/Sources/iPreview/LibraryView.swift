@@ -10,7 +10,7 @@ struct LibraryView: View {
     @ViewState private var sidebarWidth: CGFloat = 200
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
-    @ViewState private var browseMode = MediaBrowseMode.icons
+    @ViewState private var browseMode = MediaBrowseMode.list
     @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
@@ -100,13 +100,14 @@ struct LibraryView: View {
                         guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection in
-                        self.preview = nil
+                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
                         if searchDomain == nil {
-                            self.selected = selection
-                            if thumbnail(selection) == nil { self.mediaToReveal = selection }
-                            focusBrowser()
+                            selected = selection
+                            if !hasThumbnail { mediaToReveal = selection }
                         }
+                    } close: {
+                        self.preview = nil
+                        focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
                 }
@@ -614,7 +615,7 @@ struct LibraryView: View {
                             }
                         } else if let destination = layout.neighbor(of: index, toward: press.key, count: items.count) {
                             selected = items[destination].id
-                            reader.scrollTo(items[destination].id, anchor: .center)
+                            reader.scrollTo(items[destination].id, anchor: browseMode == .list ? nil : .center)
                         }
                         return .handled
                     }
