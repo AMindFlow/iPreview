@@ -10,6 +10,7 @@
 - 多 Agent 并行工作时，各用独立工作区/Worktree；无法隔离就顺序执行。
 - 新增生产依赖、外部服务、网络调用或遥测前，先获得用户同意。保护凭据和本地媒体。
 - 分支、提交和 PR 遵循 [GitHub Flow](docs/workflow/git.md)。
+- 正式版本打包、安装和证据归档见[版本发布流程](docs/workflow/release.md)。
 
 ## 审批与验证
 

@@ -1,29 +1,29 @@
 # 未完成需求
 
-本清单以原始需求和一期后续确认规格为基线；不把未排期或待决定的内容从产品范围中删除。[原文映射](requirements.md#原始需求逐项对应)与[一期已交付](releases/0.1.0.md)分别查阅。具体行为和验收方法以链接的 `spike/` 条目为准，状态统一由本表维护。[总体追踪 #3](https://github.com/AMindFlow/iPreview/issues/3)。
+本清单保留原始需求及后续确认的未完成项。原文映射和两期交付范围见[完整需求](requirements.md#原始需求逐项对应)及 [0.2.0 发布与验收登记](releases/0.2.0.md)。具体行为和验收以链接的 `spike/` 条目为准。[总体追踪 #3](https://github.com/AMindFlow/iPreview/issues/3)。
 
-| 稳定编号 | 状态 | 未完成范围／一期已有部分 | 前置与下一步验收 |
+| 稳定编号 | 状态 | 未完成范围及现有进展 | 前置与下一步验收 |
 | --- | --- | --- | --- |
 | [LIB-003](../specs/spike/library.md#lib-003-旧版图库管理) | 部分完成 | 已有自然排序、按需缩略图、手动重扫与离线索引；导入显示名设置、扫描忽略数量与单项问题摘要、目录外部变化监测、重连／失效清理／移除源尚未齐全。 | 用可丢弃来源增删文件、改路径、断开和重连，核对索引与原文件；不重复重写现有扫描。 |
 | [LIB-004](../specs/spike/library.md#lib-004-多工作区) | 待实施 | 创建、打开、切换和重启恢复工作区；数据隔离与并发行为。 | 先定工作区数据契约，再用两库同源、重启和并发样例验收。 |
 | [LIB-005](../specs/spike/library.md#lib-005-旧库迁移备份与恢复) | 待实施 | 旧 SQLite／JSON 支持版本、路径映射、组织数据保留、版本化备份和恢复。 | 依赖 LIB-004；先核对旧库格式，用合成旧库验证只读迁移、路径变化和引用顺序。 |
-| [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构) | 待实施 | 完整与简化作品结构、官方样张、带封面的多个附加写真集。 | 先定作品索引契约；外部样张来源另确认。两棵合成目录逐项验收归属。 |
+| [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构) | 本地探测候选待接入 | [PR #69](https://github.com/AMindFlow/iPreview/pull/69)验证完整和简化作品结构的只读探测。 | 接入导入、索引持久化及重扫，用两棵合成目录验收归属。外部样张来源另确认。 |
 | [LIB-007](../specs/spike/library.md#lib-007-音频组织) | 待设计审阅 | 常见音频格式、组织、封面和首批播放范围。 | 代理提出方案，用户审阅后实施；联合 PRE-005 验收。 |
 | [LIB-008](../specs/spike/library.md#lib-008-旧版源文件操作) | 部分完成，余项待确认 | 同父目录真实重命名已完成；旧版连续重命名、将真实源文件移回收站的产品功能仍待决定。 | 先确认允许范围和恢复语义，再只用合成副本验收；不因开发物料清理授权而扩展源文件操作。 |
-| [ALB-002](../specs/spike/virtual-albums.md#alb-002-旧版标签收藏评分与封面) | 待实施 | 标签／过滤／全库标签改名与移除、收藏、半星评分、自动／手选／拼图封面。 | 数据契约先行；重启、离线恢复及封面缺失样例验收。 |
+| [ALB-002](../specs/spike/virtual-albums.md#alb-002-旧版标签收藏评分与封面) | 数据契约候选待接入 | [PR #72](https://github.com/AMindFlow/iPreview/pull/72)提供双端 SQLite 与目录接口。标签和全库管理、收藏、半星评分与三类封面的界面待实现。 | 接入界面并复用契约支持标签搜索，用旧版库、离线恢复及封面缺失样例验收。 |
 | [SRCH-003](../specs/spike/search.md#srch-003-旧版分类结果与标签搜索) | 部分完成 | 创作者和专辑已[标记类别](../specs/official/search.md#srch-003-创作者与专辑分类标记)。分组展示、标签过滤、`#` 标签查询与联想待实施。 | 标签查询依赖 ALB-002，沿用 SRCH-001/002 匹配与键盘契约。 |
 | [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容) | 部分完成 | 等比主图、相邻图片、GIF、旧版图片格式边界和毛玻璃已完成；原始尺寸切换、首尾导航、触摸滑动尚未交付。 | 用横竖图和触控样例补齐；退出选择继续遵循现行 PRE-007。 |
 | [PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页) | 待实施 | 双页、首页单双页配对、仿真翻页。 | 编号页样例覆盖奇偶数量、配对调整与末页；可与工作区独立并行。 |
 | [PRE-004](../specs/spike/preview.md#pre-004-视频作品的影碟与图册预览) | 待实施 | 作品级影碟／图册、分层进入及 Esc 逐层返回。 | 依赖 LIB-006；当前单文件视频预览不视为作品预览完成。 |
 | [PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机) | 待设计审阅 | 封面、CD 机及音频交互。 | 依赖用户确认 LIB-007／PRE-005 方案；实机验证可听输出。 |
-| [PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展) | 待样例验证 | MP4／MOV 以外的实际格式缺口与成熟播放底座。 | 先拿系统框架不能播放的真实样例；优先验证 LibVLC，新增生产依赖前确认具体许可与分发方案。 |
+| [PRE-006](../specs/spike/preview.md#pre-006-常见视频格式扩展) | 部分格式证据 | macOS 已用合成样例记录 MKV、WebM、AVI 的系统播放缺口。[#63](https://github.com/AMindFlow/iPreview/issues/63) | Windows 用同组样例对照，优先验证 LibVLC。新增生产依赖前确认具体许可与分发。 |
 | [PRE-008](../specs/spike/preview.md#pre-008-长按方向键连续切换) | 已有候选，待实机验收 | [#57](https://github.com/AMindFlow/iPreview/issues/57)图片长按连续切换黑闪。 | 按拟改规格补齐双端三种布局的持续按键、画面连续性和损坏图片恢复验收。 |
 | [META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息) | 待实施 | 从实际媒体读取清晰度、作者等元字段。 | 视频可先于音频；已知字段／缺失／坏文件样例及只读快照。 |
 | [META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件) | 待范围确认 | 可写格式和字段、用户触发、失败与恢复。 | 用户确认后实施；合成副本修改并以独立工具回读。 |
 | [PLAT-001](../specs/spike/platforms.md#plat-001-ios-原生体验) | 待排期 | iOS 原生导入与触屏预览范围。 | 先确认媒体和来源，再独立构建与 iOS 实机验收。 |
 | [PLAT-002](../specs/spike/platforms.md#plat-002-旧版浏览器与局域网工作流) | 待产品与权限决定 | 是否保留浏览器／局域网入口、认证、移动端编辑及边界。 | 当前桌面应用不开放服务；决定后再验收可信／未授权设备。 |
 | [PLAT-003](../specs/spike/platforms.md#plat-003-旧版桌面安装与升级体验) | 部分完成 | 新原生 DMG／EXE 由 PLAT-005 覆盖；旧 Electron/Squirrel 数据发现、兼容升级与自动升级尚未交付。 | 依赖受支持旧版本确认，数据迁移依赖 LIB-005；不把标准安装器当旧库迁移。 |
-| [PLAT-004](../specs/spike/platforms.md#plat-004-windows-组件包瘦身) | 已有候选，待验收 | [PR #27](https://github.com/AMindFlow/iPreview/pull/27)／[Issue #26](https://github.com/AMindFlow/iPreview/issues/26)：仅换同版本 WinUI 组件包；已做同基线体积／依赖对照，**干净 Windows 11 x64 离线验收未通过前不合入**。 | 当前 gigabit 已预装运行时，用户断网解压可运行不等于干净环境通过；需要记录系统／预装状态／断网结果并跑完整验收。一期包沿用 main 自包含基线。 |
+| [PLAT-004](../specs/spike/platforms.md#plat-004-windows-组件包瘦身) | 独立候选待验收 | [PR #27](https://github.com/AMindFlow/iPreview/pull/27)已完成同基线包体和依赖对照。0.2.0 沿用主线自包含基线。 | [#26](https://github.com/AMindFlow/iPreview/issues/26)继续跟踪干净 Windows 11 x64 离线实机，记录预装状态并通过完整流程后独立合入。 |
 
 ## 已实现规格的验证余项
 

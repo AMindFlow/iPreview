@@ -1,27 +1,15 @@
 # 当前状态
 
-iPreview 0.1.0 的图片与基础视频桌面功能已获用户确认作为一期交付。最新功能包含 [PR #48](https://github.com/AMindFlow/iPreview/pull/48)、[#49](https://github.com/AMindFlow/iPreview/pull/49)、[#50](https://github.com/AMindFlow/iPreview/pull/50)的侧栏与玻璃控件反馈、预览退出选择、展示快捷键及 Windows 布局对齐，不再停留于最早的首版切片。
+iPreview 在 macOS 15+ Apple Silicon 与 Windows 11 x64 提供原生图片和基础视频图库。图库索引与合集保存在本机应用数据目录。原始媒体日常由应用只读访问，真实重命名遵循 [LIB-011](../specs/official/library.md#lib-011-重命名真实目录和媒体)。
 
-[一期验收登记册](releases/0.1.0.md)列出全部已交付及后续细化规格、PR 和验证边界。[原始需求映射](requirements.md#原始需求逐项对应)覆盖最初文档；[未完成清单](backlog.md)独立记录所有后续目标。[路线图](roadmap.md)决定排期依赖，[一期分工与 DAG](phase-1-collaboration.md)供其他 Agent 审阅协作方式。
+[0.1.0 验收登记册](releases/0.1.0.md)记录已交付的图库、合集、搜索和预览基线。[0.2.0 发布与验收登记](releases/0.2.0.md)记录本轮确认的预览与列表改进、合集删除、主题与侧栏以及搜索分类标记。[二期分工与 DAG](phase-2-collaboration.md)记录并行合流及验证边界。
 
-## 一期交付
+## 安装与交付
 
-- Mac ARM64：macOS15+，提供 DMG 和 `.app` ZIP。macOS26+ 采用原生液态玻璃，15 使用系统材质。
-- Windows11 x64：原生 WinUI3，提供每用户 EXE 安装器和完整自包含 ZIP，无须联网安装 .NET／Windows App SDK。与 Mac 对齐层级、搜索、合集与预览行为，保留 Windows 原生窗框。
-- 本期功能基线已通过双端安装和 Computer Use 复验；标准安装包以最终 main 发布附件中的安装记录为准。安装器默认保留资料库的升级／卸载行为由原生 CI 验证。本轮按用户要求主动清理旧本地库后交付正式空库，详见下文。原始媒体日常只读；真实重命名仅按明确的 [LIB-011](../specs/official/library.md#lib-011-重命名真实目录和媒体)执行。
-- 最终版本物料集中在版本子目录：包、样例、提交／哈希、验收结果、主页截图和清理清单。最新提交和下载见 [v0.1.0 Release](https://github.com/AMindFlow/iPreview/releases/tag/v0.1.0)，不把阶段临时目录作为长期交付入口。
-- 标准安装器见 [PLAT-005](../specs/official/platforms.md#plat-005-首版标准安装包)。当前没有发行签名证书，Mac 为 ad hoc 签名且未公证，Windows 安装器未做 Authenticode 签名。
+- macOS 使用 DMG 或应用 ZIP。macOS 26+ 采用原生液态玻璃，15 使用系统材质。
+- Windows 使用每用户 EXE 或完整自包含 ZIP。安装、覆盖升级和卸载按 [PLAT-005](../specs/official/platforms.md#plat-005-首版标准安装包)保留本地资料库。Mac 包采用 ad hoc 签名且未公证，Windows 安装器尚无 Authenticode 签名。
+- 正式包和设备验证随相应版本发布记录归档。0.2.0 最终提交、下载、校验值和安装证据见 [v0.2.0 发布记录](https://github.com/AMindFlow/iPreview/releases/tag/v0.2.0)。操作参照[版本发布流程](../workflow/release.md)。
 
-## 本轮最终安装口径
+## 二期未完成项
 
-最终 main 的 DMG／EXE 先发布到 GitHub。双端将旧安装、压缩包、构建、QA 和旧本地资料库整目录移入回收站，保留可恢复性，原始 Pictures 等媒体不动；随后从 GitHub 下载最新安装包重新安装。功能验证使用隔离 QA 资料库，复用合成样例集中于各自 `~/Temporary/iPreview/`。正式资料库不导入测试样例，最终主页截图应为空库。
-
-这是本轮清库交付动作，不是安装器自动删除用户数据的行为。标准升级和卸载保留资料库的产品契约继续有效。实际下载、回收、安装及空库结果记录在最终版本附件，不为写入自身提交号重复变更 main。
-
-## 未完成与验证边界
-
-[PR #27](https://github.com/AMindFlow/iPreview/pull/27)的 Windows WinUI 组件包瘦身仍待干净 Windows11 x64 离线验收，保持草稿、不计入一期发布。音频、漫画、视频作品组织与影碟图册、多工作区、旧库迁移、元信息、标签／封面等未完成内容均在[未完成清单](backlog.md)。
-
-macOS15 已通过原生启动 CI，最终视觉未逐项人工复核；辅助功能／透明效果未做全矩阵人工切换，扬声器输出未完整核验。实际证据不扩大为未执行过的验证。
-
-数据结构与迁移由[共享 SQLite 契约](../../shared/README.md)定义。已完成工作通过 PR／Merge Queue 进入 main；未验收的独立候选保留自己的追踪，不为文档收尾强行合入。
+专辑组织界面、标签搜索、视频作品导入与预览、视频格式扩展，以及等待干净 Windows 11 x64 离线验收的包体瘦身仍由[未完成清单](backlog.md)和[二期总任务 #58](https://github.com/AMindFlow/iPreview/issues/58)追踪。[路线图](roadmap.md)记录后续依赖与排期，[完整需求](requirements.md)保留原始范围及逐项映射。
