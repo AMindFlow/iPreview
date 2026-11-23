@@ -4,7 +4,7 @@ namespace IPreview;
 
 internal sealed record CatalogSnapshot(
     Dictionary<long, Source> Sources, List<Media> Media, List<Album> Albums,
-    Dictionary<long, List<Media>> AlbumMembers, long DataVersion);
+    Dictionary<long, List<Media>> AlbumMembers, long DataVersion, List<IndexedVideoWork> VideoWorks);
 
 internal sealed class AlbumOrderChangedException() :
     InvalidOperationException("合集顺序已在其他窗口更新。请按当前顺序重新拖动。");
@@ -14,7 +14,7 @@ internal sealed class AlbumDeletionChangedException() :
 
 internal sealed partial class Catalog : IDisposable
 {
-    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql"];
+    private static readonly string[] Migrations = ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql", "004-video-works.sql"];
     private readonly Sqlite database;
     private readonly string dataDirectory;
 
@@ -85,7 +85,7 @@ internal sealed partial class Catalog : IDisposable
                 row => (Album: row.Number(0), Media: mediaById[row.Number(1)]))
                 .GroupBy(member => member.Album)
                 .ToDictionary(album => album.Key, album => album.Select(member => member.Media).ToList());
-            snapshot = new(sources, media, albums, members, DataVersion);
+            snapshot = new(sources, media, albums, members, DataVersion, ReadVideoWorks(mediaById));
         }, write: false);
         return snapshot!;
     }
@@ -150,6 +150,7 @@ internal sealed partial class Catalog : IDisposable
                 ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1;
                 """, source, file.RelativePath, kind);
         }
+        ReplaceVideoWorks(source, files);
     }
 
     public long CreateAlbum(string name, long? media = null)
