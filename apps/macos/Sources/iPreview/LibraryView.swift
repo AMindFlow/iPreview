@@ -12,6 +12,7 @@ struct LibraryView: View {
     @ViewState private var selected: Int64?
     @ViewState private var selectedFolder: LibraryPage?
     @ViewState private var browseMode = MediaBrowseMode.list
+    @ViewState private var mediaSort = MediaSort()
     @ViewState private var searchDomain: LibrarySearchDomain?
     @ViewState private var mediaToReveal: Int64?
     @ViewState private var creatingAlbum = false
@@ -369,7 +370,11 @@ struct LibraryView: View {
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
                     }
-                    if !scope.items.isEmpty {
+                    if !scope.items.isEmpty && scope.folders.isEmpty {
+                        if removalSelection == nil {
+                            MediaSortMenu(sort: $mediaSort)
+                                .disabled(model.isWorking || titleEdit != nil)
+                        }
                         LibraryBrowseModePicker(selection: $browseMode)
                     }
                 }
@@ -500,7 +505,10 @@ struct LibraryView: View {
         if !scope.folders.isEmpty {
             folderGallery(scope.folders, sourceLayout: scope.source?.layout)
         } else if !scope.items.isEmpty {
-            mediaGallery(scope.items, in: scope.virtualAlbum, sourceLayout: scope.source?.layout)
+            SortedMedia(request: MediaSortRequest(items: scope.items, sort: removalSelection == nil ? mediaSort : .init(),
+                                                   revision: model.revision)) { items in
+                mediaGallery(items, in: scope.virtualAlbum, sourceLayout: scope.source?.layout)
+            }
         } else if model.isWorking {
             ProgressView()
                 .accessibilityLabel("正在读取媒体库")
@@ -657,9 +665,14 @@ struct LibraryView: View {
                         }
                         return .handled
                     }
-                    .onChange(of: items, initial: true) { _, updated in
-                        if let selected, updated.contains(where: { $0.id == selected }) { return }
-                        selected = updated.first?.id
+                    .onChange(of: items, initial: true) { previous, updated in
+                        if let selected, let index = updated.firstIndex(where: { $0.id == selected }) {
+                            if !libraryOverlayShown, previous.firstIndex(where: { $0.id == selected }) != index {
+                                reader.scrollTo(selected, anchor: browseMode == .list ? nil : .center)
+                            }
+                        } else {
+                            selected = updated.first?.id
+                        }
                     }
                     .task(id: mediaToReveal) {
                         guard let target = mediaToReveal, items.contains(where: { $0.id == target }) else { return }

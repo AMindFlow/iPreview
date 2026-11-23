@@ -12,6 +12,7 @@ struct AlbumMediaPicker: View {
     @ViewState private var creator: LibraryPage?
     @ViewState private var folder: LibraryPage?
     @ViewState private var checkedFolder: LibraryPage?
+    @ViewState private var sort = MediaSort()
     @ViewState private var readableCandidates: [Media] = []
     @ViewState private var staged: [Media] = []
     @ViewState private var saving = false
@@ -55,7 +56,6 @@ struct AlbumMediaPicker: View {
         let indexed = (requestedFolder.flatMap { byFolder[$0] } ?? []).filter { !existing.contains($0.id) }
         let candidates = checkedFolder == requestedFolder ? readableCandidates : []
         let stagedIDs = Set(staged.map(\.id))
-        let remaining = candidates.filter { !stagedIDs.contains($0.id) }
 
         VStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -70,8 +70,10 @@ struct AlbumMediaPicker: View {
 
                 Divider().padding(.horizontal, 16)
 
-                filters(folders, remaining: remaining)
-                candidatePane(candidates, stagedIDs: stagedIDs)
+                SortedMedia(request: MediaSortRequest(items: candidates, sort: sort)) { ordered in
+                    filters(folders, remaining: ordered.filter { !stagedIDs.contains($0.id) })
+                    candidatePane(ordered, stagedIDs: stagedIDs)
+                }
             }
             .disabled(saving)
 
@@ -149,6 +151,8 @@ struct AlbumMediaPicker: View {
 
             Spacer(minLength: 0)
 
+            MediaSortMenu(sort: $sort)
+                .disabled(readableCandidates.isEmpty)
             Button("全选当前专辑") { staged.append(contentsOf: remaining) }
                 .controlSize(.small)
                 .disabled(remaining.isEmpty)

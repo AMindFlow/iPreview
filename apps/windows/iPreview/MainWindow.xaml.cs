@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         SetBrowseMode(browseMode);
+        InitializeMediaSort();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         RestoreTheme();
@@ -61,6 +62,9 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelAlbumAdjustmentPointer();
+            browserSort.Cancel();
+            previewSort.Cancel();
+            previewNeighborGeneration++;
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
             previewCopyTimer.Stop();
@@ -268,23 +272,28 @@ public sealed partial class MainWindow : Window
         return browseFolders;
     }
 
-    private void ShowItems(long? selected = null)
+    private void ShowItems(long? selected = null, bool revealSelection = false)
     {
         if (catalog is null)
             return;
+        browserSort.Cancel();
         browsingFolders = ShowSourceFolders();
         var scopedMedia = ScopeMedia();
         IEnumerable<Media> items = browsingFolders ? []
             : current.Album is not null ? scopedMedia : MediaSearch.ByPath(scopedMedia);
 
-        tiles = new ObservableCollection<Tile>(items.Select((item, index) => new Tile(item, index)));
+        var displayed = items.ToList();
         if (selectionAlbum is long selectedAlbum)
         {
-            if (current.Album != selectedAlbum || tiles.Count == 0)
+            if (current.Album != selectedAlbum || displayed.Count == 0)
                 ClearAlbumSelection();
             else
-                albumRemovalIds.IntersectWith(tiles.Select(tile => tile.Media.Id));
+                albumRemovalIds.IntersectWith(displayed.Select(item => item.Id));
         }
+        var order = SelectingAlbumMembers ? default : browserSort.Order;
+        if (order.Field == MediaSortField.Name)
+            displayed = order.Arrange(displayed, static item => item);
+        tiles = new ObservableCollection<Tile>(displayed.Select((item, index) => new Tile(item, index)));
         RefreshMediaBrowser(selected);
         Heading.Text = current.Label;
         RefreshTitleEditor();
@@ -310,6 +319,10 @@ public sealed partial class MainWindow : Window
         EmptyLabel.Visibility = visibleItemCount == 0 && !isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
         Rescan.Visibility = current.Source is not null ? Visibility.Visible : Visibility.Collapsed;
         Rescan.IsEnabled = !busy && sources.Count > 0;
+        if (revealSelection)
+            FocusSelectedMedia();
+        if (order.NeedsFileFacts && tiles.Count > 1)
+            SortBrowserByFileFacts(tiles);
     }
 
     private async void ChooseSource(object sender, RoutedEventArgs args)
@@ -437,6 +450,7 @@ public sealed partial class MainWindow : Window
         ImportButton.IsEnabled = !value && catalog is not null;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
+        BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
 
@@ -659,7 +673,10 @@ public sealed partial class MainWindow : Window
 
     private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
     {
+        originalPreviewTiles = items;
         previewTiles = items;
+        previewSort.Order = default;
+        PreviewSortButton.IsEnabled = items.Count > 1;
         previewLayout = layout;
         PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
         PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
@@ -687,6 +704,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         previewClosing = true;
+        previewSort.Cancel();
         ResetPreviewCopyFeedback();
         var selectedId = previewTiles[previewIndex].Media.Id;
         if (player?.PlaybackSession.CanPause == true)
@@ -710,6 +728,7 @@ public sealed partial class MainWindow : Window
         previewBrowser = null;
         previewGeneration++;
         previewIndex = -1;
+        originalPreviewTiles = [];
         previewTiles = [];
         LibraryHost.IsEnabled = true;
         if (!RestoreSearchAfterPreview(selectedId))
@@ -781,7 +800,8 @@ public sealed partial class MainWindow : Window
             return;
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
-            if (ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCloseAction))
+            var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
+            if (ReferenceEquals(focused, PreviewCloseAction) || ReferenceEquals(focused, PreviewSortButton))
                 return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
@@ -845,10 +865,7 @@ public sealed partial class MainWindow : Window
             TimeLabel.Text = DurationLabel.Text = "0:00";
         VideoControls.Visibility = tile.Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
         SetPreviewVideoLock(false);
-        LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
-        LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
-        LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);
-        LoadNeighbor(NeighborBottom, BrowseDirection.Down, generation);
+        RefreshPreviewNeighbors();
 
         try
         {
@@ -892,7 +909,7 @@ public sealed partial class MainWindow : Window
         {
             var media = previewTiles[index].Media;
             var bitmap = media.IsVideo ? await DecodeVideoThumbnail(media) : await DecodeImage(media, 24, false);
-            if (CanUpdatePreview(generation))
+            if (generation == previewNeighborGeneration && !previewClosing && previewIndex >= 0)
                 image.Source = bitmap;
         }
         catch (Exception error) when (MediaFailure(error)) { }

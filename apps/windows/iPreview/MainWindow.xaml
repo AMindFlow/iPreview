@@ -207,6 +207,10 @@
                             </StackPanel>
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BrowserSortButton" Style="{StaticResource LibraryIconButton}" Visibility="Collapsed"
+                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
+                                <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+                            </Button>
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -701,6 +705,10 @@
                     <Button x:Name="PreviewCloseAction" Click="ClosePreviewButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Left"
                             AutomationProperties.Name="退出预览" ToolTipService.ToolTip="退出预览（Esc）">
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
+                    </Button>
+                    <Button x:Name="PreviewSortButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Right"
+                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
+                        <FontIcon Glyph="&#xE8CB;" FontSize="15" />
                     </Button>
                     <Grid Margin="52,0" HorizontalAlignment="Center" VerticalAlignment="Center"
                           DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
