@@ -4,22 +4,30 @@
     <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved"
           PointerReleased="AlbumAdjustmentPointerReleased" PointerCaptureLost="AlbumAdjustmentPointerInterrupted"
           PointerCanceled="AlbumAdjustmentPointerInterrupted" PointerWheelChanged="AlbumAdjustmentPointerWheelChanged">
+        <Grid.Resources>
+            <Style x:Key="LibrarySubtleButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+            <Style x:Key="LibraryIconButton" TargetType="Button" BasedOn="{StaticResource LibrarySubtleButton}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinHeight" Value="26" />
+                <Setter Property="Height" Value="26" />
+                <Setter Property="CornerRadius" Value="5" />
+            </Style>
+            <Style x:Key="LibraryCardStyle" TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                <Setter Property="Padding" Value="2" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="VerticalContentAlignment" Value="Top" />
+            </Style>
+        </Grid.Resources>
         <ContentControl x:Name="LibraryHost" IsTabStop="False"
                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid x:Name="LibraryView" PreviewKeyDown="LibraryKeyDown">
             <Grid.Resources>
-                <Style x:Key="LibrarySubtleButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
-                    <Setter Property="MinHeight" Value="32" />
-                    <Setter Property="CornerRadius" Value="8" />
-                </Style>
-                <Style x:Key="LibraryIconButton" TargetType="Button" BasedOn="{StaticResource LibrarySubtleButton}">
-                    <Setter Property="Width" Value="28" />
-                    <Setter Property="MinWidth" Value="28" />
-                    <Setter Property="Padding" Value="0" />
-                    <Setter Property="MinHeight" Value="26" />
-                    <Setter Property="Height" Value="26" />
-                    <Setter Property="CornerRadius" Value="5" />
-                </Style>
                 <Style x:Key="ViewModeButton" TargetType="ToggleButton">
                     <Setter Property="Width" Value="30" />
                     <Setter Property="MinWidth" Value="30" />
@@ -56,12 +64,6 @@
                                    TextTrimming="CharacterEllipsis" />
                     </Grid>
                 </DataTemplate>
-                <Style x:Key="LibraryCardStyle" TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
-                    <Setter Property="Padding" Value="2" />
-                    <Setter Property="Margin" Value="0" />
-                    <Setter Property="HorizontalContentAlignment" Value="Left" />
-                    <Setter Property="VerticalContentAlignment" Value="Top" />
-                </Style>
             </Grid.Resources>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
