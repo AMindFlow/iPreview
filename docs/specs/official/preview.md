@@ -13,12 +13,13 @@
 - **来源** [作品预览 #65](https://github.com/AMindFlow/iPreview/issues/65)，承接[首版 #1](https://github.com/AMindFlow/iPreview/issues/1)。
 - **验收** 用两种作品结构从作品预览进入影片、样张和不同写真集。核对每次返回的层级和选择，验证从媒体直接预览时返回原入口。
 
-## PRE-006 系统视频格式扩展
+## PRE-006 常见视频格式与本地回退
 
-- **要求** 两端沿用 [PRE-001](#pre-001-图片与视频预览) 的系统播放框架及失败提示。新增双端 MPEG-TS（`.ts`），Windows 另支持 Matroska（`.mkv`）、WebM（`.webm`）和 AVI（`.avi`）。扫描、重扫和精确搜索使用相同的本机后缀；可用音视频编码取决于本机播放路径。
-- **Windows 回退** 本地 MKV、WebM 或 AVI 的系统播放失败时，在同一预览画布调用随附的 LibVLC 3.0.24。MP4、MOV 和 MPEG-TS 沿用系统播放与报错。沿用播放、暂停、时间轴、锁定和退出。切换文件或退出后释放回退播放器。
-- **来源** [#63](https://github.com/AMindFlow/iPreview/issues/63)，承接 [#1](https://github.com/AMindFlow/iPreview/issues/1) 常见视频格式需求。后续解码范围见 [PRE-006 扩展](../spike/preview.md#pre-006-常见视频格式扩展)。
-- **验收** 两端用相同 H.264/AAC MP4、MOV、MPEG-TS 样例验证导入、重扫、全后缀精确检索及预览。Windows 再验证 H.264/AAC Matroska、VP9/Opus WebM 和 MPEG-4 Part 2/MP3 AVI。记录画面、声音、进度、结束及退出停止播放；另用系统无法播放的 FFV1/Matroska 样例验证 LibVLC 内嵌画面和控制。两种播放路径均失败时显示单文件错误。
+- **要求** 双端将 MP4、MOV、MPEG-TS、Matroska、WebM 和 AVI 纳入扫描、重扫、后缀精确搜索及视频预览。优先使用系统播放器。MKV、WebM 或 AVI 系统播放失败时，由包内 LibVLC 3.0.24 在同一预览画布回退。MP4、MOV 和 MPEG-TS 继续使用系统播放。支持范围以实际容器与音视频编码组合为准。
+- **要求** 两种播放路径使用相同的播放、暂停、时间轴、锁定和退出交互。退出或切换项目时停止并释放原播放实例。两个播放器都无法解码时显示单文件错误，仍可切换媒体。
+- **设计决定** 回退限已索引的本地文件，按容器选用随包分流插件。两端标准包包含可替换的 LibVLC 动态运行时、所需播放插件、许可和构建配置。对应源码随正式发布归档。[运行时与许可](../../../packaging/libvlc/NOTICE.md)
+- **来源** [格式扩展 #63](https://github.com/AMindFlow/iPreview/issues/63)，承接 [#1](https://github.com/AMindFlow/iPreview/issues/1) 常见视频格式需求。
+- **验收** 用同批 H.264/AAC MP4、MOV、MPEG-TS、Matroska、VP9/Opus WebM 及 MPEG-4 Part 2/MP3 AVI 验证导入、重扫、完整后缀精确查找和实际播放。用 FFV1/FLAC Matroska 验证两端的 LibVLC 回退、画面、声音、暂停、定位、重播、声画同步及退出。检查损坏文件和离线安装。
 
 ## PRE-007 Space 打开和关闭预览
 
@@ -36,7 +37,7 @@
 
 ## 设计决定
 
-- macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement。实际媒体暴露格式缺口时，优先用对应样例验证 LibVLC 双端嵌入、打包和许可证。libmpv 是备选，FFprobe 可用于元信息读取。新增随包分发的生产依赖需要批准，按具体二进制及组件核对许可与 codec 专利。
+- macOS 使用 AVPlayer，Windows 使用 MediaPlayerElement，已确认的格式缺口按 [PRE-006](#pre-006-常见视频格式与本地回退) 回退。后续扩大格式覆盖以实际样例和允许分发的解码组件为依据。
 
 ## PRE-009 Quick Look 式过渡
 
