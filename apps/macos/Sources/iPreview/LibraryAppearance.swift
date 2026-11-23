@@ -15,9 +15,17 @@ enum LibraryTheme: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .system: "自动"
-        case .light: "明亮"
-        case .dark: "黑暗"
+        case .system: "跟随系统"
+        case .light: "浅色"
+        case .dark: "深色"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .system: "display"
+        case .light: "sun.max"
+        case .dark: "moon"
         }
     }
 
@@ -146,6 +154,13 @@ struct LibraryTitleEdit {
     }
 }
 
+enum LibraryTitleBarLayout {
+    static let buttonSize: CGFloat = 26
+    static let buttonSpacing: CGFloat = 4
+    static let groupSpacing: CGFloat = 12
+    static let minimumWidth = buttonSize * 3 + buttonSpacing + groupSpacing
+}
+
 struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     let sidebarWidth: CGFloat?
     let controls: Controls
@@ -166,7 +181,6 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
     }
 
     final class AttachmentView: NSView {
-        private let minimumWidth: CGFloat = 98
         let host: NSHostingView<Controls>
         var sidebarWidth: CGFloat?
         private let accessory = TitleBarAccessory()
@@ -179,7 +193,8 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
             super.init(frame: .zero)
             host.sizingOptions = []
             host.safeAreaRegions = []
-            host.frame = NSRect(x: 0, y: 0, width: minimumWidth, height: 26)
+            host.frame = NSRect(x: 0, y: 0, width: LibraryTitleBarLayout.minimumWidth,
+                                height: LibraryTitleBarLayout.buttonSize)
             accessory.view = host
             accessory.layoutAttribute = .left
             accessory.onLayout = { [weak self] in self?.updateWidth() }
@@ -204,7 +219,7 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
         func updateWidth(animated: Bool = false) {
             guard installedWindow != nil else { return }
             let leading = host.convert(host.bounds, to: nil).minX
-            let width = max(minimumWidth, (sidebarWidth ?? 0) - leading - 8)
+            let width = max(LibraryTitleBarLayout.minimumWidth, (sidebarWidth ?? 0) - leading - 8)
             if let targetWidth, abs(targetWidth - width) <= 0.5 { return }
             targetWidth = width
             if animated {
@@ -230,16 +245,12 @@ struct LibraryTitleBarControls<Controls: View>: NSViewRepresentable {
 
 struct LibraryThemeButton: View {
     @Binding var theme: LibraryTheme
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
     @State private var hovering = false
     @State private var showingMenu = false
 
-    private var isDark: Bool {
-        theme == .dark || (theme == .system && colorScheme == .dark)
-    }
-
     var body: some View {
+        let size = LibraryTitleBarLayout.buttonSize
         Button {
             if NSEvent.modifierFlags.contains(.option) {
                 showingMenu = true
@@ -249,18 +260,13 @@ struct LibraryThemeButton: View {
         } label: {
             Group {
                 if hovering && isEnabled {
-                    HStack(spacing: 2) {
-                        Image(systemName: "sun.max")
-                        Text("/")
-                        Image(systemName: "moon")
-                    }
-                    .font(.system(size: 9, weight: .medium))
+                    LibraryThemeSwitchGlyph()
                 } else {
-                    Image(systemName: isDark ? "moon" : "sun.max")
+                    Image(systemName: theme.symbol)
                         .font(.system(size: 14, weight: .medium))
                 }
             }
-            .frame(width: 30, height: 26)
+            .frame(width: size, height: size)
         }
         .buttonStyle(LibraryIconButtonStyle())
         .onHover { hovering in
@@ -270,10 +276,10 @@ struct LibraryThemeButton: View {
         .onModifierKeysChanged(mask: .option) { _, keys in
             if isEnabled && hovering && keys.contains(.option) { showingMenu = true }
         }
-        .accessibilityLabel(theme == .system ? "主题：自动（\(isDark ? "黑暗" : "明亮")）" : "主题：\(theme.title)")
+        .accessibilityLabel("主题：\(theme.title)")
         .accessibilityIdentifier("library-theme")
         .accessibilityAction(named: Text("选择主题")) { showingMenu = true }
-        .help("点击依次切换自动、明亮、黑暗。按住 Option 显示主题菜单。")
+        .help("点击依次切换跟随系统、浅色、深色。按住 Option 显示主题菜单。")
         .popover(isPresented: $showingMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(LibraryTheme.allCases, id: \.self) { option in
@@ -282,13 +288,13 @@ struct LibraryThemeButton: View {
                         showingMenu = false
                     } label: {
                         HStack {
-                            Text(option.title)
+                            Label(option.title, systemImage: option.symbol)
                             Spacer()
                             Image(systemName: "checkmark")
                                 .opacity(theme == option ? 1 : 0)
                                 .accessibilityHidden(true)
                         }
-                        .frame(minWidth: 88)
+                        .frame(minWidth: 114)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .contentShape(Rectangle())
@@ -299,6 +305,37 @@ struct LibraryThemeButton: View {
             }
             .padding(8)
         }
+    }
+}
+
+private struct LibraryThemeSwitchGlyph: View {
+    var body: some View {
+        Canvas { context, size in
+            let side = size.width
+            let center = side / 2
+            let gap: CGFloat = 1.3
+            let font = Font.system(size: 14, weight: .medium)
+
+            var sun = context
+            sun.clip(to: Path { path in
+                path.addLines([.zero, CGPoint(x: side - gap, y: 0), CGPoint(x: 0, y: side - gap)])
+                path.closeSubpath()
+            })
+            sun.draw(Text(Image(systemName: "sun.max")).font(font), at: CGPoint(x: center - 1, y: center - 1))
+
+            var moon = context
+            moon.clip(to: Path { path in
+                path.addLines([CGPoint(x: side, y: side), CGPoint(x: side, y: gap), CGPoint(x: gap, y: side)])
+                path.closeSubpath()
+            })
+            moon.draw(Text(Image(systemName: "moon")).font(font), at: CGPoint(x: center + 1, y: center + 1))
+
+            context.stroke(Path { path in
+                path.move(to: CGPoint(x: 1.5, y: side - 1.5))
+                path.addLine(to: CGPoint(x: side - 1.5, y: 1.5))
+            }, with: .foreground, style: StrokeStyle(lineWidth: 1, lineCap: .round))
+        }
+        .frame(width: 18, height: 18)
     }
 }
 

@@ -152,14 +152,15 @@ struct LibraryView: View {
     }
 
     private var windowControls: some View {
-        HStack(spacing: 0) {
+        let size = LibraryTitleBarLayout.buttonSize
+        return HStack(spacing: 0) {
             sidebarToggle
-            Spacer(minLength: 12)
-            HStack(spacing: 4) {
+            Spacer(minLength: LibraryTitleBarLayout.groupSpacing)
+            HStack(spacing: LibraryTitleBarLayout.buttonSpacing) {
                 Button(action: chooseFolder) {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: 14, weight: .medium))
-                        .frame(width: 26, height: 26)
+                        .frame(width: size, height: size)
                 }
                 .buttonStyle(LibraryIconButtonStyle())
                 .accessibilityLabel("导入文件夹")
@@ -169,7 +170,7 @@ struct LibraryView: View {
                     .disabled(libraryOverlayShown)
             }
         }
-        .frame(height: 26)
+        .frame(height: size)
         .opacity(preview == nil ? 1 : 0)
         .accessibilityHidden(libraryOverlayShown)
     }
