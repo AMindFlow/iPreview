@@ -61,13 +61,15 @@ public enum SourceScanner {
 
     public static func inspectVideoWork(_ selected: URL, dataDirectory: URL) throws -> VideoWorkRecognition {
         let root = try validatedRoot(selected, dataDirectory: dataDirectory)
-        return try probeVideoWork(root, children: readRoot(root), direct: nil)
+        return try probeVideoWork(root, children: readRoot(root))
     }
 
     public static func rescan(_ source: Source) throws -> [ScanEntry] {
-        let levels = try scanLevels(source.url, through: source.layout.albumDepth)
-        return levels[0].contains { if case .video = $0.videoWork { true } else { false } }
-            ? levels[0] : levels[source.layout.albumDepth]
+        let depth = source.layout.albumDepth
+        let levels = try scanLevels(source.url, through: depth, retainingLayoutDepth: true)
+        let workEntries = levels.flatMap { level in level.filter { $0.videoWork != nil } }
+        let workPaths = Set(workEntries.map(\.relativePath))
+        return levels[depth].filter { !workPaths.contains($0.relativePath) } + workEntries
     }
 
     public static func isRootAvailable(_ source: Source) -> Bool {
@@ -100,31 +102,38 @@ public enum SourceScanner {
         return root
     }
 
-    private static func scanLevels(_ root: URL, through maximumDepth: Int) throws -> [[ScanEntry]] {
+    private static func scanLevels(
+        _ root: URL, through maximumDepth: Int, retainingLayoutDepth: Bool = false
+    ) throws -> [[ScanEntry]] {
         var levels = Array(repeating: [ScanEntry](), count: maximumDepth + 1)
-        func scan(_ directory: URL, children values: [(URL, URLResourceValues)], prefix: [String]) throws {
-            let direct = entries(in: values, prefix: [])
-            if case .recognized(let work) = try probeVideoWork(directory, children: values, direct: direct) {
+        func scan(_ directory: URL, children values: [(URL, URLResourceValues)], prefix: [String],
+                  recognizeWorks: Bool) throws {
+            var recognizeChildWorks = recognizeWorks
+            if recognizeWorks, case .recognized(let work) = try probeVideoWork(directory, children: values) {
                 let tagged = work.indexEntries(prefix: prefix)
                 let included = Set(tagged.map(\.relativePath))
                 let extras = entries(in: values, prefix: prefix).filter { !included.contains($0.relativePath) }
                 levels[prefix.count] += tagged + extras
-                return
+                guard retainingLayoutDepth else { return }
+                // A saved layout can contain ordinary media at an additional level inside a work.
+                recognizeChildWorks = false
+            } else {
+                levels[prefix.count] += entries(in: values, prefix: prefix)
             }
-            levels[prefix.count] += entries(in: values, prefix: prefix)
             guard prefix.count < maximumDepth else { return }
             for (child, resource) in values where resource.isDirectory == true {
-                try scan(child, children: children(of: child), prefix: prefix + [child.lastPathComponent])
+                try scan(child, children: children(of: child), prefix: prefix + [child.lastPathComponent],
+                         recognizeWorks: recognizeChildWorks)
             }
         }
-        try scan(root, children: readRoot(root), prefix: [])
+        try scan(root, children: readRoot(root), prefix: [], recognizeWorks: true)
         return levels
     }
 
     private static func probeVideoWork(
-        _ root: URL, children values: [(URL, URLResourceValues)], direct: [ScanEntry]?
+        _ root: URL, children values: [(URL, URLResourceValues)]
     ) throws -> VideoWorkRecognition {
-        var files = direct ?? entries(in: values, prefix: [])
+        var files = entries(in: values, prefix: [])
         for (child, resource) in values where resource.isDirectory == true
              && VideoWork.folders.contains(child.lastPathComponent) {
             let name = child.lastPathComponent
