@@ -24,6 +24,7 @@ var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
     CheckMediaSort(work);
+    CheckNativeVideoFormats(work);
     var creator = Path.Combine(work, "北京");
     var mixed = Path.Combine(work, "catalog");
     var flat = Path.Combine(work, "flat");
@@ -208,6 +209,25 @@ try
 finally
 {
     Directory.Delete(work, recursive: true);
+}
+
+static void CheckNativeVideoFormats(string work)
+{
+    var source = Path.Combine(work, "native-video");
+    foreach (var name in new[] { "clip.TS", "clip.MKV", "clip.WEBM", "clip.AVI", "clip.mkv.mov", "clip.flv" })
+        AddFile(source, name);
+    var probe = MediaFiles.Probe(source);
+    var entries = probe.Options[Layout.Flat];
+    Check(entries.Select(entry => entry.RelativePath).ToHashSet().SetEquals(["clip.TS", "clip.MKV", "clip.WEBM", "clip.AVI", "clip.mkv.mov"])
+        && entries.All(entry => entry.IsVideo), "native extensions retain their video catalog type");
+    using var catalog = new Catalog(Path.Combine(work, "native-video-db"));
+    catalog.Import(source, Layout.Flat, entries);
+    var library = catalog.Read();
+    foreach (var extension in new[] { "ts", "mkv", "webm", "avi" })
+    {
+        var results = MediaSearch.Find(library.Sources.Values, library.Media, new("clip." + extension, true), GlobalSearchScope.Files);
+        Check(results.Single().Name == "clip." + extension.ToUpperInvariant(), "native video suffix filters exact results");
+    }
 }
 
 static void AddFile(string folder, string relative)

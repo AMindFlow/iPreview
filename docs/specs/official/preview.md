@@ -13,6 +13,12 @@
 - **来源** [作品预览 #65](https://github.com/AMindFlow/iPreview/issues/65)，承接[首版 #1](https://github.com/AMindFlow/iPreview/issues/1)。
 - **验收** 用两种作品结构从作品预览进入影片、样张和不同写真集。核对每次返回的层级和选择，验证从媒体直接预览时返回原入口。
 
+## PRE-006 系统视频格式扩展
+
+- **要求** 两端沿用 [PRE-001](#pre-001-图片与视频预览) 的系统播放框架及失败提示。新增双端 MPEG-TS（`.ts`），Windows 另支持 Matroska（`.mkv`）、WebM（`.webm`）和 AVI（`.avi`）。扫描、重扫和精确搜索使用相同的本机后缀；具体音视频编码由系统解码器决定。
+- **来源** [#63](https://github.com/AMindFlow/iPreview/issues/63)，承接 [#1](https://github.com/AMindFlow/iPreview/issues/1) 常见视频格式需求。后续解码范围见 [PRE-006 扩展](../spike/preview.md#pre-006-常见视频格式扩展)。
+- **验收** 两端用相同 H.264/AAC MP4、MOV、MPEG-TS 样例验证导入、重扫、全后缀精确检索及预览。Windows 再验证 H.264/AAC Matroska、VP9/Opus WebM 和 MPEG-4 Part 2/MP3 AVI。记录画面、声音、进度、结束及退出停止播放；损坏数据仍沿用单文件失败提示。
+
 ## PRE-007 Space 打开和关闭预览
 
 - **要求** 在图库选中媒体后用 Space 打开预览。在图片或未锁定的视频预览画布再次按 Space 关闭。Space、Esc 和关闭按钮退出时，图库或搜索结果的选中态与焦点均匹配最后查看的条目。关闭视频预览时停止播放。视频锁定遵循 [PRE-011](#pre-011-视频跳转与播放锁定)，未锁定时进度条焦点遵循 [PRE-001](#pre-001-图片与视频预览)。
