@@ -15,6 +15,8 @@ public sealed partial class MainWindow
     private string? fallbackSystemError;
     private (Media Media, int Generation)? awaitingNativeVideo;
     private CancellationTokenSource? nativeFrameVerification;
+    private bool nativePausedByUser;
+    private (Media Media, int Generation, string Title, string SystemError)? deferredNativeVideoRecovery;
 
     private async Task VerifyNativeVideo(string path, Media media, MediaPlayer owner, int generation)
     {
@@ -120,6 +122,13 @@ public sealed partial class MainWindow
         if (!LibVlcVideoPlayback.Supports(media.RelativePath))
         {
             ShowPreviewError(title, systemError);
+            return;
+        }
+        if (nativePausedByUser)
+        {
+            deferredNativeVideoRecovery = (media, generation, title, systemError);
+            awaitingNativeVideo = null;
+            StopNativeVideoVerification();
             return;
         }
 

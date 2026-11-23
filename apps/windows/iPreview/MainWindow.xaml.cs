@@ -991,6 +991,8 @@ public sealed partial class MainWindow : Window
     {
         playbackClock.Stop();
         awaitingNativeVideo = null;
+        nativePausedByUser = false;
+        deferredNativeVideoRecovery = null;
         StopNativeVideoVerification();
         StopFallbackVideo();
         if (player is not { } active)
@@ -1041,7 +1043,7 @@ public sealed partial class MainWindow : Window
         {
             var session = active.PlaybackSession;
             var position = session.Position;
-            var playing = session.PlaybackState == MediaPlaybackState.Playing;
+            var playing = !nativePausedByUser && session.PlaybackState == MediaPlaybackState.Playing;
             // Let initial video setup settle before treating an advancing audio-only session as failed.
             if (RecoverIfNativeVideoMissing(session, playing && position >= TimeSpan.FromSeconds(1)))
                 return;
@@ -1135,12 +1137,25 @@ public sealed partial class MainWindow : Window
             ToggleFallbackVideo(fallback);
             return;
         }
-        if (player is null)
+        if (player is not { } active)
             return;
-        if (player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
-            player.Pause();
-        else
-            player.Play();
+        if (!nativePausedByUser && active.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        {
+            nativePausedByUser = true;
+            active.Pause();
+            UpdateTime();
+            return;
+        }
+
+        nativePausedByUser = false;
+        if (deferredNativeVideoRecovery is { } recovery)
+        {
+            if (CanUpdatePreview(recovery.Generation))
+                _ = RecoverSystemVideo(recovery.Media, recovery.Generation, recovery.Title, recovery.SystemError);
+            return;
+        }
+
+        active.Play();
         UpdateTime();
     }
 
