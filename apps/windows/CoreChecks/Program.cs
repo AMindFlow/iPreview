@@ -203,6 +203,7 @@ try
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
     CheckVideoWorkIndex(work);
+    CheckLegacyVideoWorkRescan(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -475,6 +476,47 @@ static void CheckVideoWorks(string root)
     Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
     AddFile(completeRoot, "附加写真集/写真集 2/封面.png");
     Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
+}
+
+static void CheckLegacyVideoWorkRescan(string root)
+{
+    using var catalog = new Catalog(Path.Combine(root, "legacy-works-index"));
+    (string Directory, Layout Layout, string Work, string[] Previous, string Added)[] cases =
+    [
+        ("Legacy Multi", Layout.MultiCreator, "Work",
+            ["Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg",
+             "Work/附加写真集/写真集/图片.png", "Maker/Album/keep.png"],
+            "Work/附加写真集/写真集/封面.png"),
+        ("Legacy Creator", Layout.Creator, "",
+            ["视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg", "附加写真集/写真集/图片.png"],
+            "附加写真集/写真集/封面.png"),
+        ("Legacy Flat", Layout.Flat, "",
+            ["movie.mp4", "官方样张.jpg", "keep.png"], "附加写真集/图片.png")
+    ];
+
+    foreach (var test in cases)
+    {
+        var path = Path.Combine(root, test.Directory);
+        foreach (var file in test.Previous)
+            AddFile(path, file);
+        var inspection = MediaFiles.Probe(path);
+        var source = catalog.Import(inspection.Path, test.Layout, inspection.Options[test.Layout]);
+        var before = catalog.Read();
+        var original = before.Media.Where(item => item.Source.Id == source).ToArray();
+        Check(original.Any(item => item.FileName == "movie.mp4") &&
+            before.VideoWorks.All(work => work.Video.Source.Id != source), "legacy media exists before work recognition");
+
+        AddFile(path, test.Added);
+        catalog.Rescan(source, MediaFiles.Scan(path, test.Layout));
+        var rescanned = catalog.Read();
+        var result = rescanned.VideoWorks.Single(work => work.Video.Source.Id == source);
+        Check(result.RelativePath == test.Work && result.Video.Source.Layout == test.Layout, "rescan recognizes work without changing layout");
+        Check(result.Samples.Count == 1 && result.PhotoSets.Single().Photos.Count == 1, "rescan indexes all work roles");
+        var available = rescanned.Media.Where(item => item.Source.Id == source && item.Present)
+            .ToDictionary(item => item.RelativePath, item => item.Id);
+        Check(original.All(item => available.TryGetValue(item.RelativePath, out var id) && id == item.Id),
+            "rescan preserves legacy depth and media identities");
+    }
 }
 
 static void CheckVideoWorkIndex(string root)

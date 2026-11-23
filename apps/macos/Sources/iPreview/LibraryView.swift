@@ -1120,8 +1120,8 @@ enum LibraryPage: Hashable, Sendable {
         case .creator(let id, _):
             return (.source(id), "返回媒体源")
         case .folder(let id, let key):
-            if layout == .multiCreator, let creator = key.split(separator: "/").first {
-                return (.creator(id, String(creator)), "返回创作者")
+            if layout == .multiCreator, let separator = key.firstIndex(of: "/") {
+                return (.creator(id, String(key[..<separator])), "返回创作者")
             }
             return (.source(id), "返回媒体源")
         case .library, .source, .virtual:
@@ -1171,9 +1171,14 @@ struct ContentScope {
             let sourceItems = active.filter { page.contains($0) }
             switch (source?.layout, videoWork == nil) {
             case (.multiCreator, true):
+                let workPaths = Set(snapshot.videoWorks.lazy.filter { $0.video.source.id == id }.map(\.relativePath))
                 folders = Self.groupFolders(sourceItems, by: \.creator) { name, members in
-                    LibraryFolder(page: .creator(id, name), name: name, cover: members[0],
-                                  caption: "\(Set(members.map(Self.folderKey)).count) 个专辑")
+                    if workPaths.contains(name) {
+                        return LibraryFolder(page: .folder(id, name), name: name, cover: members[0],
+                                             caption: "视频作品 · \(members.count) 项")
+                    }
+                    return LibraryFolder(page: .creator(id, name), name: name, cover: members[0],
+                                         caption: "\(Set(members.map(Self.folderKey)).count) 个专辑")
                 }
                 items = []
             case (.creator, true):
@@ -1207,7 +1212,7 @@ struct ContentScope {
             subtitle = "视频作品 · \(items.count) 项"
         } else if let source {
             let count = switch page {
-            case .source where source.layout == .multiCreator: "\(folders.count) 位创作者"
+            case .source where source.layout == .multiCreator: Self.sourceFolderCount(folders)
             case .source where source.layout == .creator: "\(folders.count) 个专辑"
             case .creator: "\(folders.count) 个专辑"
             default: "\(items.count) 项"
@@ -1215,6 +1220,19 @@ struct ContentScope {
             subtitle = "\(source.layout.title) · \(count)"
         } else {
             subtitle = "\(items.count) 项"
+        }
+    }
+
+    private static func sourceFolderCount(_ folders: [LibraryFolder]) -> String {
+        let creators = folders.filter {
+            if case .creator = $0.page { return true }
+            return false
+        }.count
+        let works = folders.count - creators
+        switch (creators, works) {
+        case (_, 0): return "\(creators) 位创作者"
+        case (0, _): return "\(works) 部作品"
+        default: return "\(creators) 位创作者 · \(works) 部作品"
         }
     }
 

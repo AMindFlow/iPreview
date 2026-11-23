@@ -35,6 +35,7 @@ struct CatalogChecks {
         try await checkMediaSort()
         try checkVideoWorks()
         try await checkVideoWorkIndex()
+        try await checkLegacyVideoWorkRescan()
         try await checkVideoFormats()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
@@ -47,6 +48,47 @@ struct CatalogChecks {
         try await checkStaleFolderAnchor()
         try await checkRenameRecovery()
         print("iPreview macOS catalog checks passed")
+    }
+
+    static func checkLegacyVideoWorkRescan() async throws {
+        let fixtures = try Fixtures()
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let cases: [(directory: String, layout: Layout, work: String, previous: [String], added: String)] = [
+            ("Legacy Multi", .multiCreator, "Work", [
+                "Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg",
+                "Work/附加写真集/写真集/图片.png", "Maker/Album/keep.png",
+            ], "Work/附加写真集/写真集/封面.png"),
+            ("Legacy Creator", .creator, "", [
+                "视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg", "附加写真集/写真集/图片.png",
+            ], "附加写真集/写真集/封面.png"),
+            ("Legacy Flat", .flat, "", [
+                "movie.mp4", "官方样张.jpg", "keep.png",
+            ], "附加写真集/图片.png"),
+        ]
+
+        for test in cases {
+            let root = fixtures.directory(test.directory)
+            for path in test.previous { try fixtures.file(test.directory + "/" + path) }
+            let inspection = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+            let candidate = try required(inspection.candidates.first { $0.layout == test.layout })
+            try await catalog.importSource(root: inspection.root, candidate: candidate)
+            let before = try await catalog.snapshot()
+            let source = try required(before.sources.first { $0.path == inspection.root.path })
+            let original = before.media.filter { $0.source.id == source.id }
+            try verify(original.contains { $0.name == "movie.mp4" })
+            try verify(!before.videoWorks.contains { $0.video.source.id == source.id })
+
+            try fixtures.file(test.directory + "/" + test.added)
+            try await catalog.update(source: source, entries: SourceScanner.rescan(source))
+            let rescanned = try await catalog.snapshot()
+            let result = try required(rescanned.videoWorks.first { $0.video.source.id == source.id })
+            try verify(result.relativePath == test.work && result.video.source.layout == test.layout)
+            try verify(result.samples.count == 1 && result.photoSets.first?.photos.count == 1)
+            let available = Dictionary(uniqueKeysWithValues: rescanned.media.filter {
+                $0.source.id == source.id && $0.existsInSource
+            }.map { ($0.relativePath, $0.id) })
+            try verify(original.allSatisfy { available[$0.relativePath] == $0.id })
+        }
     }
 
     static func checkVideoWorkIndex() async throws {
