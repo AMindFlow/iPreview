@@ -204,6 +204,7 @@ try
     CheckVideoWorks(work);
     CheckVideoWorkIndex(work);
     CheckLegacyVideoWorkRescan(work);
+    CheckLegacyWorkAlbumOrganization(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
 }
@@ -404,7 +405,20 @@ static void CheckSourceAlbumOrganization(string work)
     Check(!persistedSibling.Favorite && persistedSibling.RatingHalf == 7, "half-star rating is independent");
     Check(persisted.ConfiguredCoverIds.SequenceEqual([9L, 8L]) && persisted.EffectiveCoverIds.SequenceEqual([9L, 8L]),
         "ordered cover survives restart and a failed replacement");
-    Check(reopened.Read().AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
+    var library = reopened.Read();
+    Check(library.AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
+    var organizationIndex = reopened.ReadSourceAlbumIndex();
+    Check(organizationIndex.ConfiguredCovers[album].SequenceEqual([9L, 8L]), "card cover order matches stored selection");
+    Check(SourceAlbumTag.Suggestions("旅", organizationIndex.Tags).Select(tag => tag.Id).SequenceEqual([trip.Id]),
+        "tag suggestion uses the current display name");
+    var filtered = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.All,
+        taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
+    Check(filtered.Count == 4 && filtered.Count(hit => hit.Category == SearchResultCategory.Album) == 1 &&
+        filtered.All(hit => hit.SourceAlbum == album), "tag scope includes only its album and member files");
+    var filteredFiles = MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
+    Check(filteredFiles.Count == 2 && filteredFiles.All(hit => hit.SourceAlbum == album),
+        "filename search remains confined to tagged media");
 
     var coverPath = Path.Combine(sourcePath, "Maker/Album/Image 10.jpg");
     var outside = Path.Combine(work, "out-of-source.jpg");
@@ -546,6 +560,31 @@ static void CheckVideoWorkIndex(string root)
     Check(nested.RelativePath == "Maker/Complete" && nested.Samples.Single().FileName == "样张.jpg" &&
         nested.PhotoSets.Single().Cover?.FileName == "封面.jpg", "nested work and its roles survive restart");
     Check(flat.RelativePath.Length == 0 && flat.PhotoSets.Single().Cover is null, "compact flat photo set survives restart");
+
+    var completeAlbum = SourceAlbumKey.FromMedia(nested.Video);
+    var compactAlbum = SourceAlbumKey.FromMedia(flat.Video);
+    long[] completeCover = [nested.Samples[0].Id, nested.PhotoSets[0].Photos[0].Id];
+    long[] compactCover = [flat.PhotoSets[0].Photos[0].Id];
+    var worksTag = reopened.AddAlbumTag("作品", completeAlbum);
+    reopened.AddAlbumTag(worksTag.Id, compactAlbum);
+    reopened.ReplaceCover(completeCover, completeAlbum);
+    reopened.ReplaceCover(compactCover, compactAlbum);
+    var completeSettings = reopened.ReadSourceAlbumOrganization(completeAlbum);
+    var compactSettings = reopened.ReadSourceAlbumOrganization(compactAlbum);
+    Check(completeSettings.EffectiveCoverIds.SequenceEqual(completeCover) &&
+        compactSettings.EffectiveCoverIds.SequenceEqual(compactCover), "nested work images serve as ordered album covers");
+    Check(completeSettings.Tags.SequenceEqual([worksTag]) && compactSettings.Tags.SequenceEqual([worksTag]),
+        "both work structures can be tagged at album level");
+
+    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[worksTag.Id];
+    var taggedPhotos = MediaSearch.Find(snapshot.Sources.Values, snapshot.Media, new("照片", false),
+        GlobalSearchScope.Files, taggedAlbums: tagged);
+    Check(taggedPhotos.Count == 2 && taggedPhotos.Select(hit => hit.SourceAlbum).ToHashSet()
+        .SetEquals([completeAlbum, compactAlbum]), "tagged album search includes nested photos for both work structures");
+    var intermediate = new SourceAlbumKey(nested.Video.Source.Id, nested.RelativePath + "/官方样张");
+    Reject<InvalidOperationException>(() => reopened.SetFavorite(true, intermediate),
+        "an intermediate work directory cannot be organized as an album");
+
     reopened.Rescan(nested.Video.Source.Id, null);
     Check(!reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id).Video.Available,
         "unavailable source retains the indexed work");
@@ -557,6 +596,64 @@ static void CheckVideoWorkIndex(string root)
         .SequenceEqual(["照片 1.jpg", "照片 2.jpg"]), "rescan keeps identity and updates photo membership");
     Check(scanned.All(file => File.ReadAllText(Path.Combine(works, file.RelativePath)) == "fixture"),
         "work indexing preserves source media");
+}
+
+static void CheckLegacyWorkAlbumOrganization(string work)
+{
+    var source = Path.Combine(work, "legacy-work-albums");
+    foreach (var name in new[] { "Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg", "Complete/附加写真集/写真/封面.jpg",
+                                "Complete/附加写真集/写真/完整照片.jpg", "Compact/影片.mov", "Compact/官方样张.jpg",
+                                "Compact/附加写真集/简化照片.jpg" })
+        AddFile(source, name);
+    var found = MediaFiles.Probe(source);
+    var data = Path.Combine(work, "legacy-work-albums-db");
+    using var catalog = new Catalog(data);
+    // Model the indexed rows after a legacy multi-creator source recognizes its shallow works.
+    var sourceId = catalog.Import(found.Path, Layout.MultiCreator, found.Options[Layout.Creator]);
+    var snapshot = catalog.Read();
+    var complete = snapshot.VideoWorks.Single(item => item.Structure == VideoWorkStructure.Complete);
+    var compact = snapshot.VideoWorks.Single(item => item.Structure == VideoWorkStructure.Compact);
+    var completeKey = new SourceAlbumKey(sourceId, "Complete");
+    var compactKey = new SourceAlbumKey(sourceId, "Compact");
+    var completePhoto = complete.PhotoSets[0].Photos[0];
+    var compactPhoto = compact.PhotoSets[0].Photos[0];
+    Check(SourceAlbumKey.FromMedia(completePhoto) == completeKey && SourceAlbumKey.FromMedia(compactPhoto) == compactKey,
+        "shallow work photos use the indexed work album root");
+    var tag = catalog.AddAlbumTag("浅层作品", completeKey);
+    catalog.AddAlbumTag(tag.Id, compactKey);
+    catalog.ReplaceCover([completePhoto.Id, complete.Samples[0].Id], completeKey);
+    catalog.ReplaceCover([compactPhoto.Id], compactKey);
+    var collectionId = catalog.CreateAlbum("作品选片");
+    catalog.AppendToAlbum(collectionId, [compactPhoto.Id]);
+    Reject<InvalidOperationException>(() => catalog.SetFavorite(true, new(sourceId, "Complete/官方样张")),
+        "a nominal-depth internal folder is not a work album");
+
+    using var reopened = new Catalog(data);
+    var loaded = reopened.Read();
+    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[tag.Id];
+    var albums = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("", false), GlobalSearchScope.Directories,
+        taggedAlbums: tagged);
+    Check(albums.Count == 2 && albums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([completeKey, compactKey]),
+        "tagged directory results use shallow work album roots");
+    var group = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("官方样张", true), GlobalSearchScope.Directories).Single();
+    Check(group.Category == SearchResultCategory.Directory && group.SourceAlbum is null,
+        "work subdirectories retain their directory classification");
+
+    var collectionHits = MediaSearch.Find(loaded.Sources.Values, loaded.AlbumMembers[collectionId],
+        new("照片", false), GlobalSearchScope.Files, taggedAlbums: tagged);
+    Check(collectionHits.Single() is { Media: { } selectedMedia } &&
+        selectedMedia.Id == compactPhoto.Id && collectionHits[0].SourceAlbum == compactKey,
+        "collection search preserves the selected shallow work photo and its tag scope");
+
+    foreach (var (photo, key) in new[] { (completePhoto, completeKey), (compactPhoto, compactKey) })
+    {
+        var hit = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new(photo.FileName, true), GlobalSearchScope.Files,
+            taggedAlbums: tagged).Single();
+        Check(hit.Media?.Id == photo.Id && hit.SourceAlbum == key, "search selects the original media in its work album");
+        var organization = reopened.ReadSourceAlbumOrganization(key);
+        Check(organization.Tags.SequenceEqual([tag]) && organization.EffectiveCoverIds[0] == photo.Id,
+            "work tags and cover survive reopening");
+    }
 }
 
 static void CheckSourceRename(string work)

@@ -43,6 +43,7 @@ struct LibrarySearchPanel: View {
     let index: SearchIndex
     let revision: Int
     let page: LibraryPage
+    let sourceAlbums: SourceAlbumIndex
     let albumMembers: Set<Int64>
     let domain: LibrarySearchDomain
     let isPreviewing: Bool
@@ -58,6 +59,8 @@ struct LibrarySearchPanel: View {
     @ViewState private var selection: GlobalSearchResult?
     @ViewState private var matches: (request: Request, results: [GlobalSearchResult])?
     @ViewState private var scope = Scope.all
+    @ViewState private var selectedTag: SourceAlbumTag?
+    @ViewState private var selectedSuggestion: Int?
 
     private enum Scope: Sendable { case all, files, directories }
 
@@ -69,11 +72,30 @@ struct LibrarySearchPanel: View {
         let page: LibraryPage
         let albumMembers: Set<Int64>
         let revision: Int
+        let taggedAlbums: Set<SourceAlbumKey>?
     }
 
     private var request: Request {
         Request(query: query.trimmingCharacters(in: .whitespacesAndNewlines), mode: mode, scope: scope,
-                domain: domain, page: page, albumMembers: albumMembers, revision: revision)
+                domain: domain, page: page, albumMembers: albumMembers, revision: revision,
+                taggedAlbums: selectedTag.map { sourceAlbums.taggedAlbums[$0.id, default: []] })
+    }
+
+    private var tagPrefix: String? {
+        let text = query.drop(while: \.isWhitespace)
+        guard text.first == "#" || text.first == "＃" else { return nil }
+        return String(text.dropFirst())
+    }
+
+    private var suggestions: [SourceAlbumTag] {
+        tagPrefix.map { SourceAlbumTag.suggestions(matching: $0, from: sourceAlbums.tags) } ?? []
+    }
+
+    private var groups: [(category: SearchResultCategory, items: [GlobalSearchResult])] {
+        let grouped = Dictionary(grouping: results, by: \.category)
+        return SearchResultCategory.allCases.compactMap { category in
+            grouped[category].map { (category, $0) }
+        }
     }
 
     private var results: [GlobalSearchResult] {
@@ -112,17 +134,22 @@ struct LibrarySearchPanel: View {
         }
         .task(id: request) {
             selection = nil
-            guard !request.query.isEmpty else {
+            guard tagPrefix == nil, !request.query.isEmpty || request.taggedAlbums != nil else {
                 matches = nil
                 return
             }
             let result = await Task.detached(priority: .userInitiated) {
                 index.globalSearch(request.query, mode: request.mode,
-                                   directories: request.scope != .files, files: request.scope != .directories) { result in
+                                   directories: request.scope != .files, files: request.scope != .directories,
+                                   taggedAlbums: request.taggedAlbums) { result in
                     request.domain == .global || request.page.containsSearchResult(result, virtualMembers: request.albumMembers)
                 }
             }.value
-            if !Task.isCancelled { matches = (request, result) }
+            if !Task.isCancelled {
+                matches = (request, SearchResultCategory.allCases.flatMap { category in
+                    result.filter { $0.category == category }
+                })
+            }
         }
     }
 
@@ -149,7 +176,10 @@ struct LibrarySearchPanel: View {
                 .padding(.horizontal, 19)
                 .padding(.vertical, 16)
             Divider().padding(.horizontal, 14)
-            if !request.query.isEmpty {
+            if tagPrefix != nil {
+                suggestionList
+                Divider().padding(.horizontal, 14)
+            } else if !request.query.isEmpty || selectedTag != nil {
                 if !results.isEmpty {
                     resultsList
                     Divider().padding(.horizontal, 14)
@@ -179,8 +209,9 @@ struct LibrarySearchPanel: View {
                 .focused(focus, equals: .searchQuery)
                 .accessibilityIdentifier("library-search-query")
                 .onSubmit(confirmResult)
-                .onKeyPress(keys: [.upArrow, .downArrow, .escape], phases: .down, action: handleKey)
+                .onKeyPress(keys: [.upArrow, .downArrow, .escape], phases: [.down, .repeat], action: handleKey)
                 .onChange(of: query) { _, value in
+                    selectedSuggestion = nil
                     let term = GlobalSearchTerm(value)
                     if mode == .fuzzy, term.mode == .exact, !isComposingQuery {
                         mode = .exact
@@ -197,6 +228,7 @@ struct LibrarySearchPanel: View {
                     .accessibilityIdentifier("library-search-match-mode")
                     .accessibilityAddTraits(.updatesFrequently)
             }
+            tagFilter
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -208,6 +240,68 @@ struct LibrarySearchPanel: View {
                 .accessibilityLabel("清除搜索")
             }
         }
+    }
+
+    private var tagFilter: some View {
+        Menu {
+            if selectedTag != nil {
+                Button("清除标签筛选") {
+                    selectedTag = nil
+                    focus.wrappedValue = .searchQuery
+                }
+            }
+            ForEach(sourceAlbums.tags) { tag in
+                Button(tag.name) { applyTag(tag) }
+            }
+        } label: {
+            if let selectedTag {
+                Label(selectedTag.name, systemImage: "tag.fill")
+                    .lineLimit(1)
+            } else {
+                Image(systemName: "tag")
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("标签筛选")
+        .help("标签筛选。输入 # 查询标签。")
+        .disabled(sourceAlbums.tags.isEmpty || isPreviewing)
+    }
+
+    private var suggestionList: some View {
+        ScrollViewReader { reader in
+            ScrollView {
+                if suggestions.isEmpty {
+                    Text("没有匹配标签").frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 2) {
+                        ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, tag in
+                            Button { applyTag(tag) } label: {
+                                Label(tag.name, systemImage: "tag")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(7)
+                                    .background(index == (selectedSuggestion ?? 0) ? Color.accentColor.opacity(0.17) : .clear,
+                                                in: .rect(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                            .id(index)
+                        }
+                    }
+                    .padding(7)
+                }
+            }
+            .frame(height: CGFloat(max(1, min(suggestions.count, 5))) * 34 + 14)
+            .onChange(of: selectedSuggestion) { _, index in
+                if let index { reader.scrollTo(index) }
+            }
+        }
+    }
+
+    private func applyTag(_ tag: SourceAlbumTag) {
+        if tagPrefix != nil { query = "" }
+        selectedTag = tag
+        focus.wrappedValue = .searchQuery
     }
 
     private var shortcutHints: some View {
@@ -230,10 +324,11 @@ struct LibrarySearchPanel: View {
                 scopeShortcut(.files, key: "1", label: "文件")
                 scopeShortcut(.directories, key: "2", label: "目录")
                 Spacer()
-                Text(mode == .exact ? "Esc 退出精确匹配" : "输入 @ 后按空格精确匹配")
+                Text(mode == .exact ? "Esc 退出精确匹配" : "输入 # 搜索标签 · @ 后按空格精确匹配")
                     .foregroundStyle(.secondary)
             }
-            Text(mode == .exact ? "↑ ↓ 选择    ↵ 前往    空格预览" : "↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
+            Text(tagPrefix != nil ? "↑ ↓ 选择    ↵ 应用标签"
+                 : mode == .exact ? "↑ ↓ 选择    ↵ 前往    空格预览" : "↑ ↓ 选择    ↵ 前往    空格预览    Esc 关闭")
                 .padding(.leading, 4)
         }
         .font(.caption)
@@ -264,14 +359,23 @@ struct LibrarySearchPanel: View {
         ScrollViewReader { reader in
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(results) { result in
-                        resultRow(result)
-                            .id(result)
+                    ForEach(groups, id: \.category) { group in
+                        Text(group.category.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 9)
+                            .padding(.top, 4)
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(group.items) { result in
+                            resultRow(result)
+                                .id(result)
+                        }
                     }
                 }
                 .padding(7)
             }
-            .frame(height: CGFloat(min(results.count, 6)) * 44 + 14)
+            .frame(height: CGFloat(min(results.count, 5)) * 44 + CGFloat(groups.count) * 19 + 14)
             .focusable()
             .focusEffectDisabled()
             .focused(focus, equals: .searchResults)
@@ -318,7 +422,13 @@ struct LibrarySearchPanel: View {
     }
 
     private func confirmResult() {
-        if let highlighted { open(highlighted) }
+        if tagPrefix != nil {
+            let options = suggestions
+            let index = selectedSuggestion ?? 0
+            if options.indices.contains(index) { applyTag(options[index]) }
+        } else if let highlighted {
+            open(highlighted)
+        }
     }
 
     private var isComposingQuery: Bool {
@@ -339,6 +449,17 @@ struct LibrarySearchPanel: View {
                 }
             }
         case .upArrow, .downArrow:
+            if tagPrefix != nil {
+                let options = suggestions
+                guard !options.isEmpty else { return .ignored }
+                if let selectedSuggestion {
+                    let next = selectedSuggestion + (press.key == .upArrow ? -1 : 1)
+                    self.selectedSuggestion = min(max(0, next), options.count - 1)
+                } else {
+                    selectedSuggestion = press.key == .upArrow ? options.count - 1 : 0
+                }
+                return .handled
+            }
             guard !results.isEmpty else { return .ignored }
             if focus.wrappedValue == .searchQuery {
                 selection = press.key == .upArrow ? results.last : results.first

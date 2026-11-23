@@ -7,7 +7,8 @@ internal sealed record Source(long Id, string Path, Layout Layout, bool Availabl
     public string Name => MediaFiles.FolderName(Path);
 }
 
-internal sealed record Media(long Id, Source Source, string RelativePath, bool IsVideo, bool Present)
+internal sealed record Media(long Id, Source Source, string RelativePath, bool IsVideo, bool Present,
+    string? WorkAlbumPath = null)
 {
     public string FileName => RelativePath.Split('/')[^1];
     public string DisplayPath => Source.Name + "/" + RelativePath;

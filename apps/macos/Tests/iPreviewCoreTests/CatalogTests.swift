@@ -36,6 +36,7 @@ struct CatalogChecks {
         try checkVideoWorks()
         try await checkVideoWorkIndex()
         try await checkLegacyVideoWorkRescan()
+        try await checkLegacyWorkAlbumOrganization()
         try await checkVideoFormats()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
@@ -116,6 +117,30 @@ struct CatalogChecks {
         try verify(work.relativePath == "Maker/Complete" && work.samples.map(\.name) == ["样张.jpg"])
         try verify(work.photoSets.first?.cover?.name == "封面.jpg")
         try verify(flat.relativePath.isEmpty && flat.photoSets.first?.cover == nil)
+
+        let completeAlbum = SourceAlbumKey(media: work.video)
+        let compactAlbum = SourceAlbumKey(media: flat.video)
+        let completeCover = [work.samples[0].id, work.photoSets[0].photos[0].id]
+        let compactCover = [flat.photoSets[0].photos[0].id]
+        let worksTag = try await reopened.addTag(named: "作品", to: completeAlbum)
+        try await reopened.addTag(worksTag.id, to: compactAlbum)
+        try await reopened.replaceCover(completeCover, for: completeAlbum)
+        try await reopened.replaceCover(compactCover, for: compactAlbum)
+        let completeSettings = try await reopened.sourceAlbumOrganization(for: completeAlbum)
+        let compactSettings = try await reopened.sourceAlbumOrganization(for: compactAlbum)
+        try verify(completeSettings.effectiveCoverIDs == completeCover && compactSettings.effectiveCoverIDs == compactCover)
+        try verify(completeSettings.tags == [worksTag] && compactSettings.tags == [worksTag])
+
+        let tagged = try await reopened.sourceAlbumIndex().taggedAlbums[worksTag.id]
+        let index = SearchIndex(media: initial.media, sources: initial.sources)
+        let taggedPhotos = index.globalSearch("照片", mode: .fuzzy, directories: false, files: true, taggedAlbums: tagged)
+        try verify(Set(taggedPhotos.compactMap(\.sourceAlbum)) == [completeAlbum, compactAlbum])
+        try verify(taggedPhotos.count == 2)
+        let intermediate = SourceAlbumKey(sourceID: work.video.source.id, relativePath: work.relativePath + "/官方样张")
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await reopened.setFavorite(true, for: intermediate)
+        }
+
         try await reopened.markUnavailable(source: work.video.source)
         let offline = try await reopened.snapshot()
         try verify(offline.videoWorks.first { $0.id == work.id }?.video.isAvailable == false)
@@ -128,6 +153,68 @@ struct CatalogChecks {
         for file in scanned {
             let contents = try Data(contentsOf: work.video.source.url.appendingPathComponent(file.relativePath))
             try verify(contents == Data("fixture".utf8))
+        }
+    }
+
+    static func checkLegacyWorkAlbumOrganization() async throws {
+        let fixtures = try Fixtures()
+        for path in ["Complete/视频/影片.mp4", "Complete/官方样张/样张.jpg", "Complete/附加写真集/写真/封面.jpg",
+                     "Complete/附加写真集/写真/完整照片.jpg", "Compact/影片.mov", "Compact/官方样张.jpg",
+                     "Compact/附加写真集/简化照片.jpg"] {
+            try fixtures.file("Legacy/" + path)
+        }
+        let inspection = try SourceScanner.inspect(fixtures.directory("Legacy"), dataDirectory: fixtures.databaseDirectory)
+        let shallowWorks = try required(inspection.candidates.first { $0.layout == .creator })
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: inspection.root, candidate: shallowWorks)
+        // Model the indexed rows after a legacy multi-creator source recognizes its shallow works.
+        try fixtures.sql("UPDATE sources SET layout = 'multi-creator'")
+        let snapshot = try await catalog.snapshot()
+        let complete = try required(snapshot.videoWorks.first { $0.structure == .complete })
+        let compact = try required(snapshot.videoWorks.first { $0.structure == .compact })
+        let completeKey = SourceAlbumKey(sourceID: complete.video.source.id, relativePath: "Complete")
+        let compactKey = SourceAlbumKey(sourceID: compact.video.source.id, relativePath: "Compact")
+        let photographs = [complete.photoSets[0].photos[0], compact.photoSets[0].photos[0]]
+        try verify(SourceAlbumKey(media: photographs[0]) == completeKey && SourceAlbumKey(media: photographs[1]) == compactKey)
+        let tag = try await catalog.addTag(named: "浅层作品", to: completeKey)
+        try await catalog.addTag(tag.id, to: compactKey)
+        try await catalog.replaceCover([photographs[0].id, complete.samples[0].id], for: completeKey)
+        try await catalog.replaceCover([photographs[1].id], for: compactKey)
+        let collectionID = try await catalog.createAlbum(named: "作品选片")
+        try await catalog.append(mediaIDs: [photographs[1].id], to: collectionID)
+        let intermediary = SourceAlbumKey(sourceID: complete.video.source.id, relativePath: "Complete/官方样张")
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await catalog.setFavorite(true, for: intermediary)
+        }
+
+        let reopened = try Catalog(directory: fixtures.databaseDirectory)
+        let loaded = try await reopened.snapshot()
+        let albums = try await reopened.sourceAlbumIndex()
+        let index = SearchIndex(media: loaded.media, sources: loaded.sources)
+        let workHits = index.globalSearch("", mode: .fuzzy, directories: true, files: false,
+                                          taggedAlbums: albums.taggedAlbums[tag.id])
+        try verify(Set(workHits.compactMap(\.sourceAlbum)) == [completeKey, compactKey] && workHits.count == 2)
+        let groups = index.globalSearch("官方样张", mode: .exact, directories: true, files: false)
+        try verify(groups.count == 1 && groups[0].category == .directory && groups[0].sourceAlbum == nil)
+
+        let collection = try required(loaded.albums.first { $0.id == collectionID })
+        let collectionResults = index.globalSearch("照片", mode: .fuzzy, directories: false, files: true,
+                                                   taggedAlbums: albums.taggedAlbums[tag.id]) { result in
+            if case .file(let item) = result { return collection.mediaIDs.contains(item.id) }
+            return false
+        }
+        try verify(collectionResults.count == 1 && collectionResults.first?.sourceAlbum == compactKey)
+        if case .file(let item) = try required(collectionResults.first) { try verify(item.id == photographs[1].id) }
+
+        for (photo, key) in zip(photographs, [completeKey, compactKey]) {
+            let hits = index.globalSearch(photo.name, mode: .exact, directories: false, files: true,
+                                          taggedAlbums: albums.taggedAlbums[tag.id])
+            guard case .file(let found) = try required(hits.first) else {
+                throw CheckFailure(location: "作品照片未生成文件搜索结果")
+            }
+            try verify(found.id == photo.id && SourceAlbumKey(media: found) == key)
+            let organization = try await reopened.sourceAlbumOrganization(for: key)
+            try verify(organization.tags == [tag] && organization.effectiveCoverIDs.first == photo.id)
         }
     }
 
@@ -205,6 +292,17 @@ struct CatalogChecks {
         try verify(persistedSibling.ratingHalf == 7 && !persistedSibling.favorite)
         try verify(persisted.configuredCoverIDs == [9, 8] && persisted.effectiveCoverIDs == [9, 8])
         try verify(library.albums.first?.mediaIDs == [11, 8])
+        let organizationIndex = try await reopened.sourceAlbumIndex()
+        try verify(organizationIndex.configuredCovers[album] == [9, 8])
+        try verify(SourceAlbumTag.suggestions(matching: "旅", from: organizationIndex.tags).map(\.id) == [trip.id])
+        let search = SearchIndex(media: library.media, sources: library.sources)
+        let filtered = search.globalSearch("", mode: .fuzzy, directories: true, files: true,
+                                           taggedAlbums: organizationIndex.taggedAlbums[scenic.id])
+        try verify(filtered.filter { $0.category == .album }.map(\.sourceAlbum) == [album])
+        try verify(filtered.count == 4 && filtered.allSatisfy { $0.sourceAlbum == album })
+        let filteredFiles = search.globalSearch("Image", mode: .fuzzy, directories: false, files: true,
+                                                taggedAlbums: organizationIndex.taggedAlbums[scenic.id])
+        try verify(filteredFiles.count == 2 && filteredFiles.allSatisfy { $0.sourceAlbum == album })
 
         let removedCover = sourceURL.appendingPathComponent("Maker/Album/Image 10.jpg")
         let outside = fixtures.directory("Unavailable.jpg")
