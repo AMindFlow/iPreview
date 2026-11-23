@@ -16,7 +16,7 @@ public sealed partial class MainWindow
     {
         selectionAlbum = current.Album;
         selectionBeforeAlbumRemoval = Selection?.Media.Id;
-        RefreshMediaBrowser(selectionBeforeAlbumRemoval);
+        ShowItems(selectionBeforeAlbumRemoval);
         FocusAlbumSelectionItem(selectionBeforeAlbumRemoval);
     }
 
@@ -44,8 +44,7 @@ public sealed partial class MainWindow
     {
         var previous = selectionBeforeAlbumRemoval;
         ClearAlbumSelection();
-        RefreshMediaBrowser(previous);
-        FocusSelectedMedia();
+        ShowItems(previous, revealSelection: true);
     }
 
     private void ClearAlbumSelection()

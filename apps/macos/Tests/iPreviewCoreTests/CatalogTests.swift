@@ -32,6 +32,7 @@ struct CatalogChecks {
         }
 
         try checkLayouts()
+        try await checkMediaSort()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -165,6 +166,38 @@ struct CatalogChecks {
         try verify(inspection.candidates[0].entries.map(\.relativePath) == ["Existing/01.JPG"])
         try verify(Set(inspection.candidates[1].entries.map(\.relativePath)) == ["北京/旅行/10.png", "北京/旅行/2.MOV"])
         try verify(inspection.candidates[1].albumCount == 1)
+    }
+
+    static func checkMediaSort() async throws {
+        let fixtures = try Fixtures()
+        let root = fixtures.directory("Sort")
+        let early = Date(timeIntervalSince1970: 1_000)
+        let late = Date(timeIntervalSince1970: 2_000)
+
+        for (name, size, time) in [("1.png", 20, late), ("2.png", 20, early),
+                                   ("10.png", 3, early), ("20.png", 10, late)] {
+            try fixtures.file("Sort/" + name)
+            let url = root.appendingPathComponent(name)
+            try Data(repeating: 1, count: size).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: time], ofItemAtPath: url.path)
+        }
+
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let inspected = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+        try await catalog.importSource(root: root, candidate: try required(inspected.candidates.first))
+        let indexed = try await catalog.snapshot().media.reversed()
+        let items = Array(indexed)
+        // Leave a stale entry in the catalog to exercise live metadata failure.
+        try FileManager.default.moveItem(at: root.appendingPathComponent("20.png"),
+                                          to: fixtures.directory("unavailable.png"))
+
+        try verify(MediaSort().arrange(items) == items)
+        try verify(MediaSort(field: .name).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
+        try verify(MediaSort(field: .name, descending: true).arrange(items).map(\.name) == ["20.png", "10.png", "2.png", "1.png"])
+        try verify(MediaSort(field: .size).arrange(items).map(\.name) == ["10.png", "1.png", "2.png", "20.png"])
+        try verify(MediaSort(field: .size, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
+        try verify(MediaSort(field: .modified).arrange(items).map(\.name) == ["2.png", "10.png", "1.png", "20.png"])
+        try verify(MediaSort(field: .modified, descending: true).arrange(items).map(\.name) == ["1.png", "2.png", "10.png", "20.png"])
     }
 
     static func checkPersistence() async throws {

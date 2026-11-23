@@ -23,6 +23,7 @@ Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
+    CheckMediaSort(work);
     var creator = Path.Combine(work, "北京");
     var mixed = Path.Combine(work, "catalog");
     var flat = Path.Combine(work, "flat");
@@ -558,6 +559,35 @@ static void CheckSourceRename(string work)
               catalog.Read().Media.Single(item => item.Id == secondId).RelativePath == newPath,
             "ambiguous recovery preserves both originals and the existing index");
     }
+}
+
+static void CheckMediaSort(string work)
+{
+    var root = Directory.CreateDirectory(Path.Combine(work, "Sort")).FullName;
+    var source = new Source(1, root, Layout.Flat, Available: true);
+    var early = DateTime.UnixEpoch.AddHours(1);
+    var late = early.AddHours(1);
+    (string Name, int Size, DateTime Modified)[] fixtures =
+        [("1.png", 20, late), ("2.png", 20, early), ("10.png", 3, early), ("20.png", 10, late)];
+    var items = fixtures.Select((fixture, index) =>
+    {
+        var path = Path.Combine(root, fixture.Name);
+        File.WriteAllBytes(path, new byte[fixture.Size]);
+        File.SetLastWriteTimeUtc(path, fixture.Modified);
+        return new Media(index + 1, source, fixture.Name, IsVideo: false, Present: true);
+    }).Reverse().ToArray();
+    File.Move(Path.Combine(root, "20.png"), Path.Combine(work, "unavailable.png"));
+
+    IEnumerable<string> Names(MediaSortField field, bool descending = false) =>
+        new MediaSort(field, descending).Arrange(items, item => item).Select(item => item.FileName);
+
+    Check(new MediaSort().Arrange(items, item => item).SequenceEqual(items), "original file order");
+    Check(Names(MediaSortField.Name).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "natural name sort");
+    Check(Names(MediaSortField.Name, true).SequenceEqual(["20.png", "10.png", "2.png", "1.png"]), "descending name sort");
+    Check(Names(MediaSortField.Size).SequenceEqual(["10.png", "1.png", "2.png", "20.png"]), "sort by file bytes");
+    Check(Names(MediaSortField.Size, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending bytes with missing last");
+    Check(Names(MediaSortField.Modified).SequenceEqual(["2.png", "10.png", "1.png", "20.png"]), "sort by modification date");
+    Check(Names(MediaSortField.Modified, true).SequenceEqual(["1.png", "2.png", "10.png", "20.png"]), "descending dates with missing last");
 }
 
 static void WriteRenameIntent(string index, long source, string before, string after, string identity)

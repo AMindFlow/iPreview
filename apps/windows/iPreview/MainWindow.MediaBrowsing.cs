@@ -130,6 +130,7 @@ public sealed partial class MainWindow
         try
         {
             ViewModePicker.Visibility = mediaVisibility;
+            BrowserSortButton.Visibility = SelectingAlbumMembers ? Visibility.Collapsed : mediaVisibility;
             Gallery.Visibility = browser == Gallery ? mediaVisibility : Visibility.Collapsed;
             DetailsPane.Visibility = browser == DetailsList ? mediaVisibility : Visibility.Collapsed;
             FilmstripPane.Visibility = browser == Filmstrip ? mediaVisibility : Visibility.Collapsed;
@@ -198,15 +199,10 @@ public sealed partial class MainWindow
 
     private static TileDetails ReadTileDetails(Media media)
     {
-        try
-        {
-            var file = new FileInfo(MediaFiles.OpenPath(media));
-            return new(file.LastWriteTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture), FormatBytes(file.Length));
-        }
-        catch (Exception error) when (MediaFailure(error))
-        {
-            return TileDetails.Unavailable;
-        }
+        var facts = MediaFileFacts.Read(media);
+        return facts is { Modified: DateTime modified, Size: long size }
+            ? new(modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture), FormatBytes(size))
+            : TileDetails.Unavailable;
     }
 
     private static string FormatBytes(long length) => length switch
