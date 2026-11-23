@@ -42,7 +42,8 @@ internal sealed class LibVlcVideoPlayback : IDisposable
 
         string[] arguments = [
             "--ignore-config", "--no-plugins-cache", "--no-metadata-network-access",
-            "--no-sub-autodetect-file", "--no-video-title-show", "--avcodec-hw=none"
+            "--no-sub-autodetect-file", "--no-mkv-preload-local-dir", "--no-video-title-show",
+            "--avcodec-hw=none"
         ];
         var nativeArguments = new nint[arguments.Length];
         try
