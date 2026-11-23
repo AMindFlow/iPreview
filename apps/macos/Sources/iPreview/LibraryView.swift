@@ -990,7 +990,9 @@ struct LibraryView: View {
         searchDomain = nil
         switch result {
         case .directory(let directory):
-            navigate(.directory(directory))
+            let source = directory.source
+            let workPaths = Set(model.snapshot.videoWorks.lazy.filter { $0.video.source.id == source.id }.map(\.relativePath))
+            navigate(.directory(in: source, path: directory.relativePath, workPaths: workPaths))
         case .file(let item):
             if domain == .current, case .virtual = page {
                 navigate(page, selectingMedia: item.id)
@@ -1085,12 +1087,13 @@ enum LibraryPage: Hashable, Sendable {
     case folder(Int64, String)
     case virtual(Int64)
 
-    static func directory(_ directory: IndexedDirectory) -> Self {
-        let id = directory.source.id
-        let path = directory.relativePath
-        if path.isEmpty { return .source(id) }
-        if directory.source.layout == .multiCreator && !path.contains("/") { return .creator(id, path) }
-        return .folder(id, path)
+    static func directory(in source: Source, path: String, workPaths: Set<String>) -> Self {
+        if path.isEmpty { return .source(source.id) }
+        if source.layout == .multiCreator, !path.contains("/"),
+           !workPaths.contains(path), !workPaths.contains("") {
+            return .creator(source.id, path)
+        }
+        return .folder(source.id, path)
     }
 
     func virtualMembers(in snapshot: LibrarySnapshot) -> [Int64] {
@@ -1173,12 +1176,10 @@ struct ContentScope {
             case (.multiCreator, true):
                 let workPaths = Set(snapshot.videoWorks.lazy.filter { $0.video.source.id == id }.map(\.relativePath))
                 folders = Self.groupFolders(sourceItems, by: \.creator) { name, members in
-                    if workPaths.contains(name) {
-                        return LibraryFolder(page: .folder(id, name), name: name, cover: members[0],
-                                             caption: "视频作品 · \(members.count) 项")
-                    }
-                    return LibraryFolder(page: .creator(id, name), name: name, cover: members[0],
-                                         caption: "\(Set(members.map(Self.folderKey)).count) 个专辑")
+                    let page = LibraryPage.directory(in: members[0].source, path: name, workPaths: workPaths)
+                    let caption = workPaths.contains(name)
+                        ? "视频作品 · \(members.count) 项" : "\(Set(members.map(Self.folderKey)).count) 个专辑"
+                    return LibraryFolder(page: page, name: name, cover: members[0], caption: caption)
                 }
                 items = []
             case (.creator, true):
