@@ -82,7 +82,7 @@ public actor Catalog {
                 )
             }.sorted { compareNaturally($0.path, $1.path) == .orderedAscending }
             let sourceByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
-            let media = try database.select("SELECT id, source_id, relative_path, kind, available FROM media") { row in
+            var media = try database.select("SELECT id, source_id, relative_path, kind, available FROM media") { row in
                 Media(
                     id: sqlite3_column_int64(row, 0),
                     source: sourceByID[sqlite3_column_int64(row, 1)]!,
@@ -99,7 +99,7 @@ public actor Catalog {
                 let id = sqlite3_column_int64(row, 0)
                 return VirtualAlbum(id: id, name: textColumn(row, 1), mediaIDs: byAlbum[id, default: []].map(\.media))
             }
-            let videoWorks = try VideoWorkIndex.read(from: database, media: media)
+            let videoWorks = try VideoWorkIndex.read(from: database, media: &media)
             return LibrarySnapshot(sources: sources, media: media, albums: albums, dataVersion: try scanVersion(),
                                    videoWorks: videoWorks)
         }
@@ -289,11 +289,34 @@ extension Catalog {
     private static let albumMembers = """
         media.source_id = ?1
         AND substr(media.relative_path, 1, length(?2)) = ?2
-        AND instr(substr(media.relative_path, length(?2) + 1), '/') = 0
         """
 
     public func albumTags() throws -> [SourceAlbumTag] {
         try database.select("SELECT id, name, normalized_name FROM tags ORDER BY normalized_name", row: Self.readTag)
+    }
+
+    public func sourceAlbumIndex() throws -> SourceAlbumIndex {
+        try database.transaction(write: false) {
+            let links = try database.select("""
+                SELECT organization.source_id, organization.album_path, source_album_tags.tag_id
+                FROM source_album_tags JOIN source_album_organization AS organization
+                ON organization.id = source_album_tags.source_album_id
+                """) { row in
+                (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
+                 id: sqlite3_column_int64(row, 2))
+            }
+            let covers = try database.select("""
+                SELECT organization.source_id, organization.album_path, cover.media_id
+                FROM source_album_cover_media AS cover JOIN source_album_organization AS organization
+                ON organization.id = cover.source_album_id ORDER BY cover.position
+                """) { row in
+                (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
+                 id: sqlite3_column_int64(row, 2))
+            }
+            return SourceAlbumIndex(tags: try albumTags(),
+                                    taggedAlbums: Dictionary(grouping: links, by: \.id).mapValues { Set($0.map(\.key)) },
+                                    configuredCovers: Dictionary(grouping: covers, by: \.key).mapValues { $0.map(\.id) })
+        }
     }
 
     public func sourceAlbums(tagID: Int64) throws -> [SourceAlbumKey] {
@@ -331,10 +354,7 @@ extension Catalog {
             }
 
             let available = try availableAlbumImages(album)
-            let availableIDs = Set(available.map(\.id))
-            let fallback = available.min { compareNaturally($0.path, $1.path) == .orderedAscending }
-            let effective = !configured.isEmpty && configured.allSatisfy(availableIDs.contains)
-                ? configured : fallback.map { [$0.id] } ?? []
+            let effective = SourceAlbumIndex.coverIDs(configured: configured, available: available)
             return SourceAlbumOrganization(favorite: stored?.favorite ?? false, ratingHalf: stored?.rating,
                                            tags: tags, configuredCoverIDs: configured, effectiveCoverIDs: effective)
         }
@@ -418,9 +438,14 @@ extension Catalog {
     private func updateOrganization<Result>(_ album: SourceAlbumKey, _ update: (Int64) throws -> Result) throws -> Result {
         let key = try albumBindings(album)
         return try database.transaction {
-            let indexed = try database.select("SELECT 1 FROM media WHERE \(Self.albumMembers) LIMIT 1",
-                                              membershipBindings(album)) { _ in true }
-            guard !indexed.isEmpty else { throw AlbumOrganizationError.unknownAlbum }
+            let layout = try database.select("""
+                SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
+                WHERE \(Self.albumMembers) LIMIT 1
+                """, membershipBindings(album)) { Layout(rawValue: textColumn($0, 0))! }.first
+            let work = try album.containingWork(in: VideoWorkIndex.albumRoots(in: database, sourceID: album.sourceID))
+            guard let layout, work.map({ $0 == album }) ?? album.matchesLayout(layout) else {
+                throw AlbumOrganizationError.unknownAlbum
+            }
             try database.execute("""
                 INSERT INTO source_album_organization (source_id, album_path) VALUES (?, ?)
                 ON CONFLICT (source_id, album_path) DO NOTHING

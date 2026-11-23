@@ -1,11 +1,24 @@
 import SQLite3
 
 enum VideoWorkIndex {
-    static func read(from database: Database, media: [Media]) throws -> [IndexedVideoWork] {
-        let mediaByID = Dictionary(uniqueKeysWithValues: media.map { ($0.id, $0) })
+    static func read(from database: Database, media: inout [Media]) throws -> [IndexedVideoWork] {
         let works = try database.select("SELECT video_id, structure FROM video_works ORDER BY video_id") {
             (id: sqlite3_column_int64($0, 0), structure: VideoWork.Structure(rawValue: textColumn($0, 1))!)
         }
+        guard !works.isEmpty else { return [] }
+        let byVideoID = Dictionary(uniqueKeysWithValues: works.map { ($0.id, $0.structure) })
+        let roots = Set(media.compactMap { item -> SourceAlbumKey? in
+            guard let structure = byVideoID[item.id] else { return nil }
+            return SourceAlbumKey(sourceID: item.source.id,
+                                  relativePath: IndexedVideoWork.albumPath(for: item.relativePath, structure: structure))
+        })
+        for index in media.indices {
+            let item = media[index]
+            let key = SourceAlbumKey(sourceID: item.source.id, relativePath: item.relativePath)
+            media[index].workAlbumPath = key.containingWork(in: roots)?.relativePath
+        }
+
+        let mediaByID = Dictionary(uniqueKeysWithValues: media.map { ($0.id, $0) })
         let images = try database.select("""
             SELECT video_id, media_id, role, set_position
             FROM video_work_images ORDER BY set_position, position
@@ -26,6 +39,17 @@ enum VideoWorkIndex {
             return IndexedVideoWork(video: mediaByID[work.id]!, structure: work.structure,
                                     samples: samples, photoSets: photoSets)
         }
+    }
+
+    static func albumRoots(in database: Database, sourceID: Int64) throws -> Set<SourceAlbumKey> {
+        Set(try database.select("""
+            SELECT media.relative_path, video_works.structure FROM video_works
+            JOIN media ON media.id = video_works.video_id WHERE media.source_id = ?
+            """, [.integer(sourceID)]) {
+            let structure = VideoWork.Structure(rawValue: textColumn($0, 1))!
+            return SourceAlbumKey(sourceID: sourceID,
+                                  relativePath: IndexedVideoWork.albumPath(for: textColumn($0, 0), structure: structure))
+        })
     }
 
     static func replace(in database: Database, source: SQLiteValue, entries: [ScanEntry]) throws {

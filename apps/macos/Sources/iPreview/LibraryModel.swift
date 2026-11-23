@@ -8,6 +8,7 @@ final class LibraryModel {
     private var catalog: Catalog?
     private(set) var isWorking = false
     private(set) var snapshot = LibrarySnapshot.empty
+    private(set) var sourceAlbumIndex = SourceAlbumIndex.empty
     private(set) var searchIndex = SearchIndex(media: [])
     private(set) var revision = 0
     var error: String?
@@ -190,6 +191,20 @@ final class LibraryModel {
         }
     }
 
+    func organization(for album: SourceAlbumKey) async throws -> SourceAlbumOrganization {
+        guard let catalog else { throw AlbumOrganizationError.unknownAlbum }
+        return try await catalog.sourceAlbumOrganization(for: album)
+    }
+
+    func organize(_ action: (Catalog) async throws -> Void) async throws {
+        guard let catalog, !isWorking else { throw AlbumOrganizationError.unknownAlbum }
+        isWorking = true
+        defer { isWorking = false }
+        try await action(catalog)
+        sourceAlbumIndex = try await catalog.sourceAlbumIndex()
+        cachedScope = nil
+    }
+
     @discardableResult
     private func change(rebuildSearch: Bool = true, _ action: (Catalog) async throws -> Void) async -> Bool {
         guard let catalog, !isWorking else { return false }
@@ -207,6 +222,7 @@ final class LibraryModel {
 
     private func refresh(_ catalog: Catalog, rebuildSearch: Bool) async throws {
         let loaded = try await catalog.snapshot()
+        let albumIndex = try await catalog.sourceAlbumIndex()
         if rebuildSearch {
             let media = loaded.media.filter(\.existsInSource)
             searchIndex = await Task.detached(priority: .userInitiated) { SearchIndex(media: media, sources: loaded.sources) }.value
@@ -214,5 +230,6 @@ final class LibraryModel {
         }
         cachedScope = nil
         snapshot = loaded
+        sourceAlbumIndex = albumIndex
     }
 }

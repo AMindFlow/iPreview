@@ -2,15 +2,25 @@ namespace IPreview;
 
 internal sealed partial class Catalog
 {
-    private List<IndexedVideoWork> ReadVideoWorks(Dictionary<long, Media> mediaById)
+    private List<IndexedVideoWork> ReadVideoWorks(List<Media> media)
     {
         var works = database.Query("SELECT video_id, structure FROM video_works ORDER BY video_id;",
-            row => (Id: row.Number(0), Structure: row.Text(1) switch
-            {
-                "complete" => VideoWorkStructure.Complete,
-                "compact" => VideoWorkStructure.Compact,
-                _ => throw new InvalidDataException("无法识别视频作品结构。")
-            }));
+            row => (Id: row.Number(0), Structure: DecodeStructure(row.Text(1))));
+        if (works.Count == 0)
+            return [];
+
+        var byVideoId = works.ToDictionary(work => work.Id, work => work.Structure);
+        var roots = media.Where(item => byVideoId.ContainsKey(item.Id)).Select(item =>
+            new SourceAlbumKey(item.Source.Id, IndexedVideoWork.AlbumPath(item.RelativePath, byVideoId[item.Id]))).ToHashSet();
+        for (var i = 0; i < media.Count; i++)
+        {
+            var item = media[i];
+            var work = new SourceAlbumKey(item.Source.Id, item.RelativePath).ContainingWork(roots);
+            if (work is { } root)
+                media[i] = item with { WorkAlbumPath = root.RelativePath };
+        }
+
+        var mediaById = media.ToDictionary(item => item.Id);
         var images = database.Query("""
             SELECT video_id, media_id, role, set_position
             FROM video_work_images ORDER BY set_position, position;
@@ -26,6 +36,19 @@ internal sealed partial class Catalog
             return new IndexedVideoWork(mediaById[work.Id], work.Structure, samples, photoSets);
         }).ToList();
     }
+
+    private HashSet<SourceAlbumKey> ReadWorkAlbumRoots(long source) => database.Query("""
+        SELECT media.relative_path, video_works.structure FROM video_works
+        JOIN media ON media.id = video_works.video_id WHERE media.source_id = ?;
+        """, row => new SourceAlbumKey(source, IndexedVideoWork.AlbumPath(row.Text(0), DecodeStructure(row.Text(1)))),
+        source).ToHashSet();
+
+    private static VideoWorkStructure DecodeStructure(string value) => value switch
+    {
+        "complete" => VideoWorkStructure.Complete,
+        "compact" => VideoWorkStructure.Compact,
+        _ => throw new InvalidDataException("无法识别视频作品结构。")
+    };
 
     private void ReplaceVideoWorks(long source, List<ScannedMedia> files)
     {

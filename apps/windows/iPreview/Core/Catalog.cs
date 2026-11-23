@@ -83,13 +83,14 @@ internal sealed partial class Catalog : IDisposable
                 new Media(row.Number(0), sources[row.Number(1)], row.Text(2), row.Text(3) == "video", row.Number(4) != 0));
             var albums = database.Query("SELECT id, name FROM albums ORDER BY name COLLATE NOCASE, id;",
                 row => new Album(row.Number(0), row.Text(1)));
+            var videoWorks = ReadVideoWorks(media);
             var mediaById = media.ToDictionary(item => item.Id);
             var members = database.Query(
                 "SELECT album_id, media_id FROM album_media ORDER BY position, media_id;",
                 row => (Album: row.Number(0), Media: mediaById[row.Number(1)]))
                 .GroupBy(member => member.Album)
                 .ToDictionary(album => album.Key, album => album.Select(member => member.Media).ToList());
-            snapshot = new(sources, media, albums, members, DataVersion, ReadVideoWorks(mediaById));
+            snapshot = new(sources, media, albums, members, DataVersion, videoWorks);
         }, write: false);
         return snapshot!;
     }

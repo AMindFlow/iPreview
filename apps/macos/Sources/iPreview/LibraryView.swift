@@ -19,6 +19,7 @@ struct LibraryView: View {
     @ViewState private var albumDeletion: AlbumDeletion?
     @ViewState private var sourceDeletion: SourceDeletion?
     @ViewState private var revealedSource: Int64?
+    @ViewState private var organizationTarget: AlbumOrganizationTarget?
     @ViewState private var editSourceName: SourceNameEdit?
     @ViewState private var titleEdit: LibraryTitleEdit?
     @ViewState private var titleDraft = ""
@@ -47,6 +48,7 @@ struct LibraryView: View {
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
             && !creatingAlbum && albumDeletion == nil && sourceDeletion == nil && editSourceName == nil && addAlbumMedia == nil
+            && organizationTarget == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -56,7 +58,7 @@ struct LibraryView: View {
     private var searchActions: LibrarySearchActions {
         guard preview == nil, videoWorkPreview == nil, titleEdit == nil, editSourceName == nil,
               !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
-              addAlbumMedia == nil, model.inspection == nil, model.error == nil else {
+              addAlbumMedia == nil, organizationTarget == nil, model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
         return LibrarySearchActions(show: showSearch)
@@ -89,6 +91,9 @@ struct LibraryView: View {
             SourceNameSheet(edit: edit) { name in
                 try await renameSourceItem(edit, to: name)
             }
+        }
+        .sheet(item: $organizationTarget, onDismiss: focusBrowser) { target in
+            SourceAlbumOrganizationSheet(target: target, model: model)
         }
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
@@ -175,6 +180,7 @@ struct LibraryView: View {
         .overlay {
             if let searchDomain {
                 LibrarySearchPanel(index: model.searchIndex, revision: model.revision, page: page,
+                                   sourceAlbums: model.sourceAlbumIndex,
                                    albumMembers: Set(page.virtualMembers(in: model.snapshot)),
                                    domain: searchDomain, isPreviewing: preview != nil,
                                    closingPreviewSelection: preview?.closingSelection, focus: $focus,
@@ -413,6 +419,22 @@ struct LibraryView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
+                if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
+                   !scope.items.isEmpty {
+                    AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
+                                      revision: model.revision)
+                        .frame(width: 62, height: 42)
+                        .clipShape(.rect(cornerRadius: 6))
+                }
+                if page == .library {
+                    Button {
+                        organizationTarget = .tags
+                    } label: {
+                        Label("管理标签", systemImage: "tag")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(model.isWorking)
+                }
             }
 
             if scope.source != nil || scope.virtualAlbum != nil || selected != nil {
@@ -436,6 +458,16 @@ struct LibraryView: View {
                         Button("预览作品", systemImage: "play.rectangle") { openVideoWork(work) }
                             .buttonStyle(.borderless)
                             .disabled(model.isWorking)
+                    }
+                    if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
+                       !scope.items.isEmpty {
+                        Button {
+                            organizationTarget = .album(name: scope.title, key: album, media: scope.items)
+                        } label: {
+                            Label("专辑组织", systemImage: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(model.isWorking)
                     }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
@@ -678,7 +710,9 @@ struct LibraryView: View {
         let isSelected = selectedFolder == folder.page
         return Button { navigate(folder.page) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                MediaThumbnail(media: folder.cover, revision: model.revision)
+                AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
+                    model.sourceAlbumIndex.covers(for: $0, members: folder.members)
+                } ?? [folder.cover], revision: model.revision)
                     .aspectRatio(1.47, contentMode: .fit)
                     .clipShape(.rect(cornerRadius: 12))
                     .overlay {
@@ -1111,6 +1145,20 @@ enum LibraryPage: Hashable, Sendable {
         }
     }
 
+    func sourceAlbum(in source: Source?, workAlbumPath: String? = nil) -> SourceAlbumKey? {
+        guard let source else { return nil }
+        let path: String
+        switch self {
+        case .folder(_, let relativePath): path = relativePath
+        case .source: path = ""
+        default: return nil
+        }
+        let key = SourceAlbumKey(sourceID: source.id, relativePath: path)
+        let isAlbum = workAlbumPath.map { SourceAlbumKey(sourceID: source.id, relativePath: $0) == key }
+            ?? key.matchesLayout(source.layout)
+        return isAlbum ? key : nil
+    }
+
     var sourceID: Int64? {
         switch self {
         case .source(let id), .creator(let id, _), .folder(let id, _): id
@@ -1136,8 +1184,10 @@ enum LibraryPage: Hashable, Sendable {
 struct LibraryFolder: Identifiable {
     let page: LibraryPage
     let name: String
-    let cover: Media
+    let members: [Media]
     let caption: String
+
+    var cover: Media { members[0] }
 
     var id: LibraryPage { page }
 }
@@ -1179,7 +1229,7 @@ struct ContentScope {
                     let page = LibraryPage.directory(in: members[0].source, path: name, workPaths: workPaths)
                     let caption = workPaths.contains(name)
                         ? "视频作品 · \(members.count) 项" : "\(Set(members.map(Self.folderKey)).count) 个专辑"
-                    return LibraryFolder(page: page, name: name, cover: members[0], caption: caption)
+                    return LibraryFolder(page: page, name: name, members: members, caption: caption)
                 }
                 items = []
             case (.creator, true):
@@ -1241,7 +1291,7 @@ struct ContentScope {
         groupFolders(items, by: folderKey) { key, members in
             let cover = members[0]
             let name = key.split(separator: "/").last.map(String.init) ?? cover.source.name
-            return LibraryFolder(page: .folder(cover.source.id, key), name: name, cover: cover,
+            return LibraryFolder(page: .folder(cover.source.id, key), name: name, members: members,
                                  caption: "\(cover.creator) · \(members.count) 项")
         }
     }
@@ -1257,7 +1307,7 @@ struct ContentScope {
     }
 
     static func folderKey(_ media: Media) -> String {
-        media.components.dropLast().prefix(media.source.layout.albumDepth).joined(separator: "/")
+        SourceAlbumKey(media: media).relativePath
     }
 }
 
