@@ -29,7 +29,7 @@ public enum MediaKind: String, Sendable {
     init?(extension pathExtension: String) {
         switch pathExtension.lowercased() {
         case "jpg", "jpeg", "png", "webp", "gif", "heic": self = .image
-        case "mp4", "mov", "ts": self = .video
+        case "mp4", "mov", "ts", "mkv", "webm", "avi": self = .video
         default: return nil
         }
     }

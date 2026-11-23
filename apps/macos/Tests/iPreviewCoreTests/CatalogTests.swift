@@ -35,7 +35,7 @@ struct CatalogChecks {
         try await checkMediaSort()
         try checkVideoWorks()
         try await checkVideoWorkIndex()
-        try await checkNativeVideoFormats()
+        try await checkVideoFormats()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -302,7 +302,7 @@ struct CatalogChecks {
         }
     }
 
-    static func checkNativeVideoFormats() async throws {
+    static func checkVideoFormats() async throws {
         let fixtures = try Fixtures()
         let source = fixtures.directory("Video")
         for name in ["clip.TS", "clip.ts.mov", "clip.mkv", "clip.webm", "clip.avi"] {
@@ -310,14 +310,16 @@ struct CatalogChecks {
         }
         let inspection = try SourceScanner.inspect(source, dataDirectory: fixtures.databaseDirectory)
         let candidate = try required(inspection.candidates.first)
-        try verify(Set(candidate.entries.map(\.relativePath)) == ["clip.TS", "clip.ts.mov"])
+        try verify(Set(candidate.entries.map(\.relativePath)) == ["clip.TS", "clip.ts.mov", "clip.mkv", "clip.webm", "clip.avi"])
         try verify(candidate.entries.allSatisfy { $0.kind == .video })
         let catalog = try Catalog(directory: fixtures.databaseDirectory)
         try await catalog.importSource(root: source, candidate: candidate)
         let library = try await catalog.snapshot()
         let index = SearchIndex(media: library.media, sources: library.sources)
-        let found = index.search("clip.ts", mode: .exact, directories: false, files: true)
-        try verify(found.map(\.name) == ["clip.TS"])
+        for name in ["clip.TS", "clip.mkv", "clip.webm", "clip.avi"] {
+            let found = index.search(name.lowercased(), mode: .exact, directories: false, files: true)
+            try verify(found.map(\.name) == [name])
+        }
     }
 
     static func checkPersistence() async throws {
