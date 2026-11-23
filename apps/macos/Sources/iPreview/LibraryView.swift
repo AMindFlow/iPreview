@@ -177,14 +177,15 @@ struct LibraryView: View {
     }
 
     private var windowControls: some View {
-        HStack(spacing: 0) {
+        let size = LibraryTitleBarLayout.buttonSize
+        return HStack(spacing: 0) {
             sidebarToggle
-            Spacer(minLength: 12)
-            HStack(spacing: 4) {
+            Spacer(minLength: LibraryTitleBarLayout.groupSpacing)
+            HStack(spacing: LibraryTitleBarLayout.buttonSpacing) {
                 Button(action: chooseFolder) {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: 14, weight: .medium))
-                        .frame(width: 26, height: 26)
+                        .frame(width: size, height: size)
                 }
                 .buttonStyle(LibraryIconButtonStyle())
                 .accessibilityLabel("导入文件夹")
@@ -194,12 +195,13 @@ struct LibraryView: View {
                     .disabled(libraryOverlayShown)
             }
         }
-        .frame(height: 26)
+        .frame(height: size)
         .opacity(preview == nil ? 1 : 0)
         .accessibilityHidden(libraryOverlayShown)
     }
 
     private var sidebarToggle: some View {
+        let size = LibraryTitleBarLayout.buttonSize
         let collapsed = sidebarVisibility == .detailOnly
         let title: LocalizedStringKey = collapsed ? "展开侧边栏" : "收起侧边栏"
         return Button {
@@ -207,16 +209,16 @@ struct LibraryView: View {
                 sidebarVisibility = collapsed ? .all : .detailOnly
             }
         } label: {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: 14, weight: .medium))
-                .overlay {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 7, weight: .semibold))
-                        .rotationEffect(.degrees(collapsed ? 180 : 0))
+            RoundedRectangle(cornerRadius: 2.5)
+                .strokeBorder(lineWidth: 1.25)
+                .frame(width: 16, height: 12)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .frame(width: 1.25, height: collapsed ? 5 : 12)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: collapsed)
-                        .offset(x: 3.5)
+                        .padding(.leading, 4.5)
                 }
-                .frame(width: 26, height: 26)
+                .frame(width: size, height: size)
         }
         .buttonStyle(LibraryIconButtonStyle())
         .accessibilityLabel(title)
@@ -516,11 +518,8 @@ struct LibraryView: View {
                             .offset(y: 3)
                     }
                     .foregroundStyle(Color.libraryInk.opacity(0.64))
-                    .frame(width: 74, height: 70)
-                    .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(EmptyAlbumAddButtonStyle())
                 .accessibilityLabel("添加媒体")
                 .help("添加媒体")
                 Text("合集为空").font(.title3.weight(.semibold))
