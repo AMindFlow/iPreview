@@ -20,6 +20,7 @@ public sealed partial class MainWindow
         SetTitleBar(AppTitleBar);
         SearchOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
         PreviewOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
+        VideoWorkOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateTitleBarRegions());
     }
 
     private void TitleBarLoaded(object sender, RoutedEventArgs args)
@@ -43,8 +44,10 @@ public sealed partial class MainWindow
         PreviewSortButton.Margin = new Thickness(0, 0, rightInset, 0);
         var titleInset = Math.Max(left, rightInset) + PreviewSortButton.MinWidth + 8;
         PreviewFilename.Margin = new Thickness(titleInset, 0, titleInset, 0);
+        VideoWorkHeader.Margin = new Thickness(left, 0, rightInset, 0);
 
-        var overlay = SearchOverlay.Visibility == Visibility.Visible || PreviewOverlay.Visibility == Visibility.Visible;
+        var overlay = SearchOverlay.Visibility == Visibility.Visible || PreviewOverlay.Visibility == Visibility.Visible ||
+            VideoWorkOverlay.Visibility == Visibility.Visible;
         Rect bounds;
         if (overlay)
             bounds = new Rect(left, 0, right - left, AppTitleBar.ActualHeight);
