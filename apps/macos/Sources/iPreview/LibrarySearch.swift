@@ -102,9 +102,6 @@ struct LibrarySearchPanel: View {
             await Task.yield()
             if !Task.isCancelled { focus.wrappedValue = .searchQuery }
         }
-        .onChange(of: isPreviewing) { _, previewing in
-            if !previewing { focus.wrappedValue = .searchResults }
-        }
         .onChange(of: closingPreviewSelection) { _, mediaID in
             if let mediaID, let result = results.first(where: {
                 if case .file(let item) = $0 { return item.id == mediaID }

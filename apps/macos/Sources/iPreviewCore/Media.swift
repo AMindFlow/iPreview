@@ -88,8 +88,9 @@ public struct LibrarySnapshot: Sendable {
     public let sources: [Source]
     public let media: [Media]
     public let albums: [VirtualAlbum]
+    public let dataVersion: Int64
 
-    public static let empty = Self(sources: [], media: [], albums: [])
+    public static let empty = Self(sources: [], media: [], albums: [], dataVersion: 0)
 }
 
 func compareNaturally(_ lhs: String, _ rhs: String) -> ComparisonResult {

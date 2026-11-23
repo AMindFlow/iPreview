@@ -34,6 +34,7 @@ struct CatalogChecks {
         try checkLayouts()
         try await checkPersistence()
         try await checkOrderingAndBatchReferenceRemoval()
+        try await checkAlbumDeletion()
         try await checkSearch()
         try await checkSourceRename()
         try await checkReservedDirectoryName()
@@ -158,6 +159,63 @@ struct CatalogChecks {
         try verify(after.albums.first { $0.id == albumID }?.mediaIDs == [mediaIDs[1], mediaIDs[3]])
         try verify(after.albums.first { $0.id == otherAlbumID }?.mediaIDs == selectedIDs)
         try verify(after.media == before.media)
+        let afterBytes = try paths.map { try Data(contentsOf: $0) }
+        let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        try verify(afterBytes == bytes && afterTimes == times)
+    }
+
+    static func checkAlbumDeletion() async throws {
+        let fixtures = try Fixtures()
+        try fixtures.file("First/01.png")
+        try fixtures.file("Second/02.mov")
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for name in ["First", "Second"] {
+            let inspection = try SourceScanner.inspect(fixtures.directory(name), dataDirectory: fixtures.databaseDirectory)
+            try await catalog.importSource(root: inspection.root, candidate: try required(inspection.candidates.first))
+        }
+
+        let imported = try await catalog.snapshot()
+        let paths = try imported.media.map { try $0.readableURL() }
+        let bytes = try paths.map { try Data(contentsOf: $0) }
+        let times = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        let memberIDs = imported.media.map(\.id)
+        let retained = try await catalog.createAlbum(named: "Retained")
+        let deleted = try await catalog.createAlbum(named: "Shared")
+        try await catalog.append(mediaIDs: Array(memberIDs.reversed()), to: retained)
+        try await catalog.append(mediaIDs: memberIDs, to: deleted)
+        try await catalog.markUnavailable(source: imported.sources[0])
+
+        try fixtures.sql("""
+            CREATE TRIGGER reject_member_delete BEFORE DELETE ON album_media
+            BEGIN SELECT RAISE(ABORT, 'test member delete failure'); END;
+            """)
+        let beforeFailure = try await catalog.snapshot()
+        do {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: beforeFailure.dataVersion)
+            throw CheckFailure(location: "album deletion must report cascade failure")
+        } catch {
+            try verify(error.localizedDescription.contains("test member delete failure"))
+        }
+        let failed = try await catalog.snapshot()
+        try verify(failed.albums == beforeFailure.albums)
+        try fixtures.sql("DROP TRIGGER reject_member_delete")
+
+        let original = try await catalog.snapshot()
+        let otherWindow = try Catalog(directory: fixtures.databaseDirectory)
+        let otherSnapshot = try await otherWindow.snapshot()
+        try await otherWindow.delete(albumID: deleted, expectedDataVersion: otherSnapshot.dataVersion)
+        let recreated = try await otherWindow.createAlbum(named: "Shared")
+        try verify(recreated == deleted)
+        try await expectAsyncError(AlbumDeletionError.self) {
+            try await catalog.delete(albumID: deleted, expectedDataVersion: original.dataVersion)
+        }
+        let after = try await catalog.snapshot()
+        try verify(after.albums.first { $0.id == recreated }?.mediaIDs == [])
+        try verify(after.albums.first { $0.id == retained }?.mediaIDs == Array(memberIDs.reversed()))
+        try verify(after.media == original.media)
+        try await catalog.delete(albumID: recreated, expectedDataVersion: after.dataVersion)
+        let reopened = try await otherWindow.snapshot()
+        try verify(reopened.albums.map(\.id) == [retained])
         let afterBytes = try paths.map { try Data(contentsOf: $0) }
         let afterTimes = try paths.map { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         try verify(afterBytes == bytes && afterTimes == times)
