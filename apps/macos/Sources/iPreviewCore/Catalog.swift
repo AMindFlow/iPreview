@@ -289,7 +289,6 @@ extension Catalog {
     private static let albumMembers = """
         media.source_id = ?1
         AND substr(media.relative_path, 1, length(?2)) = ?2
-        AND instr(substr(media.relative_path, length(?2) + 1), '/') = 0
         """
 
     public func albumTags() throws -> [SourceAlbumTag] {
@@ -439,9 +438,11 @@ extension Catalog {
     private func updateOrganization<Result>(_ album: SourceAlbumKey, _ update: (Int64) throws -> Result) throws -> Result {
         let key = try albumBindings(album)
         return try database.transaction {
-            let indexed = try database.select("SELECT 1 FROM media WHERE \(Self.albumMembers) LIMIT 1",
-                                              membershipBindings(album)) { _ in true }
-            guard !indexed.isEmpty else { throw AlbumOrganizationError.unknownAlbum }
+            let layout = try database.select("""
+                SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
+                WHERE \(Self.albumMembers) LIMIT 1
+                """, membershipBindings(album)) { Layout(rawValue: textColumn($0, 0))! }.first
+            guard let layout, album.matchesLayout(layout) else { throw AlbumOrganizationError.unknownAlbum }
             try database.execute("""
                 INSERT INTO source_album_organization (source_id, album_path) VALUES (?, ?)
                 ON CONFLICT (source_id, album_path) DO NOTHING

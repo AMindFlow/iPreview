@@ -74,6 +74,30 @@ struct CatalogChecks {
         try verify(work.relativePath == "Maker/Complete" && work.samples.map(\.name) == ["样张.jpg"])
         try verify(work.photoSets.first?.cover?.name == "封面.jpg")
         try verify(flat.relativePath.isEmpty && flat.photoSets.first?.cover == nil)
+
+        let completeAlbum = SourceAlbumKey(media: work.video)
+        let compactAlbum = SourceAlbumKey(media: flat.video)
+        let completeCover = [work.samples[0].id, work.photoSets[0].photos[0].id]
+        let compactCover = [flat.photoSets[0].photos[0].id]
+        let worksTag = try await reopened.addTag(named: "作品", to: completeAlbum)
+        try await reopened.addTag(worksTag.id, to: compactAlbum)
+        try await reopened.replaceCover(completeCover, for: completeAlbum)
+        try await reopened.replaceCover(compactCover, for: compactAlbum)
+        let completeSettings = try await reopened.sourceAlbumOrganization(for: completeAlbum)
+        let compactSettings = try await reopened.sourceAlbumOrganization(for: compactAlbum)
+        try verify(completeSettings.effectiveCoverIDs == completeCover && compactSettings.effectiveCoverIDs == compactCover)
+        try verify(completeSettings.tags == [worksTag] && compactSettings.tags == [worksTag])
+
+        let tagged = try await reopened.sourceAlbumIndex().taggedAlbums[worksTag.id]
+        let index = SearchIndex(media: initial.media, sources: initial.sources)
+        let taggedPhotos = index.globalSearch("照片", mode: .fuzzy, directories: false, files: true, taggedAlbums: tagged)
+        try verify(Set(taggedPhotos.compactMap(\.sourceAlbum)) == [completeAlbum, compactAlbum])
+        try verify(taggedPhotos.count == 2)
+        let intermediate = SourceAlbumKey(sourceID: work.video.source.id, relativePath: work.relativePath + "/官方样张")
+        try await expectAsyncError(AlbumOrganizationError.self) {
+            try await reopened.setFavorite(true, for: intermediate)
+        }
+
         try await reopened.markUnavailable(source: work.video.source)
         let offline = try await reopened.snapshot()
         try verify(offline.videoWorks.first { $0.id == work.id }?.video.isAvailable == false)

@@ -5,7 +5,10 @@ namespace IPreview;
 internal readonly record struct SourceAlbumKey(long SourceId, string RelativePath)
 {
     public static SourceAlbumKey FromMedia(Media item) =>
-        new(item.Source.Id, SourceRename.SplitPath(item.RelativePath).Parent.TrimEnd('/'));
+        new(item.Source.Id, string.Join('/', item.RelativePath.Split('/').SkipLast(1).Take((int)item.Source.Layout)));
+
+    public bool MatchesLayout(Layout layout) =>
+        (RelativePath.Length == 0 ? 0 : RelativePath.Count(character => character == '/') + 1) == (int)layout;
 }
 internal sealed record SourceAlbumTag(long Id, string Name, string NormalizedName)
 {
@@ -56,7 +59,6 @@ internal sealed partial class Catalog
     private const string AlbumMembers = """
         media.source_id = ?1
         AND substr(media.relative_path, 1, length(?2)) = ?2
-        AND instr(substr(media.relative_path, length(?2) + 1), '/') = 0
         """;
 
     public List<SourceAlbumTag> ReadAlbumTags() =>
@@ -198,9 +200,11 @@ internal sealed partial class Catalog
     private long EnsureOrganization(SourceAlbumKey album)
     {
         ValidateAlbumPath(album);
-        var indexed = database.Query("SELECT 1 FROM media WHERE " + AlbumMembers + " LIMIT 1;", _ => true,
-            album.SourceId, AlbumPrefix(album));
-        if (indexed.Count == 0)
+        var layouts = database.Query($"""
+            SELECT sources.layout FROM media JOIN sources ON sources.id = media.source_id
+            WHERE {AlbumMembers} LIMIT 1;
+            """, row => MediaFiles.DecodeLayout(row.Text(0)), album.SourceId, AlbumPrefix(album));
+        if (layouts.Count == 0 || !album.MatchesLayout(layouts[0]))
             throw new InvalidOperationException("此专辑已不在资料库中。");
 
         database.Execute("""

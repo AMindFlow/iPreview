@@ -517,6 +517,31 @@ static void CheckVideoWorkIndex(string root)
     Check(nested.RelativePath == "Maker/Complete" && nested.Samples.Single().FileName == "样张.jpg" &&
         nested.PhotoSets.Single().Cover?.FileName == "封面.jpg", "nested work and its roles survive restart");
     Check(flat.RelativePath.Length == 0 && flat.PhotoSets.Single().Cover is null, "compact flat photo set survives restart");
+
+    var completeAlbum = SourceAlbumKey.FromMedia(nested.Video);
+    var compactAlbum = SourceAlbumKey.FromMedia(flat.Video);
+    long[] completeCover = [nested.Samples[0].Id, nested.PhotoSets[0].Photos[0].Id];
+    long[] compactCover = [flat.PhotoSets[0].Photos[0].Id];
+    var worksTag = reopened.AddAlbumTag("作品", completeAlbum);
+    reopened.AddAlbumTag(worksTag.Id, compactAlbum);
+    reopened.ReplaceCover(completeCover, completeAlbum);
+    reopened.ReplaceCover(compactCover, compactAlbum);
+    var completeSettings = reopened.ReadSourceAlbumOrganization(completeAlbum);
+    var compactSettings = reopened.ReadSourceAlbumOrganization(compactAlbum);
+    Check(completeSettings.EffectiveCoverIds.SequenceEqual(completeCover) &&
+        compactSettings.EffectiveCoverIds.SequenceEqual(compactCover), "nested work images serve as ordered album covers");
+    Check(completeSettings.Tags.SequenceEqual([worksTag]) && compactSettings.Tags.SequenceEqual([worksTag]),
+        "both work structures can be tagged at album level");
+
+    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[worksTag.Id];
+    var taggedPhotos = MediaSearch.Find(snapshot.Sources.Values, snapshot.Media, new("照片", false),
+        GlobalSearchScope.Files, taggedAlbums: tagged);
+    Check(taggedPhotos.Count == 2 && taggedPhotos.Select(hit => hit.SourceAlbum).ToHashSet()
+        .SetEquals([completeAlbum, compactAlbum]), "tagged album search includes nested photos for both work structures");
+    var intermediate = new SourceAlbumKey(nested.Video.Source.Id, nested.RelativePath + "/官方样张");
+    Reject<InvalidOperationException>(() => reopened.SetFavorite(true, intermediate),
+        "an intermediate work directory cannot be organized as an album");
+
     reopened.Rescan(nested.Video.Source.Id, null);
     Check(!reopened.Read().VideoWorks.Single(work => work.Video.Id == nested.Video.Id).Video.Available,
         "unavailable source retains the indexed work");

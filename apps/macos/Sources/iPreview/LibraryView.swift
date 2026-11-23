@@ -1140,11 +1140,15 @@ enum LibraryPage: Hashable, Sendable {
     }
 
     func sourceAlbum(in source: Source?) -> SourceAlbumKey? {
+        guard let source else { return nil }
+        let path: String
         switch self {
-        case .folder(let id, let path): SourceAlbumKey(sourceID: id, relativePath: path)
-        case .source(let id) where source?.layout == .flat: SourceAlbumKey(sourceID: id, relativePath: "")
-        default: nil
+        case .folder(_, let relativePath): path = relativePath
+        case .source: path = ""
+        default: return nil
         }
+        let key = SourceAlbumKey(sourceID: source.id, relativePath: path)
+        return key.matchesLayout(source.layout) ? key : nil
     }
 
     var sourceID: Int64? {
@@ -1279,7 +1283,7 @@ struct ContentScope {
     }
 
     static func folderKey(_ media: Media) -> String {
-        media.components.dropLast().prefix(media.source.layout.albumDepth).joined(separator: "/")
+        SourceAlbumKey(media: media).relativePath
     }
 }
 
