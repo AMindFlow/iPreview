@@ -501,17 +501,16 @@ struct LibraryView: View {
                 Button {
                     addAlbumMedia = album
                 } label: {
-                    Image(systemName: "rectangle.stack")
-                        .font(.system(size: 35, weight: .light))
-                        .foregroundStyle(Color.libraryInk.opacity(0.64))
-                        .frame(width: 74, height: 70)
-                        .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
-                        .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundStyle(.white, Color.ipreviewAccent)
-                        }
-                        .contentShape(Rectangle())
+                    ZStack {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 35, weight: .light))
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .regular))
+                    }
+                    .foregroundStyle(Color.libraryInk.opacity(0.64))
+                    .frame(width: 74, height: 70)
+                    .background(Color.mediaSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 15))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("添加媒体")
