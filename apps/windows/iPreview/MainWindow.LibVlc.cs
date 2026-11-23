@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.Storage;
 
 namespace IPreview;
 
@@ -11,6 +14,72 @@ public sealed partial class MainWindow
     private WriteableBitmap? fallbackBitmap;
     private string? fallbackSystemError;
     private (Media Media, int Generation)? awaitingNativeVideo;
+    private CancellationTokenSource? nativeFrameVerification;
+
+    private async Task VerifyNativeVideo(string path, Media media, MediaPlayer owner, int generation)
+    {
+        var verification = new CancellationTokenSource();
+        nativeFrameVerification = verification;
+        try
+        {
+            var endedWithoutFrames = await Task.Run(() => NativeVideoEndedWithoutFrames(path, verification.Token));
+            if (endedWithoutFrames && CanUpdatePreview(generation) && ReferenceEquals(player, owner) &&
+                ReferenceEquals(nativeFrameVerification, verification))
+            {
+                await RecoverSystemVideo(media, generation, "系统无法播放此视频。",
+                    "系统播放器播放结束，未能解码任何视频画面。");
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(nativeFrameVerification, verification))
+                nativeFrameVerification = null;
+            verification.Dispose();
+        }
+    }
+
+    private static async Task<bool> NativeVideoEndedWithoutFrames(string path, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return false;
+
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(path);
+            if (cancellationToken.IsCancellationRequested)
+                return false;
+
+            using var source = MediaSource.CreateFromStorageFile(file);
+            using var verifier = new MediaPlayer();
+            verifier.CommandManager.IsEnabled = false;
+            verifier.IsMuted = true;
+            // Frame-server mode disables automatic rendering, so it belongs only on the companion player.
+            verifier.IsVideoFrameServerEnabled = true;
+            var endedWithoutFrames = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            verifier.VideoFrameAvailable += (_, _) => endedWithoutFrames.TrySetResult(false);
+            verifier.MediaFailed += (_, _) => endedWithoutFrames.TrySetResult(false);
+            verifier.MediaEnded += (_, _) => endedWithoutFrames.TrySetResult(true);
+            using var canceled = cancellationToken.Register(() => endedWithoutFrames.TrySetResult(false));
+            if (cancellationToken.IsCancellationRequested)
+                return false;
+
+            verifier.Source = source;
+            verifier.Play();
+            return await endedWithoutFrames.Task;
+        }
+        catch (Exception error) when (MediaFailure(error) || error is NotSupportedException)
+        {
+            Debug.WriteLine($"Windows video frame verification unavailable: {error.Message}");
+            return false;
+        }
+    }
+
+    private void StopNativeVideoVerification()
+    {
+        var verification = nativeFrameVerification;
+        nativeFrameVerification = null;
+        verification?.Cancel();
+    }
 
     private bool RecoverIfNativeVideoMissing(MediaPlaybackSession session, bool playbackConfirmed)
     {
