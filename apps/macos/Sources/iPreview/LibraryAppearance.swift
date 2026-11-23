@@ -5,6 +5,14 @@ import iPreviewCore
 enum LibraryTheme: String, CaseIterable {
     case system, light, dark
 
+    var next: Self {
+        switch self {
+        case .system: .light
+        case .light: .dark
+        case .dark: .system
+        }
+    }
+
     var title: String {
         switch self {
         case .system: "自动"
@@ -236,7 +244,7 @@ struct LibraryThemeButton: View {
             if NSEvent.modifierFlags.contains(.option) {
                 showingMenu = true
             } else {
-                theme = isDark ? .light : .dark
+                theme = theme.next
             }
         } label: {
             Group {
@@ -265,7 +273,7 @@ struct LibraryThemeButton: View {
         .accessibilityLabel(theme == .system ? "主题：自动（\(isDark ? "黑暗" : "明亮")）" : "主题：\(theme.title)")
         .accessibilityIdentifier("library-theme")
         .accessibilityAction(named: Text("选择主题")) { showingMenu = true }
-        .help("点击切换明暗。按住 Option 显示主题菜单。")
+        .help("点击依次切换自动、明亮、黑暗。按住 Option 显示主题菜单。")
         .popover(isPresented: $showingMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(LibraryTheme.allCases, id: \.self) { option in
