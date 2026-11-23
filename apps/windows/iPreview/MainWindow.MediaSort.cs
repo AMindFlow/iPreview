@@ -63,6 +63,7 @@ public sealed partial class MainWindow
         previewTiles = ordered;
         previewIndex = ordered.IndexOf(selected);
         IndexLabel.Text = $"{previewIndex + 1} / {ordered.Count}";
+        UpdatePreviewNavigation();
         RefreshPreviewNeighbors();
         if (!previewVideoLocked)
             PreviewCanvas.Focus(FocusState.Programmatic);
