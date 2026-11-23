@@ -15,7 +15,7 @@ internal sealed record Media(long Id, Source Source, string RelativePath, bool I
 }
 
 internal sealed record Album(long Id, string Name);
-internal sealed record ScannedMedia(string RelativePath, bool IsVideo);
+internal sealed record ScannedMedia(string RelativePath, bool IsVideo, VideoWorkMembership? VideoWork = null);
 internal sealed record ImportSummary(string Path, IReadOnlyDictionary<Layout, List<ScannedMedia>> Options);
 
 internal static class MediaFiles
@@ -48,23 +48,21 @@ internal static class MediaFiles
         return new(path, options);
     }
 
+    public static VideoWorkRecognition ProbeVideoWork(string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        EnsureReadableLocalRoot(path);
+        var children = ReadChildren(path);
+        return ProbeVideoWork(path, children, ReadFiles(path, children));
+    }
+
     public static List<ScannedMedia> Scan(string root, Layout layout)
     {
-        EnsureReadableLocalRoot(root);
-        var targetDepth = layout switch
-        {
-            Layout.Flat => 0,
-            Layout.Creator => 1,
-            Layout.MultiCreator => 2,
-            _ => throw new ArgumentOutOfRangeException(nameof(layout))
-        };
-        var files = new List<ScannedMedia>();
-        ScanDirectory(root, root, 0, targetDepth, (depth, file) =>
-        {
-            if (depth == targetDepth)
-                files.Add(file);
-        });
-        return files;
+        var directories = ReadDirectoryTree(root, (int)layout, retainingLayoutDepth: true);
+        var workEntries = directories.Values.SelectMany(level => level)
+            .Where(item => item.VideoWork is not null).ToList();
+        var workPaths = workEntries.Select(item => item.RelativePath).ToHashSet(StringComparer.Ordinal);
+        return directories[layout].Where(item => !workPaths.Contains(item.RelativePath)).Concat(workEntries).ToList();
     }
 
     public static bool IsLocalRootAvailable(string path)
@@ -110,43 +108,65 @@ internal static class MediaFiles
         return path;
     }
 
-    private static Dictionary<Layout, List<ScannedMedia>> ReadDirectoryTree(string path)
+    private static Dictionary<Layout, List<ScannedMedia>> ReadDirectoryTree(
+        string path, int maximumDepth = 2, bool retainingLayoutDepth = false)
     {
         EnsureReadableLocalRoot(path);
-        var filesAtDepth = new List<ScannedMedia>[] { [], [], [] };
-        ScanDirectory(path, path, 0, 2, (depth, file) => filesAtDepth[depth].Add(file));
-        return new()
-        {
-            [Layout.Flat] = filesAtDepth[0],
-            [Layout.Creator] = filesAtDepth[1],
-            [Layout.MultiCreator] = filesAtDepth[2]
-        };
-    }
+        var files = Enum.GetValues<Layout>().ToDictionary(layout => layout, _ => new List<ScannedMedia>());
+        Scan(path, path, 0, recognizeWorks: true);
+        return files;
 
-    private static void ScanDirectory(string root, string path, int depth, int maximumDepth,
-                                     Action<int, ScannedMedia> add)
-    {
-        var directory = new DirectoryInfo(path);
-        foreach (var item in directory.EnumerateFileSystemInfos())
+        void Scan(string root, string directory, int depth, bool recognizeWorks)
         {
-            var attributes = item.Attributes;
-            if (IsSkipped(item.Name, attributes))
-                continue;
-            if ((attributes & FileAttributes.Directory) != 0)
+            var children = ReadChildren(directory);
+            var direct = ReadFiles(directory, children);
+            var prefix = depth == 0 ? "" : RelativePath(root, directory) + "/";
+            var level = files[(Layout)depth];
+            var scoped = direct.Select(item => item with { RelativePath = prefix + item.RelativePath });
+            if (recognizeWorks && ProbeVideoWork(directory, children, direct) is VideoWorkRecognition.Recognized(var work))
             {
-                if (depth < maximumDepth)
-                    ScanDirectory(root, item.FullName, depth + 1, maximumDepth, add);
-                continue;
+                var tagged = work.IndexEntries(prefix);
+                var included = tagged.Select(item => item.RelativePath).ToHashSet(StringComparer.Ordinal);
+                level.AddRange(tagged);
+                level.AddRange(scoped.Where(item => !included.Contains(item.RelativePath)));
+                if (!retainingLayoutDepth)
+                    return;
+                // A saved layout can contain ordinary media at an additional level inside a work.
+                recognizeWorks = false;
             }
+            else
+                level.AddRange(scoped);
 
-            var extension = item.Extension;
-            var video = IsVideoExtension(extension);
-            if (!video && !Images.Contains(extension))
-                continue;
-            var relative = Path.GetRelativePath(root, item.FullName).Replace(Path.DirectorySeparatorChar, '/');
-            add(depth, new(relative, video));
+            if (depth < maximumDepth)
+                foreach (var child in children.OfType<DirectoryInfo>())
+                    Scan(root, child.FullName, depth + 1, recognizeWorks);
         }
     }
+
+    private static VideoWorkRecognition ProbeVideoWork(string root, FileSystemInfo[] children, ScannedMedia[] direct)
+    {
+        var files = direct.ToList();
+        foreach (var folder in children.OfType<DirectoryInfo>().Where(folder => VideoWork.Folders.Contains(folder.Name)))
+        {
+            var nested = ReadChildren(folder.FullName);
+            files.AddRange(ReadFiles(root, nested));
+            if (folder.Name == VideoWork.PhotoSetsFolder)
+                foreach (var book in nested.OfType<DirectoryInfo>())
+                    files.AddRange(ReadFiles(root, ReadChildren(book.FullName)));
+        }
+        return VideoWork.Recognize(root, files);
+    }
+
+    private static FileSystemInfo[] ReadChildren(string path) => new DirectoryInfo(path).EnumerateFileSystemInfos()
+        .Where(item => !IsSkipped(item.Name, item.Attributes)).ToArray();
+
+    private static ScannedMedia[] ReadFiles(string root, FileSystemInfo[] items) => items.OfType<FileInfo>()
+        .Where(item => IsSupportedExtension(item.Extension))
+        .Select(item => new ScannedMedia(RelativePath(root, item.FullName), IsVideoExtension(item.Extension)))
+        .ToArray();
+
+    private static string RelativePath(string root, string path) =>
+        Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
 
     internal static bool IsSupportedExtension(string extension) => IsVideoExtension(extension) || Images.Contains(extension);
 

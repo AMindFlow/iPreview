@@ -83,6 +83,16 @@ def generate_media(work, library):
         "层级歧义/创作者甲/远景/01-雾山.png": dusk,
         "直属媒体/Morning.png": harbor,
         "直属媒体/海面.mp4": mp4,
+        "视频作品/完整结构/视频/影片.mp4": mp4,
+        "视频作品/完整结构/官方样张/样张.jpg": skyline,
+        "视频作品/完整结构/附加写真集/写真集 2/封面.png": harbor,
+        "视频作品/完整结构/附加写真集/写真集 2/图片 1.png": dusk,
+        "视频作品/完整结构/附加写真集/写真集 10/封面.jpg": skyline,
+        "视频作品/完整结构/附加写真集/写真集 10/图片 1.png": harbor,
+        "视频作品/简化结构/影片.mov": mov,
+        "视频作品/简化结构/官方样张.jpg": skyline,
+        "视频作品/简化结构/附加写真集/图片 2.png": harbor,
+        "视频作品/简化结构/附加写真集/图片 10.png": dusk,
     }
     for relative_path, sample in samples.items():
         destination = library / relative_path

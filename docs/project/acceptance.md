@@ -10,7 +10,7 @@
 python3 scripts/generate-fixtures.py /tmp/iPreview-fixtures.zip
 ```
 
-该脚本生成最初四类基础目录。最终版本 `samples/iPreview-fixtures.zip` 还保留损坏视频补例；`samples/supplement.zip` 提供长视频15秒跳转、同名不同后缀、长名称、`@` 字面量及多行层级导航等后续样例。两端将基础／补充样例解压到各自 `~/Temporary/iPreview/` 复用，按版本清单核对哈希；验收记录写明使用哪套目录，不假定补充包与脚本输出相同。
+该脚本生成四类基础目录和 `视频作品/完整结构`、`视频作品/简化结构` 两棵 [LIB-006](../specs/spike/library.md#lib-006-两种视频作品结构)样例。0.1.0 的 `samples/iPreview-fixtures.zip` 还保留损坏视频补例，`samples/supplement.zip` 提供长视频15秒跳转、同名不同后缀、长名称、`@` 字面量及多行层级导航等样例。两端解压到各自 `~/Temporary/iPreview/` 复用，按版本清单核对哈希并记录实际使用的样例。
 
 | 来源 | 预期导入结果 |
 | --- | --- |

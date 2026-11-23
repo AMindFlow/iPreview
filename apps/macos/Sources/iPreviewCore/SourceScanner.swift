@@ -3,6 +3,7 @@ import Foundation
 public struct ScanEntry: Sendable {
     public let relativePath: String
     public let kind: MediaKind
+    var videoWork: VideoWorkMembership?
 }
 
 public struct ImportCandidate: Identifiable, Sendable {
@@ -11,8 +12,12 @@ public struct ImportCandidate: Identifiable, Sendable {
     public let layout: Layout
     public let entries: [ScanEntry]
 
+    public var videoWorkCount: Int { entries.count { if case .video = $0.videoWork { true } else { false } } }
+
     public var albumCount: Int {
-        Set(entries.map { $0.relativePath.split(separator: "/").dropLast().joined(separator: "/") }).count
+        Set(entries.map { entry in
+            entry.relativePath.split(separator: "/").prefix(layout.albumDepth).joined(separator: "/")
+        }).count
     }
 }
 
@@ -43,62 +48,28 @@ public enum SourceScanner {
     ]
 
     public static func inspect(_ selected: URL, dataDirectory: URL) throws -> SourceInspection {
-        let root = selected.standardizedFileURL.resolvingSymlinksInPath()
-        let dataPath = dataDirectory.standardizedFileURL.resolvingSymlinksInPath().path
-        if dataPath == root.path || dataPath.hasPrefix(root.path == "/" ? "/" : root.path + "/")
-            || root.path.hasPrefix(dataPath + "/") {
-            throw ScanError.overlappingCatalog
+        let root = try validatedRoot(selected, dataDirectory: dataDirectory)
+        let levels = try scanLevels(root, through: Layout.multiCreator.albumDepth)
+        let candidates = [Layout.creator, .multiCreator].compactMap { layout in
+            let files = levels[layout.albumDepth]
+            return files.isEmpty ? nil : ImportCandidate(layout: layout, entries: files)
         }
+        if !candidates.isEmpty { return SourceInspection(root: root, candidates: candidates) }
+        guard !levels[0].isEmpty else { throw ScanError.noSupportedMedia }
+        return SourceInspection(root: root, candidates: [ImportCandidate(layout: .flat, entries: levels[0])])
+    }
 
-        let rootChildren = try readRoot(root)
-        var creatorEntries: [ScanEntry] = []
-        var multiEntries: [ScanEntry] = []
-        for (child, values) in rootChildren where values.isDirectory == true {
-            let first = try children(of: child)
-            creatorEntries += entries(in: first, prefix: [child.lastPathComponent])
-            for (grandchild, nestedValues) in first where nestedValues.isDirectory == true {
-                let second = try children(of: grandchild)
-                multiEntries += entries(in: second, prefix: [child.lastPathComponent, grandchild.lastPathComponent])
-            }
-        }
-
-        var candidates: [ImportCandidate] = []
-        if !creatorEntries.isEmpty {
-            candidates.append(ImportCandidate(layout: .creator, entries: creatorEntries))
-        }
-        if !multiEntries.isEmpty {
-            candidates.append(ImportCandidate(layout: .multiCreator, entries: multiEntries))
-        }
-        if candidates.isEmpty {
-            let direct = entries(in: rootChildren, prefix: [])
-            if !direct.isEmpty {
-                candidates.append(ImportCandidate(layout: .flat, entries: direct))
-            }
-        }
-
-        guard !candidates.isEmpty else { throw ScanError.noSupportedMedia }
-        return SourceInspection(root: root, candidates: candidates)
+    public static func inspectVideoWork(_ selected: URL, dataDirectory: URL) throws -> VideoWorkRecognition {
+        let root = try validatedRoot(selected, dataDirectory: dataDirectory)
+        return try probeVideoWork(root, children: readRoot(root))
     }
 
     public static func rescan(_ source: Source) throws -> [ScanEntry] {
-        let rootChildren = try readRoot(source.url)
-        switch source.layout {
-        case .flat:
-            return entries(in: rootChildren, prefix: [])
-        case .creator:
-            return try rootChildren.flatMap { child, values -> [ScanEntry] in
-                guard values.isDirectory == true else { return [] }
-                return entries(in: try children(of: child), prefix: [child.lastPathComponent])
-            }
-        case .multiCreator:
-            return try rootChildren.flatMap { child, values -> [ScanEntry] in
-                guard values.isDirectory == true else { return [] }
-                return try children(of: child).flatMap { grandchild, nestedValues -> [ScanEntry] in
-                    guard nestedValues.isDirectory == true else { return [] }
-                    return entries(in: try children(of: grandchild), prefix: [child.lastPathComponent, grandchild.lastPathComponent])
-                }
-            }
-        }
+        let depth = source.layout.albumDepth
+        let levels = try scanLevels(source.url, through: depth, retainingLayoutDepth: true)
+        let workEntries = levels.flatMap { level in level.filter { $0.videoWork != nil } }
+        let workPaths = Set(workEntries.map(\.relativePath))
+        return levels[depth].filter { !workPaths.contains($0.relativePath) } + workEntries
     }
 
     public static func isRootAvailable(_ source: Source) -> Bool {
@@ -119,6 +90,62 @@ public enum SourceScanner {
         } catch {
             throw ScanError.inaccessibleRoot(url.lastPathComponent)
         }
+    }
+
+    private static func validatedRoot(_ selected: URL, dataDirectory: URL) throws -> URL {
+        let root = selected.standardizedFileURL.resolvingSymlinksInPath()
+        let dataPath = dataDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        if dataPath == root.path || dataPath.hasPrefix(root.path == "/" ? "/" : root.path + "/")
+            || root.path.hasPrefix(dataPath + "/") {
+            throw ScanError.overlappingCatalog
+        }
+        return root
+    }
+
+    private static func scanLevels(
+        _ root: URL, through maximumDepth: Int, retainingLayoutDepth: Bool = false
+    ) throws -> [[ScanEntry]] {
+        var levels = Array(repeating: [ScanEntry](), count: maximumDepth + 1)
+        func scan(_ directory: URL, children values: [(URL, URLResourceValues)], prefix: [String],
+                  recognizeWorks: Bool) throws {
+            var recognizeChildWorks = recognizeWorks
+            if recognizeWorks, case .recognized(let work) = try probeVideoWork(directory, children: values) {
+                let tagged = work.indexEntries(prefix: prefix)
+                let included = Set(tagged.map(\.relativePath))
+                let extras = entries(in: values, prefix: prefix).filter { !included.contains($0.relativePath) }
+                levels[prefix.count] += tagged + extras
+                guard retainingLayoutDepth else { return }
+                // A saved layout can contain ordinary media at an additional level inside a work.
+                recognizeChildWorks = false
+            } else {
+                levels[prefix.count] += entries(in: values, prefix: prefix)
+            }
+            guard prefix.count < maximumDepth else { return }
+            for (child, resource) in values where resource.isDirectory == true {
+                try scan(child, children: children(of: child), prefix: prefix + [child.lastPathComponent],
+                         recognizeWorks: recognizeChildWorks)
+            }
+        }
+        try scan(root, children: readRoot(root), prefix: [], recognizeWorks: true)
+        return levels
+    }
+
+    private static func probeVideoWork(
+        _ root: URL, children values: [(URL, URLResourceValues)]
+    ) throws -> VideoWorkRecognition {
+        var files = entries(in: values, prefix: [])
+        for (child, resource) in values where resource.isDirectory == true
+             && VideoWork.folders.contains(child.lastPathComponent) {
+            let name = child.lastPathComponent
+            let nested = try children(of: child)
+            files += entries(in: nested, prefix: [name])
+            if name == VideoWork.photoSetsFolder {
+                for (book, attributes) in nested where attributes.isDirectory == true {
+                    files += entries(in: try children(of: book), prefix: [name, book.lastPathComponent])
+                }
+            }
+        }
+        return VideoWork.recognize(root: root, entries: files)
     }
 
     private static func children(of directory: URL) throws -> [(URL, URLResourceValues)] {
