@@ -2,12 +2,22 @@ import SwiftUI
 import iPreviewCore
 
 enum AlbumOrganizationTarget: Identifiable {
-    case album(name: String, key: SourceAlbumKey, media: [Media])
+    case cover(name: String, key: SourceAlbumKey, media: [Media])
+    case addTag(SourceAlbumKey)
     case tags
 
-    var id: SourceAlbumKey? {
-        if case .album(_, let key, _) = self { return key }
-        return nil
+    enum ID: Hashable {
+        case cover(SourceAlbumKey)
+        case addTag(SourceAlbumKey)
+        case tags
+    }
+
+    var id: ID {
+        switch self {
+        case .cover(_, let key, _): .cover(key)
+        case .addTag(let key): .addTag(key)
+        case .tags: .tags
+        }
     }
 }
 
@@ -28,15 +38,16 @@ struct SourceAlbumOrganizationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             switch target {
-            case .album(let name, let key, let media):
+            case .cover(let name, let key, let media):
                 Text(name).font(.title2.bold())
                 if let organization {
-                    albumControls(key: key, organization: organization)
-                    Divider()
                     coverControls(key: key, media: media, organization: organization)
                 } else if error == nil {
-                    ProgressView().accessibilityLabel("正在读取专辑组织")
+                    ProgressView().accessibilityLabel("正在读取专辑封面")
                 }
+            case .addTag(let key):
+                Text("添加标签").font(.title2.bold())
+                addTagControls(key)
             case .tags:
                 Text("管理标签").font(.title2.bold())
                 globalTags
@@ -56,7 +67,7 @@ struct SourceAlbumOrganizationSheet: View {
         .frame(width: 490)
         .task {
             do {
-                if case .album(_, let key, _) = target {
+                if case .cover(_, let key, _) = target {
                     organization = try await model.organization(for: key)
                 }
             } catch {
@@ -73,52 +84,19 @@ struct SourceAlbumOrganizationSheet: View {
         }
     }
 
-    private func albumControls(key: SourceAlbumKey, organization: SourceAlbumOrganization) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle("收藏", isOn: Binding(get: { organization.favorite },
-                                         set: { value in apply { try await $0.setFavorite(value, for: key) } }))
-            Picker("评分", selection: Binding(get: { organization.ratingHalf },
-                                              set: { value in apply { try await $0.setRatingHalf(value, for: key) } })) {
-                Text("未评分").tag(nil as Int?)
-                ForEach(0...10, id: \.self) { value in
-                    Text("\(Double(value) / 2, format: .number) 星").tag(Optional(value))
+    private func addTagControls(_ key: SourceAlbumKey) -> some View {
+        let attached = Set(model.sourceAlbumIndex.tags(for: key).map(\.id))
+        let available = model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) }
+        return HStack {
+            TextField("标签名称", text: $tagDraft).onSubmit { addTag(key) }
+            Button("添加") { addTag(key) }
+                .disabled(tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Menu("已有标签") {
+                ForEach(available) { tag in
+                    Button(tag.name) { apply { try await $0.addTag(tag.id, to: key) } }
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("标签").font(.headline)
-                if !organization.tags.isEmpty {
-                    ScrollView {
-                        VStack(spacing: 5) {
-                            ForEach(organization.tags) { tag in
-                                HStack {
-                                    Text(tag.name).lineLimit(1)
-                                    Spacer()
-                                    Button {
-                                        apply { try await $0.removeTag(tag.id, from: key) }
-                                    } label: {
-                                        Image(systemName: "xmark.circle")
-                                    }
-                                    .accessibilityLabel("移除标签 \(tag.name)")
-                                    .buttonStyle(.borderless)
-                                }
-                                .frame(height: 20)
-                            }
-                        }
-                    }
-                    .frame(height: CGFloat(min(organization.tags.count, 4) * 25 - 5))
-                }
-                HStack {
-                    TextField("标签名称", text: $tagDraft).onSubmit { addTag(key) }
-                    Button("添加") { addTag(key) }
-                        .disabled(tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Menu("已有标签") {
-                        let attached = Set(organization.tags.map(\.id))
-                        ForEach(model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) }) { tag in
-                            Button(tag.name) { apply { try await $0.addTag(tag.id, to: key) } }
-                        }
-                    }
-                }
-            }
+            .disabled(available.isEmpty)
         }
         .disabled(working)
     }
@@ -251,7 +229,7 @@ struct SourceAlbumOrganizationSheet: View {
             defer { working = false }
             do {
                 try await model.organize(action)
-                if case .album(_, let key, _) = target {
+                if case .cover(_, let key, _) = target {
                     organization = try await model.organization(for: key)
                 }
                 success()

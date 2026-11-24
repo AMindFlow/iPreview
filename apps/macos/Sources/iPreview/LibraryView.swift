@@ -148,7 +148,7 @@ struct LibraryView: View {
         let scope = model.contentScope(for: page)
 
         return NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            sidebar
+            sidebar(scope)
                 .accessibilityHidden(libraryOverlayShown)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
@@ -175,6 +175,11 @@ struct LibraryView: View {
                 PreviewWindowChrome(session: preview)
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
+            }
+        }
+        .overlay {
+            if organizationTarget != nil {
+                Color.black.opacity(0.20).allowsHitTesting(false).accessibilityHidden(true)
             }
         }
         .overlay {
@@ -279,8 +284,12 @@ struct LibraryView: View {
         .disabled(libraryOverlayShown)
     }
 
-    private var sidebar: some View {
-        ScrollView {
+    private func sidebar(_ scope: ContentScope) -> some View {
+        let currentAlbum = visibleAlbum(in: scope)
+        let nestedAlbum = currentAlbum.flatMap { $0.relativePath.isEmpty ? nil : $0 }
+        let rootAlbums = Set(model.snapshot.media.lazy.filter(\.existsInSource).map(SourceAlbumKey.init)
+            .filter { $0.relativePath.isEmpty })
+        return ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 3) {
                     sidebarRow("媒体库", icon: "photo.on.rectangle.angled", active: page == .library) {
@@ -310,17 +319,28 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
 
                     ForEach(model.snapshot.sources) { source in
+                        let root = SourceAlbumKey(sourceID: source.id, relativePath: "")
+                        let child = nestedAlbum.flatMap { $0.sourceID == source.id ? $0 : nil }
                         SourceSwipeRow(isRevealed: revealedSource == source.id, enabled: canChooseFolder,
-                                       setRevealed: { revealedSource = $0 ? source.id : nil },
+                                       setRevealed: { open in
+                                           if open { revealedSource = source.id }
+                                           else if revealedSource == source.id { revealedSource = nil }
+                                       },
                                        rescan: { rescanSource(source) }, delete: { confirmSourceDeletion(source) }) {
                             sidebarRow(source.name, icon: source.layout.sidebarSymbol,
-                                       active: page.sourceID == source.id,
+                                       active: page.sourceID == source.id && child == nil,
                                        status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
-                                       offline: !source.isAvailable) {
+                                       offline: !source.isAvailable, album: rootAlbums.contains(root) ? root : nil) {
                                 revealedSource = nil
                                 navigate(.source(source.id))
                             }
                             .help(source.path)
+                        }
+                        if let child {
+                            sidebarRow(scope.title, icon: scope.videoWork == nil ? "photo.on.rectangle" : "film",
+                                       active: true, album: child)
+                                .padding(.leading, 16)
+                                .accessibilityIdentifier("current-source-album")
                         }
                     }
                 }
@@ -373,67 +393,139 @@ struct LibraryView: View {
     }
 
     private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .frame(width: 17)
-                    .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
-                Text(name)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if offline {
-                    Image(systemName: "bolt.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
+                            album: SourceAlbumKey? = nil, action: (() -> Void)? = nil) -> some View {
+        let label = HStack(spacing: 9) {
+            Image(systemName: icon)
+                .frame(width: 17)
+                .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
+            Text(name)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if offline {
+                Image(systemName: "bolt.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
-            .fontWeight(active ? .semibold : .medium)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            .background(active ? Color.ipreviewAccent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(status)
-        .accessibilityAddTraits(active ? .isSelected : [])
+        .fontWeight(active ? .semibold : .medium)
+        .foregroundStyle(.primary)
+        .padding(.leading, 10)
+        .frame(height: 34)
+        .contentShape(Rectangle())
+
+        return HStack(spacing: 3) {
+            if let action {
+                Button(action: action) { label }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(status)
+                    .accessibilityAddTraits(active ? .isSelected : [])
+            } else {
+                label.accessibilityAddTraits(.isSelected)
+            }
+            if let album {
+                albumFavorite(album, size: 12)
+                    .accessibilityIdentifier("sidebar-album-favorite-\(album.sourceID)-\(album.relativePath)")
+                    .padding(.trailing, 4)
+            } else {
+                Spacer(minLength: 7).frame(width: 7)
+            }
+        }
+        .background(active ? Color.ipreviewAccent.opacity(0.12) : Color.clear, in: .rect(cornerRadius: 9))
+    }
+
+    private func visibleAlbum(in scope: ContentScope) -> SourceAlbumKey? {
+        if let work = scope.videoWork {
+            return SourceAlbumKey(media: work.video)
+        }
+        guard let album = page.sourceAlbum(in: scope.source),
+              scope.items.contains(where: { SourceAlbumKey(media: $0) == album }) else { return nil }
+        return album
+    }
+
+    private func albumFavorite(_ album: SourceAlbumKey, size: CGFloat = 18) -> some View {
+        let favorite = model.sourceAlbumIndex.favoriteAlbums.contains(album)
+        return AlbumFavoriteButton(favorite: favorite, size: size) {
+            updateAlbum { try await $0.setFavorite(!favorite, for: album) }
+        }
+        .disabled(model.isWorking || titleEdit != nil)
+    }
+
+    private func updateAlbum(_ action: @escaping (Catalog) async throws -> Void) {
+        Task {
+            guard !model.isWorking else { return }
+            do {
+                try await model.organize(action)
+            } catch {
+                model.error = error.localizedDescription
+            }
+        }
     }
 
     private func header(_ scope: ContentScope) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 10) {
+        let album = visibleAlbum(in: scope)
+        return VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top, spacing: 10) {
                 if let parent = page.parent(in: scope.source?.layout) {
                     Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(.borderless)
+                    .frame(height: 37)
                     .accessibilityLabel(parent.label)
                     .help(parent.label)
                 }
-                browserTitle(scope)
-                if let source = scope.source, !source.isAvailable {
-                    Label("离线", systemImage: "externaldrive.badge.xmark")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
-                   !scope.items.isEmpty {
-                    AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
-                                      revision: model.revision)
-                        .frame(width: 62, height: 42)
-                        .clipShape(.rect(cornerRadius: 6))
-                }
-                if page == .library {
+                if let album {
                     Button {
-                        organizationTarget = .tags
+                        organizationTarget = .cover(name: scope.title, key: album, media: scope.items)
                     } label: {
-                        Label("管理标签", systemImage: "tag")
+                        AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
+                                          revision: model.revision)
+                            .frame(width: 76, height: 55)
+                            .clipShape(.rect(cornerRadius: 7))
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(model.isWorking)
+                    .buttonStyle(.plain)
+                    .disabled(model.isWorking || titleEdit != nil)
+                    .accessibilityLabel("设置专辑封面")
+                    .accessibilityIdentifier("album-cover")
+                    .help("设置专辑封面")
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        browserTitle(scope)
+                        if let album {
+                            albumFavorite(album)
+                                .accessibilityIdentifier("album-favorite")
+                        }
+                        if let source = scope.source, !source.isAvailable {
+                            Label("离线", systemImage: "externaldrive.badge.xmark")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        if page == .library {
+                            Button {
+                                organizationTarget = .tags
+                            } label: {
+                                Label("管理标签", systemImage: "tag")
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(model.isWorking)
+                        }
+                    }
+                    if let album {
+                        AlbumHeaderRating(ratingHalf: model.sourceAlbumIndex.ratingsHalf[album]) { rating in
+                            updateAlbum { try await $0.setRatingHalf(rating, for: album) }
+                        }
+                        .disabled(model.isWorking || titleEdit != nil)
+                        AlbumHeaderTags(tags: model.sourceAlbumIndex.tags(for: album)) {
+                            organizationTarget = .addTag(album)
+                        } remove: { tag in
+                            updateAlbum { try await $0.removeTag(tag.id, from: album) }
+                        }
+                        .disabled(model.isWorking || titleEdit != nil)
+                    }
                 }
             }
 
@@ -458,16 +550,6 @@ struct LibraryView: View {
                         Button("预览作品", systemImage: "play.rectangle") { openVideoWork(work) }
                             .buttonStyle(.borderless)
                             .disabled(model.isWorking)
-                    }
-                    if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
-                       !scope.items.isEmpty {
-                        Button {
-                            organizationTarget = .album(name: scope.title, key: album, media: scope.items)
-                        } label: {
-                            Label("专辑组织", systemImage: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(model.isWorking)
                     }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
@@ -497,7 +579,7 @@ struct LibraryView: View {
                     .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
                     .accessibilityIdentifier(edit.controlID + "-name")
                     .background {
-                        RenameClickBoundary { finishTitleEdit(edit) }
+                        OutsideClickBoundary { finishTitleEdit(edit) }
                             .allowsHitTesting(false)
                     }
                     .task {
