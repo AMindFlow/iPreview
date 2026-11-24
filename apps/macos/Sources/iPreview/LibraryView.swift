@@ -287,8 +287,6 @@ struct LibraryView: View {
     private func sidebar(_ scope: ContentScope) -> some View {
         let currentAlbum = visibleAlbum(in: scope)
         let nestedAlbum = currentAlbum.flatMap { $0.relativePath.isEmpty ? nil : $0 }
-        let rootAlbums = Set(model.snapshot.media.lazy.filter(\.existsInSource).map(SourceAlbumKey.init)
-            .filter { $0.relativePath.isEmpty })
         return ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 3) {
@@ -330,7 +328,8 @@ struct LibraryView: View {
                             sidebarRow(source.name, icon: source.layout.sidebarSymbol,
                                        active: page.sourceID == source.id && child == nil,
                                        status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
-                                       offline: !source.isAvailable, album: rootAlbums.contains(root) ? root : nil) {
+                                       offline: !source.isAvailable,
+                                       album: model.rootAlbumSourceIDs.contains(source.id) ? root : nil) {
                                 revealedSource = nil
                                 navigate(.source(source.id))
                             }
@@ -476,10 +475,11 @@ struct LibraryView: View {
                     .help(parent.label)
                 }
                 if let album {
+                    let media = scope.items.filter { SourceAlbumKey(media: $0) == album }
                     Button {
-                        organizationTarget = .cover(name: scope.title, key: album, media: scope.items)
+                        organizationTarget = .cover(name: scope.title, key: album, media: media)
                     } label: {
-                        AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
+                        AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: media),
                                           revision: model.revision)
                             .frame(width: 76, height: 55)
                             .clipShape(.rect(cornerRadius: 7))

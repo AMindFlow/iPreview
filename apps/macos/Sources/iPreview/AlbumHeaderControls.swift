@@ -94,6 +94,8 @@ struct AlbumHeaderTags: View {
     let tags: [SourceAlbumTag]
     let add: () -> Void
     let remove: (SourceAlbumTag) -> Void
+    @State private var hovered = false
+    @FocusState private var addFocused: Bool
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -109,6 +111,8 @@ struct AlbumHeaderTags: View {
                 addButton
             }
         }
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
     }
 
     private var pills: some View {
@@ -126,6 +130,8 @@ struct AlbumHeaderTags: View {
         .buttonBorderShape(.circle)
         .controlSize(.small)
         .libraryGlassButton()
+        .focused($addFocused)
+        .opacity(tags.isEmpty || hovered || addFocused ? 1 : 0)
         .accessibilityLabel("添加专辑标签")
         .help("添加标签")
     }
