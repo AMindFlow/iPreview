@@ -118,6 +118,7 @@ public sealed partial class MainWindow : Window
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
         sourceAlbumIndex = Database.ReadSourceAlbumIndex();
+        sourceAlbumKeys = media.Where(item => item.Present).Select(SourceAlbumKey.FromMedia).ToHashSet();
         videoWorks = snapshot.VideoWorks;
 
         RevealSourceActions(null);
@@ -301,8 +302,9 @@ public sealed partial class MainWindow : Window
                 var count = isCreator
                     ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
                     : group.Count();
+                var key = new SourceAlbumKey(source!.Id, albumPath);
                 IReadOnlyList<Media> cover = isCreator ? [group.First()]
-                    : sourceAlbumIndex.Covers(new(source!.Id, albumPath), group);
+                    : sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, group));
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
                     Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}");
             }).ToList();

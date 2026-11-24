@@ -10,6 +10,7 @@ namespace IPreview;
 public sealed partial class MainWindow
 {
     private SourceAlbumIndex sourceAlbumIndex = SourceAlbumIndex.Empty;
+    private HashSet<SourceAlbumKey> sourceAlbumKeys = [];
 
     private readonly FontIcon[] sourceAlbumStarFills = new FontIcon[5];
     private int? displayedAlbumRating;
@@ -21,13 +22,11 @@ public sealed partial class MainWindow
     private SourceAlbumKey? AlbumKeyAt(Source source, string? folder)
     {
         var key = new SourceAlbumKey(source.Id, folder?.TrimEnd('/') ?? "");
-        if (videoWorks.Any(item => item.Video.Source.Id == source.Id && key.RelativePath == item.RelativePath))
-            return key;
-        var insideWork = videoWorks.Any(item => item.Video.Source.Id == source.Id &&
-            (item.RelativePath.Length == 0 ||
-                key.RelativePath.StartsWith(item.RelativePath + "/", StringComparison.Ordinal)));
-        return !insideWork && key.MatchesLayout(source.Layout) ? key : null;
+        return sourceAlbumKeys.Contains(key) ? key : null;
     }
+
+    private static IEnumerable<Media> SourceAlbumMembers(SourceAlbumKey key, IEnumerable<Media> items) =>
+        items.Where(item => SourceAlbumKey.FromMedia(item) == key);
 
     private void InitializeSourceAlbumStars()
     {
@@ -85,7 +84,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, members));
+        SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, members)));
         var favorite = sourceAlbumIndex.FavoriteAlbums.Contains(key);
         SourceAlbumFavorite.IsChecked = favorite;
         SourceAlbumFavoriteIcon.Glyph = favorite ? "\uE735" : "\uE734";
@@ -230,7 +229,8 @@ public sealed partial class MainWindow
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(form);
         panel.Children.Add(status);
-        var images = MediaSearch.ByPath(ScopeMedia().Where(item => item.Available && !item.IsVideo)).ToList();
+        var images = MediaSearch.ByPath(SourceAlbumMembers(key, ScopeMedia())
+            .Where(item => item.Available && !item.IsVideo)).ToList();
         var imagesById = images.ToDictionary(item => item.Id);
         var changed = false;
         try
