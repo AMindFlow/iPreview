@@ -15,6 +15,7 @@ public sealed partial class MainWindow
     private readonly FontIcon[] sourceAlbumStarFills = new FontIcon[5];
     private int? displayedAlbumRating;
     private bool sourceAlbumHasTags;
+    private Button? hoveredTagAction;
 
     private SourceAlbumKey? VisibleAlbumKey => VisibleSource is { } source
         ? AlbumKeyAt(source, current.Folder) : null;
@@ -142,12 +143,18 @@ public sealed partial class MainWindow
         }
     }
 
-    private void TagChipEntered(object sender, PointerRoutedEventArgs args) =>
-        SetTagRemoveVisibility((Button)((Grid)sender).FindName("RemoveTagButton"), true);
+    private void TagChipEntered(object sender, PointerRoutedEventArgs args)
+    {
+        var button = (Button)((Grid)sender).FindName("RemoveTagButton");
+        hoveredTagAction = button;
+        SetTagRemoveVisibility(button, true);
+    }
 
     private void TagChipExited(object sender, PointerRoutedEventArgs args)
     {
         var button = (Button)((Grid)sender).FindName("RemoveTagButton");
+        if (ReferenceEquals(hoveredTagAction, button))
+            hoveredTagAction = null;
         if (button.FocusState == FocusState.Unfocused)
             SetTagRemoveVisibility(button, false);
     }
@@ -159,7 +166,9 @@ public sealed partial class MainWindow
     }
 
     private void FocusTagRemoveButton(object sender, RoutedEventArgs args) => SetTagRemoveVisibility((Button)sender, true);
-    private void BlurTagRemoveButton(object sender, RoutedEventArgs args) => SetTagRemoveVisibility((Button)sender, false);
+
+    private void BlurTagRemoveButton(object sender, RoutedEventArgs args) =>
+        SetTagRemoveVisibility((Button)sender, ReferenceEquals(sender, hoveredTagAction));
 
     private static void SetTagRemoveVisibility(Button button, bool show)
     {
@@ -167,10 +176,16 @@ public sealed partial class MainWindow
         button.IsHitTestVisible = show;
     }
 
-    private void ShowAlbumTagPlus(object sender, PointerRoutedEventArgs args) => SourceAlbumAddTag.Opacity = 1;
+    private void ShowAlbumTagPlus(object sender, PointerRoutedEventArgs args)
+    {
+        hoveredTagAction = SourceAlbumAddTag;
+        SourceAlbumAddTag.Opacity = 1;
+    }
 
     private void FadeAlbumTagPlus(object sender, PointerRoutedEventArgs args)
     {
+        if (ReferenceEquals(hoveredTagAction, SourceAlbumAddTag))
+            hoveredTagAction = null;
         if (sourceAlbumHasTags && SourceAlbumAddTag.FocusState == FocusState.Unfocused)
             SourceAlbumAddTag.Opacity = 0;
     }
@@ -180,7 +195,7 @@ public sealed partial class MainWindow
     private void HideAlbumTagButton(object sender, RoutedEventArgs args)
     {
         var button = (Button)sender;
-        button.Opacity = ReferenceEquals(button, SourceAlbumAddTag) && !sourceAlbumHasTags ? 1 : 0;
+        button.Opacity = ReferenceEquals(button, hoveredTagAction) || !sourceAlbumHasTags ? 1 : 0;
     }
 
     private void LoadFolderCover(object sender, RoutedEventArgs args) => UpdateFolderCover((Border)sender);

@@ -22,6 +22,7 @@ public sealed partial class MainWindow
     private List<SourceAlbumTag> searchTagSuggestions = [];
     private readonly List<long> searchTagIds = [];
     private bool suggestingTags;
+    private bool openingSearchTagsAfterHover;
 
     private sealed class SearchResultGroup(SearchResultCategory category, IEnumerable<GlobalSearchHit> hits)
         : List<GlobalSearchHit>(hits)
@@ -150,7 +151,7 @@ public sealed partial class MainWindow
     {
         searchOpen = false;
         searchRevision++;
-        SearchTagsFlyout.Hide();
+        HideSearchTags();
         SearchOverlay.Visibility = Visibility.Collapsed;
         LibraryView.IsHitTestVisible = true;
         SetSearchHits([]);
@@ -348,7 +349,7 @@ public sealed partial class MainWindow
 
     private void PeekSearchTags(object sender, PointerRoutedEventArgs args)
     {
-        if (!SearchTagsFlyout.IsOpen && searchTagIds.Count > 0 &&
+        if (!openingSearchTagsAfterHover && !SearchTagsFlyout.IsOpen && searchTagIds.Count > 0 &&
             args.GetCurrentPoint(SearchTagStack).PointerDeviceType == PointerDeviceType.Mouse)
             SearchTagsFlyout.ShowAt(SearchTagStack, new FlyoutShowOptions
             {
@@ -356,12 +357,42 @@ public sealed partial class MainWindow
             });
     }
 
+    private void OpenSearchTags(object sender, RoutedEventArgs args)
+    {
+        if (openingSearchTagsAfterHover)
+            return;
+        if (!SearchTagsFlyout.IsOpen)
+            ShowStandardSearchTags();
+        else if (SearchTagsFlyout.ShowMode != FlyoutShowMode.Standard)
+        {
+            openingSearchTagsAfterHover = true;
+            SearchTagsFlyout.Hide();
+        }
+    }
+
+    private void SearchTagsClosed(object? sender, object args)
+    {
+        if (!openingSearchTagsAfterHover)
+            return;
+        openingSearchTagsAfterHover = false;
+        ShowStandardSearchTags();
+    }
+
+    private void ShowStandardSearchTags() =>
+        SearchTagsFlyout.ShowAt(SearchTagStack, new FlyoutShowOptions { ShowMode = FlyoutShowMode.Standard });
+
+    private void HideSearchTags()
+    {
+        openingSearchTagsAfterHover = false;
+        SearchTagsFlyout.Hide();
+    }
+
     private async void RemoveSearchTag(object sender, RoutedEventArgs args)
     {
         if (sender is not FrameworkElement { DataContext: SourceAlbumTag tag })
             return;
         searchTagIds.Remove(tag.Id);
-        SearchTagsFlyout.Hide();
+        HideSearchTags();
         UpdateSearchTagStack();
         SearchInput.Focus(FocusState.Programmatic);
         await RefreshSearch();
@@ -463,9 +494,9 @@ public sealed partial class MainWindow
                 args.Handled = true;
                 if (args.KeyStatus.WasKeyDown)
                     return;
-                if (SearchTagsFlyout.IsOpen)
+                if (SearchTagsFlyout.IsOpen || openingSearchTagsAfterHover)
                 {
-                    SearchTagsFlyout.Hide();
+                    HideSearchTags();
                     return;
                 }
                 if (suggestingTags && RemoveSearchTagTrigger())
@@ -514,7 +545,7 @@ public sealed partial class MainWindow
         var files = searchHits.Select(hit => hit.Media).OfType<Media>();
         var results = files.Select((media, index) => new Tile(media, index)).ToList();
         var selected = results.FindIndex(tile => tile.Media.Id == item.Id);
-        SearchTagsFlyout.Hide();
+        HideSearchTags();
         SearchOverlay.Visibility = Visibility.Collapsed;
         OpenPreview(results, selected, new(BrowseMode.List, 1));
     }

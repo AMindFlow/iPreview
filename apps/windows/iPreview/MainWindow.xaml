@@ -283,7 +283,7 @@
                                     <TextBlock x:Name="SourceAlbumRatingValue" VerticalAlignment="Center" FontSize="12"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                AutomationProperties.LiveSetting="Polite" />
-                                    <Button x:Name="SourceAlbumZeroRating" Style="{StaticResource LibraryIconButton}"
+                                    <Button Style="{StaticResource LibraryIconButton}"
                                             Content="0" Click="SetSourceAlbumZeroRating" AutomationProperties.Name="设为 0 星"
                                             ToolTipService.ToolTip="设为 0 星" />
                                     <Button x:Name="SourceAlbumClearRating" Style="{StaticResource LibraryIconButton}"
@@ -798,7 +798,7 @@
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
                         <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="14" Padding="7,3"
-                                Visibility="Collapsed" VerticalAlignment="Center" PointerEntered="PeekSearchTags">
+                                Visibility="Collapsed" VerticalAlignment="Center" Click="OpenSearchTags" PointerEntered="PeekSearchTags">
                             <StackPanel Orientation="Horizontal" Spacing="5">
                                 <Grid>
                                     <FontIcon x:Name="SearchTagStackedIcon" Glyph="&#xE8EC;" FontSize="13" Margin="0,0,6,3"
@@ -807,8 +807,8 @@
                                 </Grid>
                                 <TextBlock x:Name="SearchTagName" MaxWidth="76" FontSize="12" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <Button.Flyout>
-                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight">
+                            <FlyoutBase.AttachedFlyout>
+                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight" Closed="SearchTagsClosed">
                                     <ScrollViewer MaxHeight="220" MinWidth="160">
                                         <ItemsControl x:Name="SearchActiveTags">
                                             <ItemsControl.ItemTemplate>
@@ -838,7 +838,7 @@
                                         </ItemsControl>
                                     </ScrollViewer>
                                 </Flyout>
-                            </Button.Flyout>
+                            </FlyoutBase.AttachedFlyout>
                         </Button>
                         <Button Grid.Column="4" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
                                 VerticalAlignment="Center" Width="32" Height="32" Padding="0" CornerRadius="12"
