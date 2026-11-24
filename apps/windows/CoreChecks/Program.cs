@@ -409,6 +409,11 @@ static void CheckSourceAlbumOrganization(string work)
     Check(library.AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
     var organizationIndex = reopened.ReadSourceAlbumIndex();
     Check(organizationIndex.ConfiguredCovers[album].SequenceEqual([9L, 8L]), "card cover order matches stored selection");
+    Check(organizationIndex.FavoriteAlbums.SetEquals([album]) && organizationIndex.RatingsHalf.Count == 2 &&
+        organizationIndex.RatingsHalf[album] == 0 && organizationIndex.RatingsHalf[sibling] == 7,
+        "organization index preserves favorites and zero and half-star ratings");
+    Check(organizationIndex.TagsFor(album).SequenceEqual(persisted.Tags) &&
+        organizationIndex.TagsFor(sibling).SequenceEqual(persistedSibling.Tags), "organization index projects tags in display order");
     Check(SourceAlbumTag.Suggestions("旅", organizationIndex.Tags).Select(tag => tag.Id).SequenceEqual([trip.Id]),
         "tag suggestion uses the current display name");
     var filtered = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.All,
@@ -419,6 +424,34 @@ static void CheckSourceAlbumOrganization(string work)
         taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
     Check(filteredFiles.Count == 2 && filteredFiles.All(hit => hit.SourceAlbum == album),
         "filename search remains confined to tagged media");
+
+    var other = reopened.AddAlbumTag("Other", sibling);
+    var tagIndex = reopened.ReadSourceAlbumIndex();
+    Check(tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { scenic.Id, other.Id })?.SetEquals([album, sibling]) == true,
+        "distinct tag memberships combine as a union");
+    var overlapping = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { scenic.Id, other.Id, trip.Id });
+    var unionAlbums = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.Directories,
+        taggedAlbums: overlapping);
+    Check(unionAlbums.Count == 2 && unionAlbums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([album, sibling]),
+        "a tag-only search returns each matching source album once");
+    var unionHits = MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: overlapping);
+    Check(unionHits.Count == 3 && unionHits.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([album, sibling]),
+        "overlapping tags do not duplicate fuzzy file hits");
+    var exact = MediaSearch.Find(library.Sources.Values, library.Media, new("Image.png", true), GlobalSearchScope.Files,
+        taggedAlbums: overlapping);
+    Check(exact.Count == 1 && exact[0].SourceAlbum == sibling, "tag union intersects exact filename and suffix");
+    var unfiltered = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long>());
+    var stale = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { long.MaxValue });
+    Check(unfiltered is null && stale is { Count: 0 }, "empty selection and selection with no albums are distinct");
+    Check(MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: unfiltered).Count == 3 && MediaSearch.Find(library.Sources.Values, library.Media,
+        new("Image", false), GlobalSearchScope.Files, taggedAlbums: stale).Count == 0, "stale tag selection does not expose unfiltered results");
+    reopened.RemoveAlbumTag(other.Id, sibling);
+    var unlinked = reopened.ReadSourceAlbumIndex();
+    Check(unlinked.Tags.Contains(other) && unlinked.AlbumsMatchingAnyTagIds(new HashSet<long> { other.Id }) is { Count: 0 },
+        "an existing tag without links filters out all albums");
+    reopened.DeleteTag(other.Id);
 
     var coverPath = Path.Combine(sourcePath, "Maker/Album/Image 10.jpg");
     var outside = Path.Combine(work, "out-of-source.jpg");
@@ -447,6 +480,10 @@ static void CheckSourceAlbumOrganization(string work)
     Check(reopened.ReadAlbumTags().SequenceEqual([scenic]) && reopened.ReadSourceAlbumsForTag(trip.Id).Count == 0, "global delete removes links");
     var cleared = reopened.ReadSourceAlbumOrganization(album);
     Check(cleared.Favorite && cleared.RatingHalf is null, "clearing rating preserves favorite");
+    var clearedIndex = reopened.ReadSourceAlbumIndex();
+    Check(clearedIndex.FavoriteAlbums.SetEquals([album]) && clearedIndex.RatingsHalf.Count == 1 && clearedIndex.RatingsHalf[sibling] == 7,
+        "organization index omits a removed rating and preserves favorites");
+    Check(clearedIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { trip.Id }) is { Count: 0 }, "deleted tags do not match albums");
 }
 
 static void CheckVideoWorks(string root)
@@ -630,7 +667,8 @@ static void CheckLegacyWorkAlbumOrganization(string work)
 
     using var reopened = new Catalog(data);
     var loaded = reopened.Read();
-    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[tag.Id];
+    var albumIndex = reopened.ReadSourceAlbumIndex();
+    var tagged = albumIndex.TaggedAlbums[tag.Id];
     var albums = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("", false), GlobalSearchScope.Directories,
         taggedAlbums: tagged);
     Check(albums.Count == 2 && albums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([completeKey, compactKey]),
@@ -639,8 +677,11 @@ static void CheckLegacyWorkAlbumOrganization(string work)
     Check(group.Category == SearchResultCategory.Directory && group.SourceAlbum is null,
         "work subdirectories retain their directory classification");
 
+    var selectedAlbums = albumIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { tag.Id, long.MaxValue });
+    Check(MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("官方样张", true), GlobalSearchScope.Directories,
+        taggedAlbums: selectedAlbums).Count == 0, "tag selection does not expose internal work directories");
     var collectionHits = MediaSearch.Find(loaded.Sources.Values, loaded.AlbumMembers[collectionId],
-        new("照片", false), GlobalSearchScope.Files, taggedAlbums: tagged);
+        new("照片", false), GlobalSearchScope.Files, taggedAlbums: selectedAlbums);
     Check(collectionHits.Single() is { Media: { } selectedMedia } &&
         selectedMedia.Id == compactPhoto.Id && collectionHits[0].SourceAlbum == compactKey,
         "collection search preserves the selected shallow work photo and its tag scope");

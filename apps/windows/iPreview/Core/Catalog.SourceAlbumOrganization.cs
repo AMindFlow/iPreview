@@ -49,9 +49,25 @@ internal sealed record SourceAlbumOrganization(bool Favorite, int? RatingHalf, I
     IReadOnlyList<long> ConfiguredCoverIds, IReadOnlyList<long> EffectiveCoverIds);
 
 internal sealed record SourceAlbumIndex(List<SourceAlbumTag> Tags,
-    Dictionary<long, HashSet<SourceAlbumKey>> TaggedAlbums, Dictionary<SourceAlbumKey, long[]> ConfiguredCovers)
+    Dictionary<long, HashSet<SourceAlbumKey>> TaggedAlbums, Dictionary<SourceAlbumKey, long[]> ConfiguredCovers,
+    HashSet<SourceAlbumKey> FavoriteAlbums, Dictionary<SourceAlbumKey, int> RatingsHalf)
 {
-    public static SourceAlbumIndex Empty { get; } = new([], [], []);
+    public static SourceAlbumIndex Empty { get; } = new([], [], [], [], []);
+
+    public IReadOnlySet<SourceAlbumKey>? AlbumsMatchingAnyTagIds(IReadOnlySet<long> tagIds)
+    {
+        if (tagIds.Count == 0)
+            return null;
+
+        var matches = new HashSet<SourceAlbumKey>();
+        foreach (var id in tagIds)
+            if (TaggedAlbums.TryGetValue(id, out var albums))
+                matches.UnionWith(albums);
+        return matches;
+    }
+
+    public IReadOnlyList<SourceAlbumTag> TagsFor(SourceAlbumKey album) =>
+        Tags.Where(tag => TaggedAlbums.TryGetValue(tag.Id, out var albums) && albums.Contains(album)).ToArray();
 
     public IReadOnlyList<Media> Covers(SourceAlbumKey album, IEnumerable<Media> members)
     {
@@ -93,9 +109,16 @@ internal sealed partial class Catalog
             FROM source_album_cover_media AS cover JOIN source_album_organization AS organization
             ON organization.id = cover.source_album_id ORDER BY cover.position;
             """, row => (Key: new SourceAlbumKey(row.Number(0), row.Text(1)), Id: row.Number(2)));
+        var metadata = database.Query("""
+            SELECT source_id, album_path, favorite, rating_half FROM source_album_organization
+            WHERE favorite = 1 OR rating_half IS NOT NULL;
+            """, row => (Key: new SourceAlbumKey(row.Number(0), row.Text(1)),
+                Favorite: row.Number(2) == 1, Rating: (int?)row.NullableNumber(3)));
         return new SourceAlbumIndex(ReadAlbumTags(),
             links.GroupBy(link => link.Id).ToDictionary(group => group.Key, group => group.Select(link => link.Key).ToHashSet()),
-            covers.GroupBy(cover => cover.Key).ToDictionary(group => group.Key, group => group.Select(cover => cover.Id).ToArray()));
+            covers.GroupBy(cover => cover.Key).ToDictionary(group => group.Key, group => group.Select(cover => cover.Id).ToArray()),
+            metadata.Where(entry => entry.Favorite).Select(entry => entry.Key).ToHashSet(),
+            metadata.Where(entry => entry.Rating.HasValue).ToDictionary(entry => entry.Key, entry => entry.Rating!.Value));
     }, write: false);
 
     public List<SourceAlbumKey> ReadSourceAlbumsForTag(long tagId) => database.Query("""

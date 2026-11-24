@@ -313,9 +313,21 @@ extension Catalog {
                 (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
                  id: sqlite3_column_int64(row, 2))
             }
+            let metadata = try database.select("""
+                SELECT source_id, album_path, favorite, rating_half FROM source_album_organization
+                WHERE favorite = 1 OR rating_half IS NOT NULL
+                """) { row in
+                (key: SourceAlbumKey(sourceID: sqlite3_column_int64(row, 0), relativePath: textColumn(row, 1)),
+                 favorite: sqlite3_column_int(row, 2) == 1,
+                 rating: sqlite3_column_type(row, 3) == SQLITE_NULL ? nil : Int(sqlite3_column_int(row, 3)))
+            }
             return SourceAlbumIndex(tags: try albumTags(),
                                     taggedAlbums: Dictionary(grouping: links, by: \.id).mapValues { Set($0.map(\.key)) },
-                                    configuredCovers: Dictionary(grouping: covers, by: \.key).mapValues { $0.map(\.id) })
+                                    configuredCovers: Dictionary(grouping: covers, by: \.key).mapValues { $0.map(\.id) },
+                                    favoriteAlbums: Set(metadata.filter(\.favorite).map(\.key)),
+                                    ratingsHalf: Dictionary(uniqueKeysWithValues: metadata.compactMap { entry in
+                                        entry.rating.map { (entry.key, $0) }
+                                    }))
         }
     }
 

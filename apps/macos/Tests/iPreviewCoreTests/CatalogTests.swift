@@ -198,8 +198,11 @@ struct CatalogChecks {
         try verify(groups.count == 1 && groups[0].category == .directory && groups[0].sourceAlbum == nil)
 
         let collection = try required(loaded.albums.first { $0.id == collectionID })
+        let selectedAlbums = albums.albums(matchingAnyTagIDs: [tag.id, .max])
+        try verify(index.globalSearch("官方样张", mode: .exact, directories: true, files: false,
+                                      taggedAlbums: selectedAlbums).isEmpty)
         let collectionResults = index.globalSearch("照片", mode: .fuzzy, directories: false, files: true,
-                                                   taggedAlbums: albums.taggedAlbums[tag.id]) { result in
+                                                   taggedAlbums: selectedAlbums) { result in
             if case .file(let item) = result { return collection.mediaIDs.contains(item.id) }
             return false
         }
@@ -294,6 +297,8 @@ struct CatalogChecks {
         try verify(library.albums.first?.mediaIDs == [11, 8])
         let organizationIndex = try await reopened.sourceAlbumIndex()
         try verify(organizationIndex.configuredCovers[album] == [9, 8])
+        try verify(organizationIndex.favoriteAlbums == [album] && organizationIndex.ratingsHalf == [album: 0, sibling: 7])
+        try verify(organizationIndex.tags(for: album) == persisted.tags && organizationIndex.tags(for: sibling) == persistedSibling.tags)
         try verify(SourceAlbumTag.suggestions(matching: "旅", from: organizationIndex.tags).map(\.id) == [trip.id])
         let search = SearchIndex(media: library.media, sources: library.sources)
         let filtered = search.globalSearch("", mode: .fuzzy, directories: true, files: true,
@@ -303,6 +308,26 @@ struct CatalogChecks {
         let filteredFiles = search.globalSearch("Image", mode: .fuzzy, directories: false, files: true,
                                                 taggedAlbums: organizationIndex.taggedAlbums[scenic.id])
         try verify(filteredFiles.count == 2 && filteredFiles.allSatisfy { $0.sourceAlbum == album })
+
+        let other = try await reopened.addTag(named: "Other", to: sibling)
+        let tagIndex = try await reopened.sourceAlbumIndex()
+        try verify(tagIndex.albums(matchingAnyTagIDs: [scenic.id, other.id]) == [album, sibling])
+        let overlapping = tagIndex.albums(matchingAnyTagIDs: [scenic.id, other.id, trip.id])
+        let unionAlbums = search.globalSearch("", mode: .fuzzy, directories: true, files: false, taggedAlbums: overlapping)
+        try verify(unionAlbums.count == 2 && Set(unionAlbums.compactMap(\.sourceAlbum)) == [album, sibling])
+        let unionHits = search.globalSearch("Image", mode: .fuzzy, directories: false, files: true, taggedAlbums: overlapping)
+        try verify(unionHits.count == 3 && Set(unionHits.compactMap(\.sourceAlbum)) == [album, sibling])
+        let exact = search.globalSearch("Image.png", mode: .exact, directories: false, files: true, taggedAlbums: overlapping)
+        try verify(exact.count == 1 && exact.first?.sourceAlbum == sibling)
+        let unfiltered = tagIndex.albums(matchingAnyTagIDs: [])
+        let stale = tagIndex.albums(matchingAnyTagIDs: [.max])
+        try verify(unfiltered == nil && stale == [])
+        try verify(search.globalSearch("Image", mode: .fuzzy, directories: false, files: true, taggedAlbums: unfiltered).count == 3)
+        try verify(search.globalSearch("Image", mode: .fuzzy, directories: false, files: true, taggedAlbums: stale).isEmpty)
+        try await reopened.removeTag(other.id, from: sibling)
+        let unlinked = try await reopened.sourceAlbumIndex()
+        try verify(unlinked.tags.contains(other) && unlinked.albums(matchingAnyTagIDs: [other.id]) == [])
+        try await reopened.deleteTag(other.id)
 
         let removedCover = sourceURL.appendingPathComponent("Maker/Album/Image 10.jpg")
         let outside = fixtures.directory("Unavailable.jpg")
@@ -332,6 +357,9 @@ struct CatalogChecks {
         let deletedLinks = try await reopened.sourceAlbums(tagID: trip.id)
         let cleared = try await reopened.sourceAlbumOrganization(for: album)
         try verify(remaining == [scenic] && deletedLinks.isEmpty && cleared.ratingHalf == nil && cleared.favorite)
+        let clearedIndex = try await reopened.sourceAlbumIndex()
+        try verify(clearedIndex.favoriteAlbums == [album] && clearedIndex.ratingsHalf == [sibling: 7])
+        try verify(clearedIndex.albums(matchingAnyTagIDs: [trip.id]) == [])
     }
 
     static func checkLayouts() throws {
