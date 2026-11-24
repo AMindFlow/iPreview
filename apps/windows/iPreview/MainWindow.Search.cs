@@ -348,7 +348,8 @@ public sealed partial class MainWindow
 
     private void PeekSearchTags(object sender, PointerRoutedEventArgs args)
     {
-        if (args.Pointer.PointerDeviceType == PointerDeviceType.Mouse && searchTagIds.Count > 0)
+        if (!SearchTagsFlyout.IsOpen && searchTagIds.Count > 0 &&
+            args.GetCurrentPoint(SearchTagStack).PointerDeviceType == PointerDeviceType.Mouse)
             SearchTagsFlyout.ShowAt(SearchTagStack, new FlyoutShowOptions
             {
                 ShowMode = FlyoutShowMode.TransientWithDismissOnPointerMoveAway
@@ -462,6 +463,11 @@ public sealed partial class MainWindow
                 args.Handled = true;
                 if (args.KeyStatus.WasKeyDown)
                     return;
+                if (SearchTagsFlyout.IsOpen)
+                {
+                    SearchTagsFlyout.Hide();
+                    return;
+                }
                 if (suggestingTags && RemoveSearchTagTrigger())
                 {
                     await RefreshSearch();
@@ -508,6 +514,7 @@ public sealed partial class MainWindow
         var files = searchHits.Select(hit => hit.Media).OfType<Media>();
         var results = files.Select((media, index) => new Tile(media, index)).ToList();
         var selected = results.FindIndex(tile => tile.Media.Id == item.Id);
+        SearchTagsFlyout.Hide();
         SearchOverlay.Visibility = Visibility.Collapsed;
         OpenPreview(results, selected, new(BrowseMode.List, 1));
     }
