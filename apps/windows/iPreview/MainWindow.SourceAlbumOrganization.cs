@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace IPreview;
@@ -10,30 +11,177 @@ public sealed partial class MainWindow
 {
     private SourceAlbumIndex sourceAlbumIndex = SourceAlbumIndex.Empty;
 
-    private SourceAlbumKey? VisibleAlbumKey
+    private readonly FontIcon[] sourceAlbumStarFills = new FontIcon[5];
+    private int? displayedAlbumRating;
+    private bool sourceAlbumHasTags;
+
+    private SourceAlbumKey? VisibleAlbumKey => VisibleSource is { } source
+        ? AlbumKeyAt(source, current.Folder) : null;
+
+    private SourceAlbumKey? AlbumKeyAt(Source source, string? folder)
     {
-        get
+        var key = new SourceAlbumKey(source.Id, folder?.TrimEnd('/') ?? "");
+        if (videoWorks.Any(item => item.Video.Source.Id == source.Id && key.RelativePath == item.RelativePath))
+            return key;
+        var insideWork = videoWorks.Any(item => item.Video.Source.Id == source.Id &&
+            (item.RelativePath.Length == 0 ||
+                key.RelativePath.StartsWith(item.RelativePath + "/", StringComparison.Ordinal)));
+        return !insideWork && key.MatchesLayout(source.Layout) ? key : null;
+    }
+
+    private void InitializeSourceAlbumStars()
+    {
+        for (var star = 0; star < sourceAlbumStarFills.Length; star++)
         {
-            if (VisibleSource is not { } source)
-                return null;
-            var key = new SourceAlbumKey(source.Id, current.Folder?.TrimEnd('/') ?? "");
-            var workPath = ScopeMedia().FirstOrDefault()?.WorkAlbumPath;
-            return (workPath is null ? key.MatchesLayout(source.Layout) : key.RelativePath == workPath) ? key : null;
+            var target = new Grid { Width = 24, Height = 26 };
+            target.Children.Add(new FontIcon { Glyph = "\uE734", FontSize = 16, IsHitTestVisible = false });
+            var fill = new FontIcon { Glyph = "\uE735", FontSize = 16, IsHitTestVisible = false };
+            sourceAlbumStarFills[star] = fill;
+            target.Children.Add(fill);
+            for (var side = 0; side < 2; side++)
+            {
+                var half = star * 2 + side + 1;
+                var choose = new Button
+                {
+                    Style = (Style)LibraryView.Resources["AlbumRatingHalfButton"],
+                    HorizontalAlignment = side == 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+                    UseSystemFocusVisuals = true,
+                };
+                var name = $"设为 {FormatAlbumRating(half)}";
+                AutomationProperties.SetName(choose, name);
+                ToolTipService.SetToolTip(choose, name);
+                choose.PointerEntered += (_, _) => DrawSourceAlbumStars(half);
+                choose.Click += (_, _) => SetSourceAlbumRating(half);
+                target.Children.Add(choose);
+            }
+            SourceAlbumStars.Children.Add(target);
+        }
+        SourceAlbumStars.PointerExited += (_, _) => DrawSourceAlbumStars(displayedAlbumRating ?? 0);
+    }
+
+    private static string FormatAlbumRating(int half) =>
+        (half / 2d).ToString("0.#", CultureInfo.CurrentCulture) + " 星";
+
+    private void DrawSourceAlbumStars(int half)
+    {
+        for (var star = 0; star < sourceAlbumStarFills.Length; star++)
+        {
+            var fill = sourceAlbumStarFills[star];
+            int points = Math.Clamp(half - star * 2, 0, 2);
+            fill.Visibility = points == 0 ? Visibility.Collapsed : Visibility.Visible;
+            fill.Clip = points == 1 ? new RectangleGeometry { Rect = new(0, 0, 12, 26) } : null;
         }
     }
 
     private void ShowSourceAlbumControls(IEnumerable<Media> members)
     {
-        if (VisibleAlbumKey is { } key && members.Any())
-        {
-            SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, members));
-            SourceAlbumCover.Visibility = OrganizeSourceAlbum.Visibility = Visibility.Visible;
-        }
-        else
+        var album = members.Any() ? VisibleAlbumKey : null;
+        SourceAlbumCoverButton.Visibility = SourceAlbumFavorite.Visibility = SourceAlbumMetadata.Visibility =
+            album is null ? Visibility.Collapsed : Visibility.Visible;
+        if (album is not { } key)
         {
             SourceAlbumCover.Child = null;
-            SourceAlbumCover.Visibility = OrganizeSourceAlbum.Visibility = Visibility.Collapsed;
+            SourceAlbumTags.ItemsSource = null;
+            return;
         }
+
+        SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, members));
+        var favorite = sourceAlbumIndex.FavoriteAlbums.Contains(key);
+        SourceAlbumFavorite.IsChecked = favorite;
+        SourceAlbumFavoriteIcon.Glyph = favorite ? "\uE735" : "\uE734";
+        ToolTipService.SetToolTip(SourceAlbumFavorite, favorite ? "取消收藏专辑" : "收藏专辑");
+        displayedAlbumRating = sourceAlbumIndex.RatingsHalf.TryGetValue(key, out var half) ? half : null;
+        DrawSourceAlbumStars(displayedAlbumRating ?? 0);
+        SourceAlbumRatingValue.Text = displayedAlbumRating is int rating ? FormatAlbumRating(rating) : "未评分";
+        SourceAlbumClearRating.IsEnabled = !busy && displayedAlbumRating is not null;
+        var tags = sourceAlbumIndex.TagsFor(key);
+        SourceAlbumTags.ItemsSource = tags;
+        sourceAlbumHasTags = tags.Count > 0;
+        SourceAlbumAddTag.Opacity = sourceAlbumHasTags ? 0 : 1;
+    }
+
+    private void RefreshSourceAlbumMetadata()
+    {
+        sourceAlbumIndex = Database.ReadSourceAlbumIndex();
+        UpdateNavigationSelection();
+        ShowSourceAlbumControls(ScopeMedia());
+        RefreshSearchTagsFromCatalog();
+    }
+
+    private void ToggleSourceAlbumFavorite(object sender, RoutedEventArgs args)
+    {
+        if (!busy && VisibleAlbumKey is { } key)
+            SaveAlbumMetadata(() => Database.SetFavorite(SourceAlbumFavorite.IsChecked == true, key));
+    }
+
+    private void SetSourceAlbumZeroRating(object sender, RoutedEventArgs args) => SetSourceAlbumRating(0);
+    private void ClearSourceAlbumRating(object sender, RoutedEventArgs args) => SetSourceAlbumRating(null);
+
+    private void SetSourceAlbumRating(int? half)
+    {
+        if (!busy && VisibleAlbumKey is { } key && displayedAlbumRating != half)
+            SaveAlbumMetadata(() => Database.SetRatingHalf(half, key));
+    }
+
+    private void RemoveVisibleAlbumTag(object sender, RoutedEventArgs args)
+    {
+        if (!busy && VisibleAlbumKey is { } key && sender is FrameworkElement { DataContext: SourceAlbumTag tag })
+            SaveAlbumMetadata(() => Database.RemoveAlbumTag(tag.Id, key));
+    }
+
+    private void SaveAlbumMetadata(Action edit)
+    {
+        try
+        {
+            edit();
+            RefreshSourceAlbumMetadata();
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            ShowSourceAlbumControls(ScopeMedia());
+            ShowNotice("无法保存专辑组织", error.Message);
+        }
+    }
+
+    private void TagChipEntered(object sender, PointerRoutedEventArgs args) =>
+        SetTagRemoveVisibility((Button)((Grid)sender).FindName("RemoveTagButton"), true);
+
+    private void TagChipExited(object sender, PointerRoutedEventArgs args)
+    {
+        var button = (Button)((Grid)sender).FindName("RemoveTagButton");
+        if (button.FocusState == FocusState.Unfocused)
+            SetTagRemoveVisibility(button, false);
+    }
+
+    private void InitializeTagRemoveButton(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: string action, DataContext: SourceAlbumTag tag } button)
+            AutomationProperties.SetName(button, $"{action} {tag.Name}");
+    }
+
+    private void FocusTagRemoveButton(object sender, RoutedEventArgs args) => SetTagRemoveVisibility((Button)sender, true);
+    private void BlurTagRemoveButton(object sender, RoutedEventArgs args) => SetTagRemoveVisibility((Button)sender, false);
+
+    private static void SetTagRemoveVisibility(Button button, bool show)
+    {
+        button.Opacity = show ? 1 : 0;
+        button.IsHitTestVisible = show;
+    }
+
+    private void ShowAlbumTagPlus(object sender, PointerRoutedEventArgs args) => SourceAlbumAddTag.Opacity = 1;
+
+    private void FadeAlbumTagPlus(object sender, PointerRoutedEventArgs args)
+    {
+        if (sourceAlbumHasTags && SourceAlbumAddTag.FocusState == FocusState.Unfocused)
+            SourceAlbumAddTag.Opacity = 0;
+    }
+
+    private void RevealAlbumTagButton(object sender, RoutedEventArgs args) => ((Button)sender).Opacity = 1;
+
+    private void HideAlbumTagButton(object sender, RoutedEventArgs args)
+    {
+        var button = (Button)sender;
+        button.Opacity = ReferenceEquals(button, SourceAlbumAddTag) && !sourceAlbumHasTags ? 1 : 0;
     }
 
     private void LoadFolderCover(object sender, RoutedEventArgs args) => UpdateFolderCover((Border)sender);
@@ -72,38 +220,36 @@ public sealed partial class MainWindow
         return collage;
     }
 
-    private async void OpenSourceAlbumOrganization(object sender, RoutedEventArgs args)
+    private async void EditSourceAlbumCover(object sender, RoutedEventArgs args)
     {
         if (catalog is null || busy || VisibleAlbumKey is not { } key)
             return;
 
-        var panel = new StackPanel { Spacing = 8 };
         var status = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
-        var form = new StackPanel { Spacing = 12 };
+        var form = new StackPanel { Spacing = 9 };
+        var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(form);
         panel.Children.Add(status);
         var images = MediaSearch.ByPath(ScopeMedia().Where(item => item.Available && !item.IsVideo)).ToList();
         var imagesById = images.ToDictionary(item => item.Id);
-        var selected = Selection?.Media.Id;
         var changed = false;
-
         try
         {
             Render();
-            await OrganizationDialog(current.Label, panel).ShowAsync();
+            await OrganizationDialog("选择专辑封面", panel).ShowAsync();
             if (changed)
-                Reload(selected);
+                RefreshSourceAlbumMetadata();
         }
         catch (InvalidOperationException error)
         {
-            ShowNotice("无法读取专辑组织", error.Message);
+            ShowNotice("无法读取封面", error.Message);
         }
 
-        void Apply(Action change)
+        void Save(long[] ids)
         {
             try
             {
-                change();
+                Database.ReplaceCover(ids, key);
                 changed = true;
                 status.IsOpen = false;
                 Render();
@@ -119,75 +265,82 @@ public sealed partial class MainWindow
         {
             var organization = Database.ReadSourceAlbumOrganization(key);
             form.Children.Clear();
-
-            var favorite = new CheckBox { Content = "收藏", IsChecked = organization.Favorite };
-            favorite.Click += (_, _) => Apply(() => Database.SetFavorite(favorite.IsChecked == true, key));
-            form.Children.Add(favorite);
-
-            var rating = new ComboBox
-            {
-                Header = "评分",
-                ItemsSource = new[] { "未评分" }.Concat(Enumerable.Range(0, 11)
-                    .Select(value => (value / 2d).ToString("0.#", CultureInfo.CurrentCulture) + " 星")).ToArray(),
-                SelectedIndex = organization.RatingHalf is int half ? half + 1 : 0,
-                MinWidth = 115
-            };
-            rating.SelectionChanged += (_, _) => Apply(() =>
-                Database.SetRatingHalf(rating.SelectedIndex == 0 ? null : rating.SelectedIndex - 1, key));
-            form.Children.Add(rating);
-
-            var tagPanel = new StackPanel { Spacing = 6 };
-            tagPanel.Children.Add(new TextBlock { Text = "标签", FontSize = 14 });
-            foreach (var tag in organization.Tags)
-            {
-                var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                line.Children.Add(new TextBlock { Text = tag.Name, VerticalAlignment = VerticalAlignment.Center });
-                line.Children.Add(OrganizationButton("移除", () => Apply(() => Database.RemoveAlbumTag(tag.Id, key)),
-                    $"移除标签 {tag.Name}"));
-                tagPanel.Children.Add(line);
-            }
-            var input = new TextBox { PlaceholderText = "标签名称", MinWidth = 140 };
-            var addTag = OrganizationButton("添加", () => Apply(() => Database.AddAlbumTag(input.Text, key)));
-            addTag.IsEnabled = false;
-            input.TextChanged += (_, _) => addTag.IsEnabled = !string.IsNullOrWhiteSpace(input.Text);
-            var attached = organization.Tags.Select(tag => tag.Id).ToHashSet();
-            var existing = TagSelector(Database.ReadAlbumTags().Where(tag => !attached.Contains(tag.Id)).ToList());
-            existing.PlaceholderText = "已有标签";
-            existing.SelectionChanged += (_, _) =>
-            {
-                if (existing.SelectedItem is SourceAlbumTag tag)
-                    Apply(() => Database.AddAlbumTag(tag.Id, key));
-            };
-            var tagActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            tagActions.Children.Add(input);
-            tagActions.Children.Add(addTag);
-            tagActions.Children.Add(existing);
-            tagPanel.Children.Add(tagActions);
-            form.Children.Add(tagPanel);
-
-            var coverPanel = new StackPanel { Spacing = 8 };
-            var coverActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             var mode = organization.ConfiguredCoverIds.Count switch
             {
                 0 => "自动",
                 1 => "手选",
                 int count => $"{count} 张拼图"
             };
-            coverActions.Children.Add(new TextBlock { Text = $"封面 · {mode}", VerticalAlignment = VerticalAlignment.Center });
-            var choose = OrganizationButton("选择图片",
-                () => ChooseAlbumCover(coverPanel, images, ids => Apply(() => Database.ReplaceCover(ids, key)), Render));
+            actions.Children.Add(new TextBlock { Text = mode, VerticalAlignment = VerticalAlignment.Center });
+            var choose = OrganizationButton("选择图片", () => ChooseAlbumCover(form, images, Save, Render));
             choose.IsEnabled = images.Count > 0;
-            coverActions.Children.Add(choose);
+            actions.Children.Add(choose);
             if (organization.ConfiguredCoverIds.Count > 0)
-                coverActions.Children.Add(OrganizationButton("恢复自动", () => Apply(() => Database.ReplaceCover([], key))));
-            coverPanel.Children.Add(coverActions);
-            coverPanel.Children.Add(new Border
+                actions.Children.Add(OrganizationButton("恢复自动", () => Save([])));
+            form.Children.Add(actions);
+            form.Children.Add(new Border
             {
                 Height = 122, Width = 180, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new(8),
                 Child = CoverArtwork(organization.EffectiveCoverIds.Where(imagesById.ContainsKey).Select(id => imagesById[id]).ToArray())
             });
-            form.Children.Add(coverPanel);
         }
+    }
+
+    private async void AddVisibleAlbumTag(object sender, RoutedEventArgs args)
+    {
+        if (catalog is null || busy || VisibleAlbumKey is not { } key)
+            return;
+
+        var panel = new StackPanel { Spacing = 8 };
+        var input = new TextBox { Header = "新标签", PlaceholderText = "标签名称" };
+        var attached = sourceAlbumIndex.TagsFor(key).Select(tag => tag.Id).ToHashSet();
+        var picker = TagSelector(sourceAlbumIndex.Tags.Where(tag => !attached.Contains(tag.Id)).ToList());
+        picker.Header = "已有标签";
+        picker.PlaceholderText = "选择标签";
+        picker.Visibility = picker.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var status = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
+        panel.Children.Add(input);
+        panel.Children.Add(picker);
+        panel.Children.Add(status);
+        var dialog = OrganizationDialog("添加专辑标签", panel);
+        dialog.CloseButtonText = "取消";
+        dialog.PrimaryButtonText = "添加";
+        dialog.IsPrimaryButtonEnabled = false;
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        input.TextChanged += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(input.Text))
+                picker.SelectedIndex = -1;
+            UpdateButton();
+        };
+        picker.SelectionChanged += (_, _) =>
+        {
+            if (picker.SelectedItem is SourceAlbumTag)
+                input.Text = "";
+            UpdateButton();
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            try
+            {
+                if (picker.SelectedItem is SourceAlbumTag tag)
+                    Database.AddAlbumTag(tag.Id, key);
+                else
+                    Database.AddAlbumTag(input.Text, key);
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            {
+                status.Message = error.Message;
+                status.IsOpen = true;
+                args.Cancel = true;
+            }
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            RefreshSourceAlbumMetadata();
+
+        void UpdateButton() => dialog.IsPrimaryButtonEnabled =
+            picker.SelectedItem is SourceAlbumTag || !string.IsNullOrWhiteSpace(input.Text);
     }
 
     private void ChooseAlbumCover(Panel target, List<Media> images, Action<long[]> save, Action cancel)
@@ -262,7 +415,7 @@ public sealed partial class MainWindow
             Render();
             await OrganizationDialog("管理标签", panel).ShowAsync();
             if (changed)
-                sourceAlbumIndex = Database.ReadSourceAlbumIndex();
+                RefreshSourceAlbumMetadata();
         }
         catch (InvalidOperationException error)
         {

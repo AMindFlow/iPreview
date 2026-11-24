@@ -19,8 +19,13 @@ namespace IPreview;
 public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
-        long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null, string Caption = "")
+        long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null,
+        string Caption = "", bool? AlbumFavorite = null)
     {
+        public Thickness SidebarIndent => Folder is null ? new() : new(14, 0, 0, 0);
+        public Visibility FavoriteVisibility => AlbumFavorite is null ? Visibility.Collapsed : Visibility.Visible;
+        public string FavoriteGlyph => AlbumFavorite == true ? "\uE735" : "\uE734";
+        public string FavoriteLabel => AlbumFavorite == true ? "已收藏专辑" : "未收藏专辑";
         public override string ToString() => Label;
     }
 
@@ -51,11 +56,13 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetBrowseMode(browseMode);
         InitializeMediaSort();
+        InitializeSourceAlbumStars();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         RestoreTheme();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DismissSourceActionsOnOutsideClick), true);
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
         previewCopyTimer.Tick += (_, _) => ResetPreviewCopyFeedback();
@@ -114,14 +121,6 @@ public sealed partial class MainWindow : Window
         videoWorks = snapshot.VideoWorks;
 
         RevealSourceActions(null);
-        SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
-            .Select(source => new Navigation(source.Available ? source.Name : $"{source.Name}（离线）",
-                Source: source.Id, Glyph: source.Layout switch
-                {
-                    Layout.MultiCreator => "\uE902",
-                    Layout.Creator => "\uE77B",
-                    _ => "\uE8B7"
-                }, Help: source.Path)).ToList();
         AlbumNavigation.ItemsSource = albums.Select(album => new Navigation(album.Name, Album: album.Id,
             Glyph: "\uE7B8")).ToList();
 
@@ -132,14 +131,39 @@ public sealed partial class MainWindow : Window
                 ? new(album.Name, Album: albumId) : Library;
         UpdateNavigationSelection();
         ShowItems(selected);
+        RefreshSearchTagsFromCatalog();
     }
 
     private void UpdateNavigationSelection()
     {
-        SourceNavigation.SelectedItem = SourceNavigation.Items.OfType<Navigation>()
-            .FirstOrDefault(item => item.Source == current.Source);
+        var rows = SourceSidebarRows().ToList();
+        if (!SourceNavigation.Items.OfType<Navigation>().SequenceEqual(rows))
+            SourceNavigation.ItemsSource = rows;
+        var sourceRows = SourceNavigation.Items.OfType<Navigation>().Where(item => item.Source == current.Source);
+        SourceNavigation.SelectedItem = sourceRows.FirstOrDefault(item => item.Folder == current.Folder)
+            ?? sourceRows.FirstOrDefault();
         AlbumNavigation.SelectedItem = AlbumNavigation.Items.OfType<Navigation>()
             .FirstOrDefault(item => item.Album == current.Album);
+    }
+
+    private IEnumerable<Navigation> SourceSidebarRows()
+    {
+        foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
+        {
+            var label = source.Available ? source.Name : $"{source.Name}（离线）";
+            var glyph = source.Layout switch
+            {
+                Layout.MultiCreator => "\uE902",
+                Layout.Creator => "\uE77B",
+                _ => "\uE8B7"
+            };
+            bool? rootFavorite = AlbumKeyAt(source, null) is { } rootKey
+                ? sourceAlbumIndex.FavoriteAlbums.Contains(rootKey) : null;
+            yield return new Navigation(label, Source: source.Id, Glyph: glyph, Help: source.Path, AlbumFavorite: rootFavorite);
+            if (current.Source == source.Id && current.Folder is { } folder && AlbumKeyAt(source, folder) is { } album)
+                yield return new Navigation(current.Label, Source: source.Id, Folder: folder,
+                    AlbumFavorite: sourceAlbumIndex.FavoriteAlbums.Contains(album));
+        }
     }
 
     private void Navigate(object sender, ItemClickEventArgs args)
@@ -479,7 +503,10 @@ public sealed partial class MainWindow : Window
         AddSourceButton.IsEnabled = ImportButton.IsEnabled;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
-        OrganizeSourceAlbum.IsEnabled = ManageAlbumTags.IsEnabled = !value && catalog is not null;
+        ManageAlbumTags.IsEnabled = !value && catalog is not null;
+        SourceAlbumCoverButton.IsEnabled = SourceAlbumFavorite.IsEnabled = !value;
+        SourceAlbumMetadata.IsHitTestVisible = !value;
+        SourceAlbumClearRating.IsEnabled = !value && displayedAlbumRating is not null;
         BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }

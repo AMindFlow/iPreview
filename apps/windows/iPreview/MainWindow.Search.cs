@@ -337,6 +337,15 @@ public sealed partial class MainWindow
         AutomationProperties.SetName(SearchTagStack, "标签筛选 " + string.Join("、", tags.Select(tag => tag.Name)));
     }
 
+    private void RefreshSearchTagsFromCatalog()
+    {
+        if (!searchOpen)
+            return;
+        UpdateSearchTagStack();
+        if (SearchOverlay.Visibility == Visibility.Visible)
+            _ = RefreshSearch();
+    }
+
     private void PeekSearchTags(object sender, PointerRoutedEventArgs args)
     {
         if (args.Pointer.PointerDeviceType == PointerDeviceType.Mouse && searchTagIds.Count > 0)

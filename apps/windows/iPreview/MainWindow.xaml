@@ -45,6 +45,20 @@
                     <Setter Property="CornerRadius" Value="8" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 </Style>
+                <Style x:Key="AlbumRatingHalfButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                    <Setter Property="Width" Value="12" />
+                    <Setter Property="MinWidth" Value="12" />
+                    <Setter Property="Height" Value="26" />
+                    <Setter Property="MinHeight" Value="26" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="CornerRadius" Value="4" />
+                </Style>
+                <Style x:Key="SourceRowActionButton" TargetType="Button" BasedOn="{StaticResource LibraryIconButton}">
+                    <Setter Property="Height" Value="28" />
+                    <Setter Property="CornerRadius" Value="14" />
+                    <Setter Property="BorderThickness" Value="0" />
+                </Style>
                 <DataTemplate x:Key="AlbumCoverChoiceTemplate">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Image Width="52" Height="38" Stretch="UniformToFill"
@@ -53,15 +67,19 @@
                     </StackPanel>
                 </DataTemplate>
                 <DataTemplate x:Key="NavigationEntryTemplate">
-                    <Grid ColumnSpacing="9" ToolTipService.ToolTip="{Binding Help}">
+                    <Grid ColumnSpacing="9" Margin="{Binding SidebarIndent}" ToolTipService.ToolTip="{Binding Help}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="17" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="{Binding Glyph}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" FontSize="13"
                                    TextTrimming="CharacterEllipsis" />
+                        <FontIcon Grid.Column="2" Glyph="{Binding FavoriteGlyph}" Visibility="{Binding FavoriteVisibility}"
+                                  FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  AutomationProperties.Name="{Binding FavoriteLabel}" />
                     </Grid>
                 </DataTemplate>
             </Grid.Resources>
@@ -129,21 +147,32 @@
                                   AutomationProperties.Name="源">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Loaded="SourceRowLoaded" Unloaded="SourceRowUnloaded" Background="Transparent"
+                                    <Grid Loaded="SourceRowLoaded" Unloaded="SourceRowUnloaded" DataContextChanged="SourceRowDataChanged"
+                                          Background="Transparent"
                                           PointerWheelChanged="SourceRowWheelChanged" MinHeight="26">
                                         <ContentControl x:Name="SourceDescription" Content="{Binding}"
                                                         ContentTemplate="{StaticResource NavigationEntryTemplate}"
                                                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                                                         IsTabStop="False" />
                                         <StackPanel x:Name="SourceActions" Orientation="Horizontal" HorizontalAlignment="Right"
-                                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="Collapsed">
-                                            <Button Style="{StaticResource LibraryIconButton}" Click="RescanSidebarSource"
+                                                    VerticalAlignment="Center" Spacing="5" Visibility="Collapsed">
+                                            <Button Style="{StaticResource SourceRowActionButton}" Click="RescanSidebarSource"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                     AutomationProperties.Name="重新扫描" ToolTipService.ToolTip="重新扫描">
-                                                <FontIcon Glyph="&#xE72C;" FontSize="13" />
+                                                <Button.Resources>
+                                                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                                </Button.Resources>
+                                                <FontIcon Glyph="&#xE72C;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                             </Button>
-                                            <Button Style="{StaticResource LibraryIconButton}" Click="DeleteSidebarSource"
+                                            <Button Style="{StaticResource SourceRowActionButton}" Click="DeleteSidebarSource"
+                                                    Background="{ThemeResource SystemFillColorCriticalBrush}"
                                                     AutomationProperties.Name="删除媒体源" ToolTipService.ToolTip="删除媒体源">
-                                                <FontIcon Glyph="&#xE74D;" FontSize="13" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                <Button.Resources>
+                                                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
+                                                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SystemFillColorCriticalBrush" />
+                                                </Button.Resources>
+                                                <FontIcon Glyph="&#xE74D;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -209,29 +238,111 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid VerticalAlignment="Center">
+                    <Grid VerticalAlignment="Center" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
                                 Style="{StaticResource LibraryIconButton}" Margin="0,0,6,0"
                                 AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
                             <FontIcon Glyph="&#xE76B;" FontSize="14" />
                         </Button>
-                        <Grid Grid.Column="1">
-                            <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="Bold"
-                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
-                            <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
-                                     FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
-                                     PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
-                                     TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
-                        </Grid>
-                        <Border x:Name="SourceAlbumCover" Grid.Column="2" Width="62" Height="42"
-                                Margin="8,0,0,0" CornerRadius="6" Visibility="Collapsed"
-                                Background="{ThemeResource ControlFillColorSecondaryBrush}" />
+                        <Button x:Name="SourceAlbumCoverButton" Grid.Column="1" Padding="0" BorderThickness="0"
+                                Click="EditSourceAlbumCover" Visibility="Collapsed" VerticalAlignment="Top"
+                                AutomationProperties.Name="选择专辑封面" ToolTipService.ToolTip="选择专辑封面">
+                            <Border x:Name="SourceAlbumCover" Width="74" Height="52" CornerRadius="7"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}" />
+                        </Button>
+                        <StackPanel Grid.Column="2" Spacing="3">
+                            <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid>
+                                    <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="Bold"
+                                               TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                               AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
+                                    <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
+                                             FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
+                                             PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
+                                             TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
+                                </Grid>
+                                <ToggleButton x:Name="SourceAlbumFavorite" Grid.Column="1" Visibility="Collapsed"
+                                              Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="0" CornerRadius="15"
+                                              Click="ToggleSourceAlbumFavorite" AutomationProperties.Name="专辑收藏">
+                                    <FontIcon x:Name="SourceAlbumFavoriteIcon" Glyph="&#xE734;" FontSize="17" />
+                                </ToggleButton>
+                            </Grid>
+                            <StackPanel x:Name="SourceAlbumMetadata" Visibility="Collapsed" Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="4" AutomationProperties.Name="专辑评分">
+                                    <StackPanel x:Name="SourceAlbumStars" Orientation="Horizontal" />
+                                    <TextBlock x:Name="SourceAlbumRatingValue" VerticalAlignment="Center" FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <Button x:Name="SourceAlbumZeroRating" Style="{StaticResource LibraryIconButton}"
+                                            Content="0" Click="SetSourceAlbumZeroRating" AutomationProperties.Name="设为 0 星"
+                                            ToolTipService.ToolTip="设为 0 星" />
+                                    <Button x:Name="SourceAlbumClearRating" Style="{StaticResource LibraryIconButton}"
+                                            Click="ClearSourceAlbumRating" AutomationProperties.Name="清除评分"
+                                            ToolTipService.ToolTip="清除评分">
+                                        <Button.Resources>
+                                            <ResourceDictionary>
+                                                <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
+                                                <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="SystemFillColorCriticalBrush" />
+                                            </ResourceDictionary>
+                                        </Button.Resources>
+                                        <FontIcon Glyph="&#xE8BB;" FontSize="10" />
+                                    </Button>
+                                </StackPanel>
+                                <Grid ColumnSpacing="4" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
+                                                  VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                                        <ItemsControl x:Name="SourceAlbumTags">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="4" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Background="Transparent" PointerEntered="TagChipEntered" PointerExited="TagChipExited">
+                                                        <Border Margin="0,3,5,0" Padding="7,3" CornerRadius="10"
+                                                                Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                                            <TextBlock Text="{Binding Name}" FontSize="12" MaxWidth="144"
+                                                                       TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
+                                                        </Border>
+                                                        <Button x:Name="RemoveTagButton" Click="RemoveVisibleAlbumTag" Width="18" MinWidth="18"
+                                                                Height="18" MinHeight="18" Padding="0" CornerRadius="9" BorderThickness="0"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False"
+                                                                Loaded="InitializeTagRemoveButton" GotFocus="FocusTagRemoveButton" LostFocus="BlurTagRemoveButton"
+                                                                Tag="移除专辑标签" ToolTipService.ToolTip="移除专辑标签">
+                                                            <FontIcon Glyph="&#xE8BB;" FontSize="9"
+                                                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                    <Grid Grid.Column="1" Background="Transparent" Padding="3,0"
+                                          PointerEntered="ShowAlbumTagPlus" PointerExited="FadeAlbumTagPlus">
+                                        <Button x:Name="SourceAlbumAddTag" Style="{StaticResource LibraryIconButton}"
+                                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" CornerRadius="13"
+                                                Click="AddVisibleAlbumTag" GotFocus="RevealAlbumTagButton" LostFocus="HideAlbumTagButton"
+                                                AutomationProperties.Name="添加专辑标签" ToolTipService.ToolTip="添加专辑标签">
+                                            <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
                     <Grid Grid.Row="1" ColumnSpacing="10" MinHeight="28">
                         <Grid.ColumnDefinitions>
@@ -250,8 +361,6 @@
                             </StackPanel>
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="OrganizeSourceAlbum" Content="专辑组织" Click="OpenSourceAlbumOrganization"
-                                    Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <Button x:Name="ManageAlbumTags" Content="管理标签" Click="OpenGlobalTagManagement"
                                     Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <Button x:Name="BrowserSortButton" Style="{StaticResource LibraryIconButton}" Visibility="Collapsed"
@@ -671,7 +780,8 @@
                                         <ItemsControl x:Name="SearchActiveTags">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid ColumnSpacing="8" MinHeight="30" MaxWidth="240">
+                                                    <Grid ColumnSpacing="8" MinHeight="30" MaxWidth="240" Background="Transparent"
+                                                          PointerEntered="TagChipEntered" PointerExited="TagChipExited">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
@@ -680,10 +790,12 @@
                                                         <FontIcon Glyph="&#xE8EC;" FontSize="13" />
                                                         <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
                                                                    TextTrimming="CharacterEllipsis" />
-                                                        <Button Grid.Column="2" Click="RemoveSearchTag"
-                                                                Style="{StaticResource LibraryIconButton}"
-                                                                AutomationProperties.Name="{Binding Name}"
-                                                                ToolTipService.ToolTip="移除标签筛选">
+                                                        <Button x:Name="RemoveTagButton" Grid.Column="2" Click="RemoveSearchTag"
+                                                                Width="18" MinWidth="18" Height="18" MinHeight="18" Padding="0"
+                                                                CornerRadius="9" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Opacity="0" IsHitTestVisible="False" Loaded="InitializeTagRemoveButton"
+                                                                GotFocus="FocusTagRemoveButton" LostFocus="BlurTagRemoveButton"
+                                                                Tag="移除标签筛选" ToolTipService.ToolTip="移除标签筛选">
                                                             <FontIcon Glyph="&#xE8BB;" FontSize="10"
                                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                                         </Button>
