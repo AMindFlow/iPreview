@@ -78,9 +78,12 @@
                                   AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" FontSize="13"
                                    TextTrimming="CharacterEllipsis" />
-                        <FontIcon Grid.Column="2" Glyph="{Binding FavoriteGlyph}" Visibility="{Binding FavoriteVisibility}"
-                                  FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                  AutomationProperties.Name="{Binding FavoriteLabel}" />
+                        <Button Grid.Column="2" Style="{StaticResource LibraryIconButton}" Visibility="{Binding FavoriteVisibility}"
+                                Click="ToggleSidebarAlbumFavorite" AutomationProperties.Name="{Binding Favorite.ActionLabel}"
+                                ToolTipService.ToolTip="{Binding Favorite.ActionLabel}">
+                            <FontIcon Glyph="{Binding Favorite.Glyph}" FontSize="13"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Button>
                     </Grid>
                 </DataTemplate>
             </Grid.Resources>

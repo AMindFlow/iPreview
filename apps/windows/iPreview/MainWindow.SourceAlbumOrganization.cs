@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -9,6 +10,26 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
+    private sealed class SidebarAlbumFavorite(SourceAlbumKey key, string title, bool isFavorite) : INotifyPropertyChanged
+    {
+        public SourceAlbumKey Key { get; } = key;
+        public string Title { get; } = title;
+        public bool IsFavorite { get; private set; } = isFavorite;
+        public string Glyph => IsFavorite ? "\uE735" : "\uE734";
+        public string ActionLabel => IsFavorite ? $"取消收藏专辑「{Title}」" : $"收藏专辑「{Title}」";
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void SetFavorite(bool value)
+        {
+            if (IsFavorite == value)
+                return;
+            IsFavorite = value;
+            PropertyChanged?.Invoke(this, new(nameof(Glyph)));
+            PropertyChanged?.Invoke(this, new(nameof(ActionLabel)));
+        }
+    }
+
     private SourceAlbumIndex sourceAlbumIndex = SourceAlbumIndex.Empty;
     private HashSet<SourceAlbumKey> sourceAlbumKeys = [];
 
@@ -24,6 +45,18 @@ public sealed partial class MainWindow
     {
         var key = new SourceAlbumKey(source.Id, folder?.TrimEnd('/') ?? "");
         return sourceAlbumKeys.Contains(key) ? key : null;
+    }
+
+    private SidebarAlbumFavorite SidebarFavoriteFor(SourceAlbumKey key, string title,
+        IReadOnlyDictionary<SourceAlbumKey, SidebarAlbumFavorite> sidebarFavorites)
+    {
+        var favorite = sourceAlbumIndex.FavoriteAlbums.Contains(key);
+        if (sidebarFavorites.TryGetValue(key, out var existing) && existing.Title == title)
+        {
+            existing.SetFavorite(favorite);
+            return existing;
+        }
+        return new(key, title, favorite);
     }
 
     private static IEnumerable<Media> SourceAlbumMembers(SourceAlbumKey key, IEnumerable<Media> items) =>
@@ -112,6 +145,12 @@ public sealed partial class MainWindow
     {
         if (!busy && VisibleAlbumKey is { } key)
             SaveAlbumMetadata(() => Database.SetFavorite(SourceAlbumFavorite.IsChecked == true, key));
+    }
+
+    private void ToggleSidebarAlbumFavorite(object sender, RoutedEventArgs args)
+    {
+        if (!busy && sender is Button { DataContext: Navigation { Favorite: { } favorite } })
+            SaveAlbumMetadata(() => Database.SetFavorite(!favorite.IsFavorite, favorite.Key));
     }
 
     private void SetSourceAlbumZeroRating(object sender, RoutedEventArgs args) => SetSourceAlbumRating(0);

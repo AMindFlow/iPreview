@@ -20,12 +20,10 @@ public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
         long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null,
-        string Caption = "", bool? AlbumFavorite = null)
+        string Caption = "", SidebarAlbumFavorite? Favorite = null)
     {
         public Thickness SidebarIndent => Folder is null ? new() : new(14, 0, 0, 0);
-        public Visibility FavoriteVisibility => AlbumFavorite is null ? Visibility.Collapsed : Visibility.Visible;
-        public string FavoriteGlyph => AlbumFavorite == true ? "\uE735" : "\uE734";
-        public string FavoriteLabel => AlbumFavorite == true ? "已收藏专辑" : "未收藏专辑";
+        public Visibility FavoriteVisibility => Favorite is null ? Visibility.Collapsed : Visibility.Visible;
         public override string ToString() => Label;
     }
 
@@ -137,7 +135,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdateNavigationSelection()
     {
-        var rows = SourceSidebarRows().ToList();
+        var sidebarFavorites = SourceNavigation.Items.OfType<Navigation>()
+            .Select(item => item.Favorite).OfType<SidebarAlbumFavorite>()
+            .ToDictionary(favorite => favorite.Key);
+        var rows = SourceSidebarRows(sidebarFavorites).ToList();
         if (!SourceNavigation.Items.OfType<Navigation>().SequenceEqual(rows))
             SourceNavigation.ItemsSource = rows;
         var sourceRows = SourceNavigation.Items.OfType<Navigation>().Where(item => item.Source == current.Source);
@@ -147,7 +148,8 @@ public sealed partial class MainWindow : Window
             .FirstOrDefault(item => item.Album == current.Album);
     }
 
-    private IEnumerable<Navigation> SourceSidebarRows()
+    private IEnumerable<Navigation> SourceSidebarRows(
+        IReadOnlyDictionary<SourceAlbumKey, SidebarAlbumFavorite> sidebarFavorites)
     {
         foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
         {
@@ -158,12 +160,12 @@ public sealed partial class MainWindow : Window
                 Layout.Creator => "\uE77B",
                 _ => "\uE8B7"
             };
-            bool? rootFavorite = AlbumKeyAt(source, null) is { } rootKey
-                ? sourceAlbumIndex.FavoriteAlbums.Contains(rootKey) : null;
-            yield return new Navigation(label, Source: source.Id, Glyph: glyph, Help: source.Path, AlbumFavorite: rootFavorite);
+            var rootFavorite = AlbumKeyAt(source, null) is { } rootKey
+                ? SidebarFavoriteFor(rootKey, label, sidebarFavorites) : null;
+            yield return new Navigation(label, Source: source.Id, Glyph: glyph, Help: source.Path, Favorite: rootFavorite);
             if (current.Source == source.Id && current.Folder is { } folder && AlbumKeyAt(source, folder) is { } album)
                 yield return new Navigation(current.Label, Source: source.Id, Folder: folder,
-                    AlbumFavorite: sourceAlbumIndex.FavoriteAlbums.Contains(album));
+                    Favorite: SidebarFavoriteFor(album, current.Label, sidebarFavorites));
         }
     }
 
