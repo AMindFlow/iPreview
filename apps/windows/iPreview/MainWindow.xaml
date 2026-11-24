@@ -655,8 +655,46 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
-                        <Button x:Name="SearchTagFilter" Grid.Column="3" CornerRadius="12"
-                                AutomationProperties.Name="标签筛选" ToolTipService.ToolTip="标签筛选。输入 # 查询标签。" />
+                        <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="14" Padding="7,3"
+                                Visibility="Collapsed" VerticalAlignment="Center" PointerEntered="PeekSearchTags">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Grid>
+                                    <FontIcon x:Name="SearchTagStackedIcon" Glyph="&#xE8EC;" FontSize="13" Margin="0,0,6,3"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+                                    <FontIcon Glyph="&#xE8EC;" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                </Grid>
+                                <TextBlock x:Name="SearchTagName" MaxWidth="76" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight">
+                                    <ScrollViewer MaxHeight="220" MinWidth="160">
+                                        <ItemsControl x:Name="SearchActiveTags">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid ColumnSpacing="8" MinHeight="30" MaxWidth="240">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <Button Grid.Column="2" Click="RemoveSearchTag"
+                                                                Style="{StaticResource LibraryIconButton}"
+                                                                AutomationProperties.Name="{Binding Name}"
+                                                                ToolTipService.ToolTip="移除标签筛选">
+                                                            <FontIcon Glyph="&#xE8BB;" FontSize="10"
+                                                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
                         <Button Grid.Column="4" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
                                 VerticalAlignment="Center" Width="32" Height="32" Padding="0" CornerRadius="12"
                                 Background="Transparent" BorderThickness="0"
