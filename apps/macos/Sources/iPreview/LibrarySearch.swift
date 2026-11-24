@@ -150,7 +150,7 @@ struct LibrarySearchPanel: View {
         }
         .task(id: request) {
             selection = nil
-            guard tagPrefix == nil, !request.query.isEmpty || request.taggedAlbums != nil else {
+            guard !request.query.isEmpty || request.taggedAlbums != nil else {
                 matches = nil
                 return
             }
@@ -259,29 +259,15 @@ struct LibrarySearchPanel: View {
         }
     }
 
+    @ViewBuilder
     private var tagFilter: some View {
-        HStack(spacing: 7) {
-            if !selectedTags.isEmpty {
-                SearchTagStack(tags: selectedTags) { tag in
-                    selectedTagIDs.removeAll { $0 == tag.id }
-                    focus.wrappedValue = .searchQuery
-                }
+        if !selectedTags.isEmpty {
+            SearchTagStack(tags: selectedTags) { tag in
+                selectedTagIDs.removeAll { $0 == tag.id }
+                focus.wrappedValue = .searchQuery
             }
-            Menu {
-                ForEach(availableTags) { tag in
-                    Button(tag.name) { applyTag(tag) }
-                }
-            } label: {
-                Image(systemName: "tag")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel("添加标签筛选")
-            .help("输入 # 或从菜单添加标签筛选")
-            .disabled(availableTags.isEmpty)
+            .disabled(isPreviewing)
         }
-        .disabled(isPreviewing)
     }
 
     private var suggestionList: some View {
