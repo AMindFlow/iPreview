@@ -27,6 +27,7 @@
   "plugins": [
     "access/filesystem",
     "audio_filter/audio_format",
+    "audio_filter/trivial_channel_mixer",
     "audio_filter/ugly_resampler",
     "audio_mixer/float_mixer",
     "audio_output/amem",
