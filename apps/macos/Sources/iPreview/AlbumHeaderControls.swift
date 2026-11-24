@@ -108,6 +108,7 @@ struct AlbumHeaderTags: View {
             HStack(spacing: 7) {
                 ScrollView(.horizontal) { HStack(spacing: 7) { pills } }
                     .scrollIndicators(.hidden)
+                    .frame(height: 24)
                 addButton
             }
         }
