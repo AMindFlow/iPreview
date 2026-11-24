@@ -358,7 +358,7 @@ public sealed partial class MainWindow
         var sorting = new MediaSortSession();
         var restoringSelection = false;
         items.Unloaded += (_, _) => sorting.Cancel();
-        var sortButton = new Button { Content = new FontIcon { Glyph = "\uE8CB", FontSize = 14 } };
+        var sortButton = new Button();
         AutomationProperties.SetName(sortButton, "文件排序");
         ToolTipService.SetToolTip(sortButton, "文件排序");
         MediaSortMenu.Attach(sortButton, () => sorting.Order, async order =>

@@ -37,6 +37,7 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="15" />
                     <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="UseSystemFocusVisuals" Value="True" />
                 </Style>
                 <Style x:Key="SidebarEntryStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                     <Setter Property="MinHeight" Value="34" />
@@ -364,9 +365,7 @@
                             <Button x:Name="ManageAlbumTags" Content="管理标签" Click="OpenGlobalTagManagement"
                                     Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <Button x:Name="BrowserSortButton" Style="{StaticResource LibraryIconButton}" Visibility="Collapsed"
-                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
-                                <FontIcon Glyph="&#xE8CB;" FontSize="14" />
-                            </Button>
+                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序" />
                             <Button x:Name="PreviewWorkButton" Click="PreviewCurrentWork" Visibility="Collapsed"
                                     Style="{StaticResource LibrarySubtleButton}" Content="预览作品"
                                     MinHeight="26" FontSize="12" Padding="7,0" />
@@ -394,27 +393,29 @@
                             <Button x:Name="RemoveAlbumSelectionButton" Click="RemoveFromAlbum" Content="移除引用"
                                     CornerRadius="7" MinHeight="26" FontSize="12" Padding="9,1" IsEnabled="False" />
                         </StackPanel>
-                        <Border Grid.Column="3" CornerRadius="19" Padding="6,3" Height="38" VerticalAlignment="Center"
+                        <Border Grid.Column="3" CornerRadius="19" Padding="5,2" Height="36" VerticalAlignment="Center"
                                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
                                 Visibility="{Binding Visibility, ElementName=ViewModePicker}">
-                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="8"
+                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="5"
                                         AutomationProperties.Name="浏览视图">
                                 <StackPanel.Resources>
                                     <ResourceDictionary>
                                         <ResourceDictionary.ThemeDictionaries>
                                             <ResourceDictionary x:Key="Default">
-                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#1FFFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#38FFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#48FFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#29FFFFFF" />
                                                 <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
                                             </ResourceDictionary>
                                             <ResourceDictionary x:Key="Light">
-                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#10000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#24000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#30000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#1D000000" />
                                                 <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
@@ -539,6 +540,38 @@
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
+                            <ListView.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.ThemeDictionaries>
+                                        <ResourceDictionary x:Key="Default">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="Light">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="HighContrast">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                        </ResourceDictionary>
+                                    </ResourceDictionary.ThemeDictionaries>
+                                </ResourceDictionary>
+                            </ListView.Resources>
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                     <Setter Property="Padding" Value="0" />
@@ -572,11 +605,11 @@
                                             <TextBlock Grid.Column="1" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                        FontSize="12" VerticalAlignment="Center" />
                                         </Grid>
-                                        <TextBlock Grid.Column="1" Text="{Binding Details.Modified}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="1" Text="{Binding Details.Modified}"
                                                    FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Details.Size}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="2" Text="{Binding Details.Size}"
                                                    FontSize="12" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="3" Text="{Binding Kind}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="3" Text="{Binding Kind}"
                                                    FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                         <ContentControl Grid.Column="4" Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
                                                         Visibility="{Binding AlbumRemovalTickVisibility}" IsHitTestVisible="False"
@@ -925,9 +958,7 @@
                            TextTrimming="CharacterEllipsis" />
                 <Button x:Name="VideoWorkSortButton" Grid.Column="2" Visibility="Collapsed"
                         Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="文件排序"
-                        ToolTipService.ToolTip="文件排序">
-                    <FontIcon Glyph="&#xE8CB;" FontSize="14" />
-                </Button>
+                        ToolTipService.ToolTip="文件排序" />
             </Grid>
             <GridView x:Name="VideoWorkItems" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
                       IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" AutomationProperties.Name="作品内容"
@@ -983,9 +1014,7 @@
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
                     <Button x:Name="PreviewSortButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Right"
-                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
-                        <FontIcon Glyph="&#xE8CB;" FontSize="15" />
-                    </Button>
+                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序" />
                     <Grid x:Name="PreviewFilename" HorizontalAlignment="Center" VerticalAlignment="Center"
                           DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
                         <TextBlock x:Name="PreviewTitle" TextTrimming="CharacterEllipsis" TextAlignment="Center"
