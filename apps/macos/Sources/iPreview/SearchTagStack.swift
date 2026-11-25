@@ -1,23 +1,34 @@
 import SwiftUI
 import iPreviewCore
 
+enum SearchTagStackPresentation {
+    case closed, hovered, pinned, focused, dismissed
+
+    var isExpanded: Bool { self == .hovered || self == .pinned || self == .focused }
+}
+
 struct SearchTagStack: View {
     let tags: [SourceAlbumTag]
-    let focusSearch: () -> Void
+    @Binding var presentation: SearchTagStackPresentation
+    let dismiss: () -> Void
     let remove: (SourceAlbumTag) -> Void
 
     @ViewState private var anchorHovered = false
     @ViewState private var listHovered = false
     @ViewState private var hoveredTag: Int64?
-    @ViewState private var hoverExpanded = false
-    @ViewState private var pinned = false
     @FocusState private var anchorFocused: Bool
     @FocusState private var focusedTag: Int64?
+
+    private var pointerWithin: Bool { anchorHovered || listHovered }
+    private var keyboardWithin: Bool { anchorFocused || focusedTag != nil }
 
     var body: some View {
         if let front = tags.last {
             let depth = min(tags.count - 1, 2)
-            Button { pinned.toggle() } label: {
+            Button {
+                if presentation == .pinned { dismiss() }
+                else { presentation = .pinned }
+            } label: {
                 label(front)
                     .padding(.vertical, 4)
                     .padding(.horizontal, 8)
@@ -40,30 +51,41 @@ struct SearchTagStack: View {
             .accessibilityValue(tags.map(\.name).joined(separator: "、"))
             .help("查看或移除筛选标签")
             .overlay(alignment: .topTrailing) {
-                if expanded {
+                if presentation.isExpanded {
                     tagList
                         .padding(.top, 26 + CGFloat(depth) * 4)
                 }
             }
             .onKeyPress(.escape) {
-                guard expanded else { return .ignored }
-                pinned = false
-                hoverExpanded = false
-                focusSearch()
+                guard presentation.isExpanded else { return .ignored }
+                dismiss()
                 return .handled
             }
-            .task(id: anchorHovered || listHovered) {
-                if anchorHovered || listHovered {
-                    hoverExpanded = true
+            .onChange(of: presentation) { _, value in
+                guard value == .dismissed else { return }
+                if !pointerWithin { presentation = .closed }
+                listHovered = false
+                hoveredTag = nil
+            }
+            .onChange(of: keyboardWithin) { _, focused in
+                if focused && presentation != .pinned {
+                    presentation = .focused
+                } else if !focused && presentation == .focused {
+                    presentation = pointerWithin ? .hovered : .closed
+                }
+            }
+            .task(id: pointerWithin) {
+                if pointerWithin {
+                    if presentation == .closed { presentation = .hovered }
                 } else {
                     try? await Task.sleep(for: .milliseconds(160))
-                    if !Task.isCancelled { hoverExpanded = false }
+                    if !Task.isCancelled && (presentation == .hovered || presentation == .dismissed) {
+                        presentation = .closed
+                    }
                 }
             }
         }
     }
-
-    private var expanded: Bool { pinned || hoverExpanded || anchorFocused || focusedTag != nil }
 
     private var tagList: some View {
         ScrollView {
@@ -77,7 +99,6 @@ struct SearchTagStack: View {
                         .overlay(alignment: .topTrailing) {
                             Button {
                                 remove(tag)
-                                if tags.count == 1 { pinned = false }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 12))

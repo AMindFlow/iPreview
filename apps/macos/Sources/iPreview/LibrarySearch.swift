@@ -61,6 +61,7 @@ struct LibrarySearchPanel: View {
     @ViewState private var scope = Scope.all
     @ViewState private var selectedTagIDs: [Int64] = []
     @ViewState private var selectedSuggestion: Int?
+    @ViewState private var tagStackPresentation = SearchTagStackPresentation.closed
 
     private enum Scope: Sendable { case all, files, directories }
 
@@ -136,6 +137,10 @@ struct LibrarySearchPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("library-search-panel")
+        .onExitCommand(perform: cancelSearchStep)
+        .onChange(of: selectedTags.isEmpty) { _, empty in
+            if empty { tagStackPresentation = .closed }
+        }
         .task {
             await Task.yield()
             if !Task.isCancelled { focus.wrappedValue = .searchQuery }
@@ -262,7 +267,7 @@ struct LibrarySearchPanel: View {
     @ViewBuilder
     private var tagFilter: some View {
         if !selectedTags.isEmpty {
-            SearchTagStack(tags: selectedTags, focusSearch: { focus.wrappedValue = .searchQuery }) { tag in
+            SearchTagStack(tags: selectedTags, presentation: $tagStackPresentation, dismiss: dismissTagStack) { tag in
                 selectedTagIDs.removeAll { $0 == tag.id }
                 focus.wrappedValue = .searchQuery
             }
@@ -438,18 +443,28 @@ struct LibrarySearchPanel: View {
             && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
     }
 
+    private func dismissTagStack() {
+        tagStackPresentation = .dismissed
+        focus.wrappedValue = .searchQuery
+    }
+
+    private func cancelSearchStep() {
+        guard !isPreviewing && !isComposingQuery else { return }
+        if tagStackPresentation.isExpanded {
+            dismissTagStack()
+        } else if mode == .exact {
+            mode = .fuzzy
+            focus.wrappedValue = .searchQuery
+        } else {
+            dismiss()
+        }
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         if isComposingQuery { return .ignored }
         switch press.key {
         case .escape:
-            if press.phase == .down {
-                if mode == .exact {
-                    mode = .fuzzy
-                    focus.wrappedValue = .searchQuery
-                } else {
-                    dismiss()
-                }
-            }
+            if press.phase == .down { cancelSearchStep() }
         case .upArrow, .downArrow:
             if tagPrefix != nil {
                 let options = suggestions

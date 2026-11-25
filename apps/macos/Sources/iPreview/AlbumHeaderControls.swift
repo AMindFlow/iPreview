@@ -114,7 +114,7 @@ private struct AlbumRatingOptions: View {
         .popover(isPresented: Binding(
             get: { presentation != .closed },
             set: { if !$0 { close() } }
-        ), arrowEdge: .leading) {
+        ), arrowEdge: .trailing) {
             VStack(alignment: .leading, spacing: 3) {
                 option("0 星", choice: .zero, rating: 0)
                 option("清除评分", choice: .clear, rating: nil)
