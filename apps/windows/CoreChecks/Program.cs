@@ -627,10 +627,10 @@ static void CheckUnreadableWorkLookahead(string root)
     AddFile(source, "Maker/Album/keep.jpg");
     var locked = Directory.CreateDirectory(Path.Combine(source, "Maker", "Album", "locked"));
     using var identity = WindowsIdentity.GetCurrent();
-    var original = locked.GetAccessControl();
     var restricted = locked.GetAccessControl();
-    restricted.AddAccessRule(new FileSystemAccessRule(
-        identity.User!, FileSystemRights.ListDirectory, AccessControlType.Deny));
+    var denyListing = new FileSystemAccessRule(
+        identity.User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+    restricted.AddAccessRule(denyListing);
     locked.SetAccessControl(restricted);
     try
     {
@@ -641,7 +641,8 @@ static void CheckUnreadableWorkLookahead(string root)
     }
     finally
     {
-        locked.SetAccessControl(original);
+        restricted.RemoveAccessRuleSpecific(denyListing);
+        locked.SetAccessControl(restricted);
     }
 }
 
