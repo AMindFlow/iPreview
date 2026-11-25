@@ -248,22 +248,14 @@ struct MediaPreview: View {
             if let message = video.message {
                 PreviewError(message: message)
             } else {
-                Group {
-                    if let fallback = video.fallback {
-                        VLCCanvas(surface: fallback.surface)
-                            .id(ObjectIdentifier(fallback))
-                            .accessibilityIdentifier("libvlc-video-surface")
-                    } else {
-                        VideoCanvas(player: video.player)
+                VideoPlaybackCanvas(video: video)
+                    .background {
+                        if let poster {
+                            Image(decorative: poster, scale: 1)
+                                .resizable()
+                                .scaledToFit()
+                        }
                     }
-                }
-                .background {
-                    if let poster {
-                        Image(decorative: poster, scale: 1)
-                            .resizable()
-                            .scaledToFit()
-                    }
-                }
             }
         } else {
             PhotoCanvas(media: media, poster: poster)
@@ -356,9 +348,9 @@ struct MediaPreview: View {
 
             skipButton(seconds: 15, icon: "goforward.15", label: "前进 15 秒")
 
-            Text(time(scrubPosition ?? video.elapsed))
+            Text(videoTimeLabel(scrubPosition ?? video.elapsed))
                 .monospacedDigit()
-                .accessibilityLabel("播放位置 \(time(scrubPosition ?? video.elapsed))")
+                .accessibilityLabel("播放位置 \(videoTimeLabel(scrubPosition ?? video.elapsed))")
 
             Slider(value: Binding(
                 get: { min(scrubPosition ?? video.elapsed, max(video.duration, 1)) },
@@ -387,9 +379,9 @@ struct MediaPreview: View {
             .focused($focus, equals: .timeline)
             .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
 
-            Text(time(video.duration))
+            Text(videoTimeLabel(video.duration))
                 .monospacedDigit()
-                .accessibilityLabel("总时长 \(time(video.duration))")
+                .accessibilityLabel("总时长 \(videoTimeLabel(video.duration))")
 
             Button(action: toggleVideoLock) {
                 Label(videoLocked ? "已锁定" : "锁定", systemImage: videoLocked ? "lock.fill" : "lock.open")
@@ -421,11 +413,6 @@ struct MediaPreview: View {
         .disabled(video.duration <= 0)
         .accessibilityLabel(label)
         .help(label)
-    }
-
-    private func time(_ seconds: Double) -> String {
-        let rounded = Int(seconds)
-        return String(format: "%d:%02d", rounded / 60, rounded % 60)
     }
 }
 
@@ -628,7 +615,7 @@ private struct PreviewStage<Content: View>: View, Animatable {
     }
 }
 
-private extension View {
+extension View {
     @ViewBuilder
     func previewGlass(in shape: some Shape, interactive: Bool = false) -> some View {
         if #available(macOS 26, *) {

@@ -214,3 +214,22 @@ struct VideoCanvas: NSViewRepresentable {
         }
     }
 }
+
+struct VideoPlaybackCanvas: View {
+    let video: VideoPlayback
+
+    var body: some View {
+        if let fallback = video.fallback {
+            VLCCanvas(surface: fallback.surface)
+                .id(ObjectIdentifier(fallback))
+                .accessibilityIdentifier("libvlc-video-surface")
+        } else {
+            VideoCanvas(player: video.player)
+        }
+    }
+}
+
+func videoTimeLabel(_ seconds: Double) -> String {
+    let rounded = Int(seconds)
+    return String(format: "%d:%02d", rounded / 60, rounded % 60)
+}

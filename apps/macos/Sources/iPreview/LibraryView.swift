@@ -29,9 +29,10 @@ struct LibraryView: View {
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
     @ViewState private var videoWorkPreview: VideoWorkPreviewSession?
+    @ViewState private var videoWorkReturnFocus: Focus = .browser
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, searchQuery, searchResults, title }
+    enum Focus: Hashable { case browser, searchQuery, searchResults, title, workPreviewButton }
 
     private struct AlbumDeletion {
         let album: VirtualAlbum
@@ -150,6 +151,7 @@ struct LibraryView: View {
         return NavigationSplitView(columnVisibility: $sidebarVisibility) {
             sidebar(scope)
                 .accessibilityHidden(libraryOverlayShown)
+                .disabled(videoWorkPreview != nil)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar(removing: .sidebarToggle)
@@ -160,6 +162,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .accessibilityHidden(libraryOverlayShown)
+            .disabled(videoWorkPreview != nil)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
@@ -199,34 +202,32 @@ struct LibraryView: View {
         }
         .overlay {
             if let videoWorkPreview {
-                VideoWorkPreview(session: videoWorkPreview, revision: model.revision,
-                                 mediaPreviewShown: preview != nil) { item, items in
-                    preview = PreviewSession(items: items, selection: item.id, layout: .gallery)
-                } close: {
+                VideoWorkPreview(session: videoWorkPreview, revision: model.revision) {
                     self.videoWorkPreview = nil
-                    focusBrowser()
+                    restoreFocus(videoWorkReturnFocus)
                 }
-                .allowsHitTesting(preview == nil)
-                .accessibilityHidden(preview != nil)
             }
+        }
+        .onChange(of: model.snapshot.videoWorks) { _, works in
+            guard let videoWorkPreview, !works.contains(videoWorkPreview.work) else { return }
+            self.videoWorkPreview = nil
+            focusBrowser()
         }
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 GeometryReader { geometry in
                     let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil, videoWorkPreview == nil else { return nil }
+                        guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
                     MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
-                        if let videoWorkPreview {
-                            videoWorkPreview.selectedMediaID = selection
-                        } else if searchDomain == nil {
+                        if searchDomain == nil {
                             selected = selection
                             if !hasThumbnail { mediaToReveal = selection }
                         }
                     } close: {
                         self.preview = nil
-                        if videoWorkPreview == nil { focus = searchDomain == nil ? .browser : .searchResults }
+                        focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
                 }
@@ -547,9 +548,13 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let work = scope.videoWork {
-                        Button("预览作品", systemImage: "play.rectangle") { openVideoWork(work) }
-                            .buttonStyle(.borderless)
-                            .disabled(model.isWorking)
+                        Button("预览作品", systemImage: "play.rectangle") {
+                            openVideoWork(work, returningTo: .workPreviewButton)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(model.isWorking)
+                        .focusable()
+                        .focused($focus, equals: .workPreviewButton)
                     }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
@@ -1183,15 +1188,21 @@ struct LibraryView: View {
         preview = PreviewSession(items: items, selection: item.id, layout: layout)
     }
 
-    private func openVideoWork(_ work: IndexedVideoWork) {
+    private func openVideoWork(_ work: IndexedVideoWork, returningTo destination: Focus = .browser) {
         guard !model.isWorking else { return }
+        videoWorkReturnFocus = destination
+        focus = nil
         videoWorkPreview = VideoWorkPreviewSession(work: work)
     }
 
     private func focusBrowser() {
+        restoreFocus(.browser)
+    }
+
+    private func restoreFocus(_ destination: Focus) {
         Task { @MainActor in
             await Task.yield()
-            focus = .browser
+            focus = destination
         }
     }
 }
