@@ -26,13 +26,14 @@ struct VideoWorkWorkspace: View {
     private var canSeek: Bool { video.duration > 0 && video.message == nil }
 
     init(work: IndexedVideoWork, video: VideoPlayback, albums: [VideoWorkPreviewSession.Album],
-         initialAlbum: Int, revision: Int, back: @escaping () -> Void) {
+         initialAlbum: Int, initialPhotoID: Int64, revision: Int, back: @escaping () -> Void) {
         self.work = work
         self.video = video
         self.albums = albums
         self.revision = revision
         self.back = back
         _selectedAlbum = ViewState(initialValue: initialAlbum)
+        _selectedPhoto = ViewState(initialValue: initialPhotoID)
     }
 
     var body: some View {

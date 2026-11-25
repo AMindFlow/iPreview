@@ -7,148 +7,201 @@ struct TapeCase: View {
     let height: CGFloat
     let opening: Bool
 
-    var body: some View {
-        let width = height * 9 / 16
-        let edge = RoundedRectangle(cornerRadius: 14)
-        ZStack {
-            edge.fill(.thinMaterial)
-                .overlay { edge.strokeBorder(.primary.opacity(0.21), lineWidth: 1) }
-                .offset(x: 5, y: 6)
-                .shadow(color: .black.opacity(0.25), radius: 12, x: 3, y: 9)
-                .scaleEffect(opening ? 1.29 : 1)
-                .opacity(opening ? 0 : 1)
+    @Environment(\.colorScheme) private var colorScheme
 
-            ZStack {
-                Color.clear
-                MediaThumbnail(media: video, revision: revision)
-                    .frame(width: width * 0.83, height: height * 0.37)
-                    .clipShape(.rect(cornerRadius: 6))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(.white.opacity(0.36), lineWidth: 1)
-                    }
-                VStack(spacing: 0) {
-                    topRibs
-                        .frame(width: width * 0.64)
-                        .padding(.top, height * 0.10)
-                    Spacer()
-                    cassetteWindow
-                        .frame(width: width * 0.67, height: height * 0.11)
-                        .padding(.bottom, height * 0.09)
-                }
-            }
-            .previewGlass(in: edge)
-            .overlay {
-                edge.strokeBorder(.linearGradient(colors: [.white.opacity(0.75), .primary.opacity(0.22)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.2)
-            }
-            .overlay {
-                VStack {
-                    shellFasteners
-                    Spacer()
-                    shellFasteners
-                }
-                .padding(9)
-            }
-            .rotation3DEffect(.degrees(opening ? -72 : 0), axis: (x: 0, y: 1, z: 0),
-                              anchor: .leading, perspective: 0.65)
-            .opacity(opening ? 0 : 1)
+    private var width: CGFloat { height * 9 / 16 }
+    private var dark: Bool { colorScheme == .dark }
+    private var radius: CGFloat { max(5, width * 0.06) }
+
+    var body: some View {
+        let dx: CGFloat = max(4, width * 0.085)
+        let dy: CGFloat = max(3, height * 0.030)
+        ZStack(alignment: .topLeading) {
+            thicknessPlanes(dx: dx, dy: dy)
+            baseShell
+            transparentLid
+                .rotation3DEffect(
+                    .degrees(opening ? -67 : 0),
+                    axis: (x: 0, y: 1, z: 0),
+                    anchor: .leading,
+                    perspective: 0.42
+                )
         }
         .frame(width: width, height: height)
+        .shadow(color: .black.opacity(0.24), radius: 13, x: -4, y: 10)
+        .scaleEffect(opening ? 1.13 : 1)
+        .opacity(opening ? 0 : 1)
         .accessibilityHidden(true)
     }
 
-    private var topRibs: some View {
-        VStack(spacing: 3) {
-            ForEach(0..<4) { _ in
-                Capsule().fill(.primary.opacity(0.17)).frame(height: 2)
+    @ViewBuilder
+    private func thicknessPlanes(dx: CGFloat, dy: CGFloat) -> some View {
+        let r = radius
+        let c = r * 0.293
+        let topFill = dark
+            ? Color(red: 0.18, green: 0.20, blue: 0.24).opacity(0.88)
+            : Color(red: 0.74, green: 0.78, blue: 0.84).opacity(0.72)
+        let leftFill = dark
+            ? Color(red: 0.11, green: 0.12, blue: 0.15).opacity(0.94)
+            : Color(red: 0.60, green: 0.65, blue: 0.72).opacity(0.80)
+        let edge = dark ? Color.white.opacity(0.14) : Color.white.opacity(0.55)
+
+        Path { p in
+            p.addLines([
+                CGPoint(x: c, y: c), CGPoint(x: r, y: 0), CGPoint(x: width - r, y: 0),
+                CGPoint(x: width - c, y: c), CGPoint(x: width - c - dx, y: c - dy),
+                CGPoint(x: width - r - dx, y: -dy), CGPoint(x: r - dx, y: -dy), CGPoint(x: c - dx, y: c - dy)
+            ])
+            p.closeSubpath()
+        }
+        .fill(topFill)
+        .overlay(Path { p in
+            p.addLines([
+                CGPoint(x: c - dx, y: c - dy), CGPoint(x: r - dx, y: -dy),
+                CGPoint(x: width - r - dx, y: -dy), CGPoint(x: width - c - dx, y: c - dy)
+            ])
+        }.stroke(edge, lineWidth: 0.75))
+
+        Path { p in
+            p.addLines([
+                CGPoint(x: c, y: c), CGPoint(x: c - dx, y: c - dy), CGPoint(x: -dx, y: r - dy),
+                CGPoint(x: -dx, y: height - r - dy), CGPoint(x: c - dx, y: height - c - dy),
+                CGPoint(x: c, y: height - c), CGPoint(x: 0, y: height - r), CGPoint(x: 0, y: r)
+            ])
+            p.closeSubpath()
+        }
+        .fill(leftFill)
+        .overlay(Path { p in
+            p.addLines([
+                CGPoint(x: c - dx, y: c - dy), CGPoint(x: -dx, y: r - dy),
+                CGPoint(x: -dx, y: height - r - dy), CGPoint(x: c - dx, y: height - c - dy)
+            ])
+        }.stroke(edge.opacity(0.65), lineWidth: 0.75))
+    }
+
+    private var baseShell: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let tray = dark
+            ? Color(red: 0.08, green: 0.09, blue: 0.11).opacity(0.84)
+            : Color(red: 0.16, green: 0.18, blue: 0.22).opacity(0.18)
+        let groove = dark ? Color.white.opacity(0.08) : Color.black.opacity(0.10)
+        let labelShape = RoundedRectangle(cornerRadius: max(2, width * 0.025), style: .continuous)
+        let dot = max(2.2, width * 0.024)
+
+        return ZStack {
+            Color.clear.previewGlass(in: shape)
+            shape.inset(by: max(2.5, width * 0.03)).fill(tray)
+                .overlay(shape.inset(by: max(2.5, width * 0.03)).strokeBorder(groove, lineWidth: 0.75))
+            MediaThumbnail(media: video, revision: revision)
+                .frame(width: width * 0.80, height: height * 0.37)
+                .clipShape(labelShape)
+                .overlay(labelShape.strokeBorder(Color.black.opacity(dark ? 0.45 : 0.18), lineWidth: 0.75))
+            reelWindow.offset(y: height * 0.265)
+            VStack {
+                HStack { fastener(dot); Rectangle().fill(groove).frame(height: 0.75); fastener(dot) }
+                Spacer()
+                HStack { fastener(dot); Rectangle().fill(groove).frame(height: 0.75); fastener(dot) }
+            }
+            .padding(max(5, width * 0.06))
+        }
+        .frame(width: width, height: height)
+        .clipShape(shape)
+    }
+
+    private var reelWindow: some View {
+        let winW: CGFloat = width * 0.56
+        let winH: CGFloat = max(13, height * 0.082)
+        let wheel: CGFloat = max(9, winH * 0.72)
+        let winShape = RoundedRectangle(cornerRadius: max(3, winH * 0.28), style: .continuous)
+        let well = dark
+            ? Color(red: 0.04, green: 0.05, blue: 0.07).opacity(0.92)
+            : Color(red: 0.15, green: 0.17, blue: 0.21).opacity(0.68)
+
+        return ZStack {
+            winShape.fill(well)
+                .overlay(winShape.strokeBorder(dark ? Color.white.opacity(0.14) : Color.black.opacity(0.24), lineWidth: 0.75))
+            HStack(spacing: max(6, winW * 0.24)) {
+                tapeWheel(wheel)
+                tapeWheel(wheel)
             }
         }
+        .frame(width: winW, height: winH)
     }
 
-    private var cassetteWindow: some View {
-        RoundedRectangle(cornerRadius: 7)
-            .fill(.primary.opacity(0.25))
-            .overlay {
-                HStack {
-                    spool
-                    Capsule().fill(.primary.opacity(0.32)).frame(height: 4)
-                    spool
-                }
-                .padding(4)
-            }
+    private func tapeWheel(_ size: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(dark ? Color(red: 0.16, green: 0.18, blue: 0.22) : Color(red: 0.28, green: 0.30, blue: 0.35))
+            Circle().strokeBorder(Color.white.opacity(dark ? 0.24 : 0.36), lineWidth: 0.75)
+            Circle()
+                .fill(dark ? Color(red: 0.62, green: 0.65, blue: 0.70) : Color(red: 0.85, green: 0.87, blue: 0.90))
+                .frame(width: size * 0.44, height: size * 0.44)
+        }
+        .frame(width: size, height: size)
     }
 
-    private var spool: some View {
+    private func fastener(_ size: CGFloat) -> some View {
         Circle()
-            .fill(.regularMaterial)
-            .overlay { Circle().strokeBorder(.white.opacity(0.58), lineWidth: 1) }
-            .overlay { Image(systemName: "gearshape").font(.system(size: 10, weight: .semibold)) }
-            .aspectRatio(1, contentMode: .fit)
+            .fill(dark ? Color.white.opacity(0.18) : Color.black.opacity(0.22))
+            .overlay(Circle().strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5))
+            .frame(width: size, height: size)
     }
 
-    private var shellFasteners: some View {
-        HStack {
-            Circle().strokeBorder(.primary.opacity(0.32), lineWidth: 1).frame(width: 4, height: 4)
-            Spacer()
-            Circle().strokeBorder(.primary.opacity(0.32), lineWidth: 1).frame(width: 4, height: 4)
+    private var transparentLid: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let rim = LinearGradient(
+            colors: [
+                Color.white.opacity(dark ? 0.30 : 0.68),
+                Color.white.opacity(dark ? 0.08 : 0.18),
+                Color.black.opacity(dark ? 0.28 : 0.14)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        return ZStack(alignment: .leading) {
+            shape.strokeBorder(rim, lineWidth: 1)
+            shape.inset(by: 2.5).strokeBorder(Color.white.opacity(dark ? 0.07 : 0.22), lineWidth: 0.5)
+            Rectangle()
+                .fill(Color.white.opacity(dark ? 0.14 : 0.32))
+                .frame(width: 1)
+                .padding(.vertical, radius)
+                .padding(.leading, max(3, width * 0.04))
         }
+        .frame(width: width, height: height)
+        .contentShape(shape)
     }
 }
 
-struct AlbumCase: View {
-    let album: VideoWorkPreviewSession.Album
+struct VideoWorkPhotoPrint: View {
+    let media: Media
     let revision: Int
     let width: CGFloat
-    let foreground: Bool
-    let opening: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let height = width * 1.29
-        let edge = RoundedRectangle(cornerRadius: 8)
-        ZStack(alignment: .topLeading) {
-            edge.fill(.regularMaterial)
-                .overlay(alignment: .bottom) {
-                    VStack(spacing: 1.4) {
-                        ForEach(0..<5) { _ in
-                            Capsule().fill(.primary.opacity(0.25)).frame(height: 0.9)
-                        }
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.bottom, 3)
-                }
-                .overlay { edge.strokeBorder(.primary.opacity(0.27), lineWidth: 1) }
-                .offset(x: 8, y: 11)
-                .shadow(color: .black.opacity(0.22), radius: 8, x: 4, y: 8)
+        let dark = colorScheme == .dark
+        let height = width * 1.23
+        let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let topPaper = dark
+            ? Color(red: 0.945, green: 0.938, blue: 0.920)
+            : Color(red: 0.978, green: 0.973, blue: 0.958)
+        let bottomPaper = dark
+            ? Color(red: 0.895, green: 0.888, blue: 0.868)
+            : Color(red: 0.942, green: 0.936, blue: 0.918)
 
-            ZStack(alignment: .leading) {
-                let cover = album.cover
-                let first = album.photos[0]
-                ZStack {
-                    MediaThumbnail(media: cover, revision: revision)
-                        .opacity(opening && foreground && cover.id != first.id ? 0 : 1)
-                    if foreground && cover.id != first.id {
-                        MediaThumbnail(media: first, revision: revision)
-                            .opacity(opening ? 1 : 0)
-                    }
-                }
-                .clipShape(.rect(cornerRadius: 4))
-                .padding(.leading, 15)
-                .padding([.vertical, .trailing], 7)
-                Capsule()
-                    .fill(.linearGradient(colors: [.white.opacity(0.55), .primary.opacity(0.25)],
-                                          startPoint: .leading, endPoint: .trailing))
-                    .frame(width: 7)
-                    .padding(.vertical, 5)
-                    .padding(.leading, 4)
-            }
-            .previewGlass(in: edge)
-            .overlay { edge.strokeBorder(.white.opacity(0.50), lineWidth: 1) }
+        ZStack(alignment: .top) {
+            shape.fill(LinearGradient(colors: [topPaper, bottomPaper], startPoint: .top, endPoint: .bottom))
+            MediaThumbnail(media: media, revision: revision)
+                .frame(width: max(1, width - 12), height: max(1, height - 18))
+                .clipped()
+                .overlay(Rectangle().strokeBorder(Color.black.opacity(dark ? 0.22 : 0.10), lineWidth: 0.5))
+                .padding(.top, 6)
+            Rectangle().fill(Color.white.opacity(dark ? 0.45 : 0.85)).frame(height: 0.75)
+            shape.strokeBorder(Color.black.opacity(dark ? 0.34 : 0.14), lineWidth: 0.5)
         }
         .frame(width: width, height: height)
-        .rotation3DEffect(.degrees(opening && foreground ? 0 : -8), axis: (x: 0.24, y: 1, z: 0),
-                          perspective: 0.55)
-        .padding(.trailing, 8)
-        .padding(.bottom, 11)
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.29), radius: 3.5, x: 1, y: 3)
+        .accessibilityHidden(true)
     }
 }

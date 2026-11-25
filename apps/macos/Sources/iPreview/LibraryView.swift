@@ -547,10 +547,11 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let work = scope.videoWork {
-                        Button("专辑模式", systemImage: "play.rectangle") {
+                        Button("沉浸模式", systemImage: "play.rectangle") {
                             openVideoWork(work)
                         }
                         .buttonStyle(.borderless)
+                        .help("沉浸模式")
                         .disabled(model.isWorking)
                         .focusable()
                         .onKeyPress(keys: [.return, .space]) { _ in
