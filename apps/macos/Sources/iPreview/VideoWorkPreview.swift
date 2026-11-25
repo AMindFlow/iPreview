@@ -4,7 +4,7 @@ import iPreviewCore
 @Observable
 final class VideoWorkPreviewSession {
     enum Collectible: Hashable {
-        case disc, album(Int)
+        case tape, album(Int)
     }
 
     struct Album {
@@ -15,8 +15,10 @@ final class VideoWorkPreviewSession {
 
     let work: IndexedVideoWork
     let albums: [Album]
-    var selection = Collectible.disc
-    var browsing = false
+    private(set) var selection = Collectible.tape
+    private(set) var selectedAlbum = 0
+    var workspaceID: UUID?
+    var browsing: Bool { workspaceID != nil }
 
     init(work: IndexedVideoWork) {
         self.work = work
@@ -30,9 +32,9 @@ final class VideoWorkPreviewSession {
         self.albums = albums
     }
 
-    var initialAlbum: Int {
-        if case .album(let index) = selection { return index }
-        return 0
+    func select(_ collectible: Collectible) {
+        selection = collectible
+        if case .album(let index) = collectible { selectedAlbum = index }
     }
 }
 
@@ -41,7 +43,9 @@ struct VideoWorkPreview: View {
     let revision: Int
     let close: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var video = VideoPlayback()
+    @ViewState private var overviewVisible = true
 
     var body: some View {
         VStack(spacing: 14) {
@@ -53,20 +57,26 @@ struct VideoWorkPreview: View {
                 }
                 .buttonStyle(.plain)
                 .previewGlass(in: Circle(), interactive: true)
-                .accessibilityLabel(session.browsing ? "返回作品总览" : "退出作品预览")
-                .help(session.browsing ? "返回作品总览（Esc）" : "退出作品预览（Esc）")
+                .accessibilityLabel(session.browsing ? "返回专辑总览" : "退出专辑模式")
+                .help(session.browsing ? "返回专辑总览（Esc）" : "退出专辑模式（Esc）")
                 Text(session.work.title)
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
             }
-            if session.browsing {
-                VideoWorkWorkspace(work: session.work, video: video, albums: session.albums,
-                                   initialAlbum: session.initialAlbum, autoplay: session.selection == .disc,
-                                   revision: revision)
-            } else {
-                VideoWorkOverview(session: session, revision: revision)
+            ZStack {
+                if let workspaceID = session.workspaceID {
+                    VideoWorkWorkspace(work: session.work, video: video, albums: session.albums,
+                                       initialAlbum: session.selectedAlbum, revision: revision, back: back)
+                        .id(workspaceID)
+                        .transition(.opacity)
+                }
+                if overviewVisible {
+                    VideoWorkOverview(session: session, revision: revision, open: open)
+                        .allowsHitTesting(!session.browsing)
+                        .accessibilityHidden(session.browsing)
+                }
             }
         }
         .padding(20)
@@ -77,12 +87,44 @@ struct VideoWorkPreview: View {
         .accessibilityIdentifier("video-work-preview")
     }
 
+    private func open() {
+        guard !session.browsing else { return }
+        let workspaceID = UUID()
+        video.start(session.work.video)
+        if reduceMotion {
+            overviewVisible = false
+            session.workspaceID = workspaceID
+        } else {
+            withAnimation(.easeInOut(duration: 0.38), completionCriteria: .logicallyComplete) {
+                session.workspaceID = workspaceID
+            } completion: {
+                if session.workspaceID == workspaceID { overviewVisible = false }
+            }
+        }
+    }
+
     private func back() {
         if session.browsing {
             video.stop()
-            session.browsing = false
+            overviewVisible = true
+            session.workspaceID = nil
         } else {
             close()
+        }
+    }
+}
+
+struct VideoWorkColumns<Left: View, Right: View>: View {
+    @ViewBuilder let left: () -> Left
+    @ViewBuilder let right: () -> Right
+
+    var body: some View {
+        GeometryReader { geometry in
+            let half = geometry.size.width / 2
+            HStack(spacing: 0) {
+                left().frame(width: half, height: geometry.size.height)
+                right().frame(width: half, height: geometry.size.height)
+            }
         }
     }
 }
@@ -90,181 +132,106 @@ struct VideoWorkPreview: View {
 private struct VideoWorkOverview: View {
     let session: VideoWorkPreviewSession
     let revision: Int
+    let open: () -> Void
     @FocusState private var focused: VideoWorkPreviewSession.Collectible?
 
     var body: some View {
         ScrollViewReader { reader in
-            HStack(spacing: 24) {
-                collectible(.disc, title: "影碟") {
-                    DiscCase(video: session.work.video, revision: revision)
-                }
-                Divider()
-                    .frame(height: 154)
-                    .accessibilityHidden(true)
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(session.albums.indices, id: \.self) { index in
-                            let album = session.albums[index]
-                            collectible(.album(index), title: album.title) {
-                                AlbumCase(cover: album.cover, revision: revision)
-                            }
-                            .id(VideoWorkPreviewSession.Collectible.album(index))
-                        }
+            VideoWorkColumns {
+                GeometryReader { geometry in
+                    let height = min(geometry.size.height * 0.7, 340)
+                    collectible(.tape, title: "录像带", opens: true) {
+                        TapeCase(video: session.work.video, revision: revision, height: height,
+                                 opening: session.browsing)
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(height: 238)
-                .defaultScrollAnchor(.leading)
+            } right: {
+                GeometryReader { geometry in
+                    let width = min(geometry.size.width * 0.34, 176)
+                    ScrollView(.horizontal) {
+                        LazyHStack(spacing: 17) {
+                            ForEach(session.albums.indices, id: \.self) { index in
+                                let album = session.albums[index]
+                                let foreground = session.selectedAlbum == index
+                                collectible(.album(index), title: album.title, opens: false) {
+                                    AlbumCase(album: album, revision: revision, width: width,
+                                              foreground: foreground, opening: session.browsing)
+                                }
+                                .scaleEffect(session.browsing ? (foreground ? 1.54 : 0.69) : 1)
+                                .offset(y: session.browsing && !foreground ? 26 : 0)
+                                .opacity(session.browsing ? 0 : 1)
+                                .zIndex(foreground ? 1 : 0)
+                                .id(VideoWorkPreviewSession.Collectible.album(index))
+                            }
+                        }
+                        .frame(minWidth: max(0, geometry.size.width - 24))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 30)
+                    }
+                    .scrollClipDisabled()
+                    .defaultScrollAnchor(.leading)
+                    .frame(maxHeight: .infinity)
+                }
+                .clipped()
             }
-            .frame(maxWidth: 980, maxHeight: .infinity)
-            .frame(maxWidth: .infinity)
             .accessibilityIdentifier("video-work-overview")
-            .task(id: session.selection) {
+            .task(id: session.browsing ? nil : session.selection) {
+                guard !session.browsing else { return }
                 if case .album = session.selection { reader.scrollTo(session.selection) }
                 await Task.yield()
                 if !Task.isCancelled { focused = session.selection }
             }
             .onChange(of: focused) { _, selection in
-                guard let selection else { return }
-                session.selection = selection
+                guard let selection, !session.browsing else { return }
+                session.select(selection)
                 if case .album = selection { reader.scrollTo(selection) }
             }
         }
     }
 
     private func collectible<Cover: View>(_ selection: VideoWorkPreviewSession.Collectible, title: String,
-                                          @ViewBuilder cover: () -> Cover) -> some View {
-        Button {
-            open(selection)
+                                          opens: Bool, @ViewBuilder cover: () -> Cover) -> some View {
+        let selected = session.selection == selection
+        return Button {
+            session.select(selection)
+            if opens { open() }
         } label: {
-            VStack(spacing: 13) {
+            VStack(spacing: 12) {
                 cover()
                     .accessibilityHidden(true)
                 Text(title)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
+                    .opacity(session.browsing ? 0 : 1)
             }
             .padding(9)
-            .background(session.selection == selection ? Color.accentColor.opacity(0.12) : .clear,
-                        in: .rect(cornerRadius: 18))
+            .background(selected && !session.browsing ? Color.accentColor.opacity(0.10) : .clear,
+                        in: .rect(cornerRadius: 17))
             .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(session.selection == selection ? Color.accentColor.opacity(0.78) : .clear,
+                RoundedRectangle(cornerRadius: 17)
+                    .strokeBorder(selected && !session.browsing ? Color.accentColor.opacity(0.69) : .clear,
                                   lineWidth: 1.5)
                     .allowsHitTesting(false)
             }
-            .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)
         .focusable()
+        .focusEffectDisabled()
         .focused($focused, equals: selection)
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
             let previous = press.key == .leftArrow || press.key == .upArrow
-            let order: [VideoWorkPreviewSession.Collectible] = [.disc] + session.albums.indices.map { .album($0) }
-            let current = order.firstIndex(of: selection)!
+            let order: [VideoWorkPreviewSession.Collectible] = [.tape] + session.albums.indices.map { .album($0) }
+            let current = order.firstIndex(of: session.selection)!
             let next = min(max(current + (previous ? -1 : 1), 0), order.count - 1)
-            session.selection = order[next]
+            session.select(order[next])
             return .handled
         }
         .onKeyPress(.space) {
-            open(selection)
+            open()
             return .handled
         }
-        .accessibilityAddTraits(session.selection == selection ? .isSelected : [])
-    }
-
-    private func open(_ selection: VideoWorkPreviewSession.Collectible) {
-        session.selection = selection
-        session.browsing = true
-    }
-}
-
-private struct DiscCase: View {
-    let video: Media
-    let revision: Int
-
-    var body: some View {
-        let edge = RoundedRectangle(cornerRadius: 13)
-        ZStack(alignment: .leading) {
-            Circle()
-                .fill(AngularGradient(colors: [
-                    Color(white: 0.68), .cyan.opacity(0.38), Color(white: 0.91),
-                    .purple.opacity(0.42), Color(white: 0.54), .mint.opacity(0.52), Color(white: 0.68)
-                ], center: .center, angle: .degrees(-24)))
-                .overlay { Circle().strokeBorder(.white.opacity(0.62), lineWidth: 1.2) }
-                .overlay { Circle().strokeBorder(.white.opacity(0.24), lineWidth: 1).padding(6) }
-                .overlay {
-                    Circle()
-                        .fill(.thinMaterial)
-                        .frame(width: 35, height: 35)
-                        .overlay { Circle().strokeBorder(.white.opacity(0.5), lineWidth: 2) }
-                        .overlay { Circle().fill(.black.opacity(0.36)).frame(width: 15) }
-                }
-                .frame(width: 140, height: 140)
-                .shadow(color: .black.opacity(0.19), radius: 8, x: 3, y: 5)
-                .offset(x: 73, y: 3)
-            MediaThumbnail(media: video, revision: revision)
-                .frame(width: 129, height: 139)
-                .clipShape(.rect(cornerRadius: 6))
-                .overlay(alignment: .bottomLeading) {
-                    Image(systemName: "opticaldisc")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .padding(6)
-                        .background(.black.opacity(0.48), in: Circle())
-                        .padding(6)
-                }
-                .padding(.vertical, 9)
-                .padding(.trailing, 9)
-                .padding(.leading, 16)
-                .previewGlass(in: edge)
-                .overlay { edge.strokeBorder(.white.opacity(0.47), lineWidth: 1) }
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(.linearGradient(colors: [.white.opacity(0.48), .primary.opacity(0.16)],
-                                              startPoint: .leading, endPoint: .trailing))
-                        .frame(width: 5)
-                        .padding(.vertical, 10)
-                        .padding(.leading, 5)
-                }
-                .shadow(color: .black.opacity(0.23), radius: 9, x: 0, y: 6)
-        }
-        .frame(width: 224, height: 176, alignment: .leading)
-    }
-}
-
-private struct AlbumCase: View {
-    let cover: Media
-    let revision: Int
-
-    var body: some View {
-        let edge = RoundedRectangle(cornerRadius: 11)
-        ZStack(alignment: .topLeading) {
-            ForEach((1...3).reversed(), id: \.self) { page in
-                edge.fill(.thickMaterial)
-                    .overlay { edge.strokeBorder(.primary.opacity(0.17), lineWidth: 1) }
-                    .frame(width: 125, height: 151)
-                    .offset(x: CGFloat(page) * 3, y: CGFloat(page) * 4)
-            }
-            MediaThumbnail(media: cover, revision: revision)
-                .frame(width: 106, height: 132)
-                .clipShape(.rect(cornerRadius: 5))
-                .padding(.vertical, 9)
-                .padding(.trailing, 7)
-                .padding(.leading, 15)
-                .previewGlass(in: edge)
-                .overlay { edge.strokeBorder(.white.opacity(0.45), lineWidth: 1) }
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(.linearGradient(colors: [.white.opacity(0.47), .primary.opacity(0.2)],
-                                              startPoint: .leading, endPoint: .trailing))
-                        .frame(width: 5)
-                        .padding(.vertical, 7)
-                        .padding(.leading, 4)
-                }
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 5)
-        }
-        .frame(width: 143, height: 176)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(opens ? "打开专辑并播放" : "选择此图册，按空格打开专辑")
     }
 }

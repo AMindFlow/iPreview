@@ -29,10 +29,9 @@ struct LibraryView: View {
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
     @ViewState private var videoWorkPreview: VideoWorkPreviewSession?
-    @ViewState private var videoWorkReturnFocus: Focus = .browser
     @FocusState private var focus: Focus?
 
-    enum Focus: Hashable { case browser, searchQuery, searchResults, title, workPreviewButton }
+    enum Focus: Hashable { case browser, searchQuery, searchResults, title }
 
     private struct AlbumDeletion {
         let album: VirtualAlbum
@@ -204,7 +203,7 @@ struct LibraryView: View {
             if let videoWorkPreview {
                 VideoWorkPreview(session: videoWorkPreview, revision: model.revision) {
                     self.videoWorkPreview = nil
-                    restoreFocus(videoWorkReturnFocus)
+                    focusBrowser()
                 }
             }
         }
@@ -548,13 +547,16 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let work = scope.videoWork {
-                        Button("预览作品", systemImage: "play.rectangle") {
-                            openVideoWork(work, returningTo: .workPreviewButton)
+                        Button("专辑模式", systemImage: "play.rectangle") {
+                            openVideoWork(work)
                         }
                         .buttonStyle(.borderless)
                         .disabled(model.isWorking)
                         .focusable()
-                        .focused($focus, equals: .workPreviewButton)
+                        .onKeyPress(keys: [.return, .space]) { _ in
+                            openVideoWork(work)
+                            return .handled
+                        }
                     }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
@@ -1188,21 +1190,16 @@ struct LibraryView: View {
         preview = PreviewSession(items: items, selection: item.id, layout: layout)
     }
 
-    private func openVideoWork(_ work: IndexedVideoWork, returningTo destination: Focus = .browser) {
+    private func openVideoWork(_ work: IndexedVideoWork) {
         guard !model.isWorking else { return }
-        videoWorkReturnFocus = destination
         focus = nil
         videoWorkPreview = VideoWorkPreviewSession(work: work)
     }
 
     private func focusBrowser() {
-        restoreFocus(.browser)
-    }
-
-    private func restoreFocus(_ destination: Focus) {
         Task { @MainActor in
             await Task.yield()
-            focus = destination
+            focus = .browser
         }
     }
 }
