@@ -20,8 +20,8 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-04 | 常见音频格式 | 待设计、审阅与实施：[LIB-007](../specs/spike/library.md#lib-007-音频组织)。 |
 | ORIG-05 | creator → album 自动识别 | 已交付：[LIB-001](../specs/official/library.md#lib-001-目录导入与扫描)。 |
 | ORIG-06 | multi-creators → creator → album 自动识别 | 已交付，先选择创作者、再进入其专辑：[LIB-009、010](../specs/official/library.md)。 |
-| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 双端识别并索引本地完整作品。外部样张来源待确认，见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)。 |
-| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)双端识别并索引简化结构。 |
+| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 双端按层级识别本地完整作品，样张和专用封面可省略。外部样张来源待确认，见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)。 |
+| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)双端识别根目录一个视频及任意命名的直属图片目录，样张可省略。 |
 | ORIG-09 | 音频管理体系由代理设计，用户审阅后做 | 已登记，后置且保留审阅条件：[LIB-007](../specs/spike/library.md#lib-007-音频组织)、[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择并改善列表滚动，完整长按验收见 [PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。 |
 | ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |

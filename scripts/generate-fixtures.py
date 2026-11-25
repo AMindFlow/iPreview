@@ -93,7 +93,22 @@ def generate_media(work, library):
         "视频作品/简化结构/官方样张.jpg": skyline,
         "视频作品/简化结构/附加写真集/图片 2.png": harbor,
         "视频作品/简化结构/附加写真集/图片 10.png": dusk,
+        "视频作品/album/video.mp4": mp4,
+        "视频作品/album/pictures/1.png": harbor,
+        "视频作品/album/pictures/2.png": dusk,
+        "视频作品/album-with-sample/main.mp4": mp4,
+        "视频作品/album-with-sample/frame.jpg": skyline,
+        "视频作品/album-with-sample/gallery/1.png": dusk,
+        "视频作品/full-no-stills/movie/main.mp4": mp4,
+        "视频作品/full-no-stills/books/Set 2/1.png": harbor,
+        "视频作品/full-no-stills/books/Set 10/1.png": dusk,
+        "视频作品/full-with-stills/movie/main.mp4": mp4,
+        "视频作品/full-with-stills/stills/frame.jpg": skyline,
+        "视频作品/full-with-stills/books/Set 2/1.png": harbor,
+        "视频作品/album-17/video.mp4": mp4,
     }
+    for number in range(1, 18):
+        samples[f"视频作品/album-17/pictures/{number}.png"] = harbor if number % 2 else dusk
     for relative_path, sample in samples.items():
         destination = library / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
