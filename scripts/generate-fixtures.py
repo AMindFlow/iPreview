@@ -104,7 +104,7 @@ def generate_media(work, library):
         "视频作品/full-no-stills/movie/main.mp4": mp4,
         "视频作品/full-no-stills/books/Set 2/1.png": harbor,
         "视频作品/full-no-stills/books/Set 10/1.png": dusk,
-        "视频作品/full-with-stills/movie/main.mp4": mp4,
+        "视频作品/full-with-stills/movie/main.mp4": long_video,
         "视频作品/full-with-stills/stills/frame.jpg": skyline,
         "视频作品/full-with-stills/books/Set 2/1.png": harbor,
         "视频作品/album-17/video.mp4": long_video,
