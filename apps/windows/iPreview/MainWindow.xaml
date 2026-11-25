@@ -313,15 +313,21 @@
                                             AutomationProperties.Name="评分选项">
                                         <TextBlock Text="&#x22EE;" FontSize="17" />
                                         <FlyoutBase.AttachedFlyout>
-                                            <MenuFlyout x:Name="SourceAlbumRatingFlyout" Placement="Right">
+                                            <MenuFlyout x:Name="SourceAlbumRatingFlyout" Placement="Right"
+                                                        Opening="PrepareSourceAlbumRatingOptions">
                                                 <MenuFlyout.MenuFlyoutPresenterStyle>
                                                     <Style TargetType="MenuFlyoutPresenter">
                                                         <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                                        <Setter Property="BorderThickness" Value="1" />
+                                                        <Setter Property="CornerRadius" Value="10" />
+                                                        <Setter Property="Padding" Value="4" />
                                                     </Style>
                                                 </MenuFlyout.MenuFlyoutPresenterStyle>
-                                                <MenuFlyoutItem Text="0 星" Click="SetSourceAlbumZeroRating" />
-                                                <MenuFlyoutItem x:Name="SourceAlbumClearRating" Text="清除评分"
-                                                                Click="ClearSourceAlbumRating" />
+                                                <ToggleMenuFlyoutItem x:Name="SourceAlbumZeroRating" Text="0 星"
+                                                                      Click="SetSourceAlbumZeroRating" />
+                                                <ToggleMenuFlyoutItem x:Name="SourceAlbumClearRating" Text="清除评分"
+                                                                      Click="ClearSourceAlbumRating" />
                                             </MenuFlyout>
                                         </FlyoutBase.AttachedFlyout>
                                     </Button>
@@ -828,7 +834,7 @@
                         <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="9" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 Visibility="Collapsed" VerticalAlignment="Center" Click="OpenSearchTags" PointerEntered="PeekSearchTags">
-                            <Grid>
+                            <Grid x:Name="SearchTagArtwork">
                                 <Border x:Name="SearchTagRearCard" CornerRadius="7" Margin="10,8,0,0"
                                         Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                                         BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1"
@@ -847,9 +853,25 @@
                                 </Border>
                             </Grid>
                             <FlyoutBase.AttachedFlyout>
-                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight">
-                                    <ScrollViewer MaxHeight="220" MinWidth="160">
+                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight"
+                                        AreOpenCloseAnimationsEnabled="False" Opened="SearchTagsOpened" Closed="SearchTagsClosed">
+                                    <Flyout.FlyoutPresenterStyle>
+                                        <Style TargetType="FlyoutPresenter">
+                                            <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                                            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                            <Setter Property="BorderThickness" Value="1" />
+                                            <Setter Property="CornerRadius" Value="12" />
+                                            <Setter Property="Padding" Value="6" />
+                                        </Style>
+                                    </Flyout.FlyoutPresenterStyle>
+                                    <ScrollViewer x:Name="SearchTagsScroll" MaxHeight="220" MinWidth="160"
+                                                  PreviewKeyDown="SearchTagsKeyDown">
                                         <ItemsControl x:Name="SearchActiveTags">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Spacing="5" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Grid ColumnSpacing="8" MinHeight="30" MaxWidth="240" Background="Transparent"
@@ -859,12 +881,17 @@
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" />
+                                                        <Border Grid.ColumnSpan="3" CornerRadius="7" BorderThickness="1"
+                                                                BorderBrush="{ThemeResource TextFillColorTertiaryBrush}"
+                                                                Background="{ThemeResource ControlSolidFillColorDefaultBrush}"
+                                                                IsHitTestVisible="False" />
+                                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" Margin="8,0,0,0" />
                                                         <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
                                                                    TextTrimming="CharacterEllipsis" />
                                                         <Button x:Name="RemoveTagButton" Grid.Column="2" Click="RemoveSearchTag"
                                                                 Width="18" MinWidth="18" Height="18" MinHeight="18" Padding="0"
                                                                 CornerRadius="9" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,2,2,0"
                                                                 Opacity="0" IsHitTestVisible="False" Loaded="InitializeTagRemoveButton"
                                                                 GotFocus="FocusTagRemoveButton" LostFocus="BlurTagRemoveButton"
                                                                 Tag="移除标签筛选" ToolTipService.ToolTip="移除标签筛选">

@@ -1,11 +1,14 @@
+using System.Numerics;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Data;
 using Windows.System;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 
 namespace IPreview;
 
@@ -331,7 +334,7 @@ public sealed partial class MainWindow
         var tagsById = sourceAlbumIndex.Tags.ToDictionary(tag => tag.Id);
         searchTagIds.RemoveAll(id => !tagsById.ContainsKey(id));
         var tags = searchTagIds.Select(id => tagsById[id]).ToArray();
-        SearchActiveTags.ItemsSource = tags;
+        SearchActiveTags.ItemsSource = tags.Reverse().ToArray();
         SearchTagStack.Visibility = tags.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         var depth = Math.Clamp(tags.Length - 1, 0, 2);
         SearchTagRearCard.Visibility = depth == 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -361,14 +364,85 @@ public sealed partial class MainWindow
 
     private void HideSearchTags() => SearchTagOptions.Hide();
 
+    private void SearchTagsOpened(object sender, object args)
+    {
+        var continuing = SearchTagArtwork.Opacity == 0;
+        SearchTagArtwork.Opacity = 0;
+        if (continuing)
+            return;
+
+        SearchTagsScroll.ChangeView(null, 0, null, disableAnimation: true);
+        if (!new UISettings().AnimationsEnabled)
+            return;
+
+        SearchActiveTags.UpdateLayout();
+        if (SearchActiveTags.ContainerFromIndex(0) is not FrameworkElement firstRow)
+            return;
+
+        var compositor = ElementCompositionPreview.GetElementVisual(firstRow).Compositor;
+        var settle = compositor.CreateCubicBezierEasingFunction(new(.20f, .67f), new(.27f, 1));
+        var count = SearchActiveTags.Items.Count;
+        var stackDepth = Math.Min(count - 1, 2);
+        for (var index = 0; index < count; index++)
+        {
+            if (SearchActiveTags.ContainerFromIndex(index) is not FrameworkElement row ||
+                row.ActualOffset.Y >= SearchTagsScroll.ViewportHeight)
+                break;
+
+            var depth = Math.Min(index, stackDepth);
+            var width = (float)row.ActualWidth;
+            row.CenterPoint = new(width, 0, 0);
+            Canvas.SetZIndex(row, count - index);
+            var startScale = Math.Clamp((float)SearchTagFrontCard.ActualWidth / Math.Max(width, 1), .35f, 1);
+            var duration = TimeSpan.FromMilliseconds(190);
+            var slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.Target = "Translation";
+            slide.Duration = duration;
+            slide.InsertKeyFrame(0, new((depth - stackDepth) * 5, firstRow.ActualOffset.Y + depth * 4 - row.ActualOffset.Y, 0));
+            slide.InsertKeyFrame(1, Vector3.Zero, settle);
+            row.StartAnimation(slide);
+
+            var stretch = compositor.CreateVector3KeyFrameAnimation();
+            stretch.Target = "Scale";
+            stretch.Duration = duration;
+            stretch.InsertKeyFrame(0, new(startScale, 1, 1));
+            stretch.InsertKeyFrame(1, Vector3.One, settle);
+            row.StartAnimation(stretch);
+        }
+    }
+
+    private void SearchTagsClosed(object sender, object args)
+    {
+        // A transient flyout closes and immediately reopens when the anchor is clicked.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!SearchTagOptions.IsOpen)
+                SearchTagArtwork.Opacity = 1;
+        });
+    }
+
+    private void SearchTagsKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Escape)
+            return;
+        args.Handled = true;
+        if (!args.KeyStatus.WasKeyDown)
+            DismissSearchTagsToInput();
+    }
+
+    private void DismissSearchTagsToInput()
+    {
+        HideSearchTags();
+        SearchInput.Focus(FocusState.Programmatic);
+    }
+
     private async void RemoveSearchTag(object sender, RoutedEventArgs args)
     {
         if (sender is not FrameworkElement { DataContext: SourceAlbumTag tag })
             return;
         searchTagIds.Remove(tag.Id);
-        HideSearchTags();
+        DismissSearchTagsToInput();
         UpdateSearchTagStack();
-        SearchInput.Focus(FocusState.Programmatic);
         await RefreshSearch();
     }
 
@@ -470,7 +544,7 @@ public sealed partial class MainWindow
                     return;
                 if (SearchTagOptions.IsOpen)
                 {
-                    HideSearchTags();
+                    DismissSearchTagsToInput();
                     return;
                 }
                 if (suggestingTags && RemoveSearchTagTrigger())

@@ -519,7 +519,7 @@ public sealed partial class MainWindow : Window
         ManageAlbumTags.IsEnabled = !value && catalog is not null;
         SourceAlbumCoverButton.IsEnabled = SourceAlbumFavorite.IsEnabled = !value;
         SourceAlbumMetadata.IsHitTestVisible = !value;
-        SourceAlbumClearRating.IsEnabled = !value && displayedAlbumRating is not null;
+        SourceAlbumZeroRating.IsEnabled = SourceAlbumClearRating.IsEnabled = !value;
         BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }

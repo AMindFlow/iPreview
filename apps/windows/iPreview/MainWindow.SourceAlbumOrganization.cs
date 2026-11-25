@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace IPreview;
 
@@ -129,7 +130,6 @@ public sealed partial class MainWindow
         DrawSourceAlbumStars(displayedAlbumRating ?? 0);
         SourceAlbumRatingValue.Text = displayedAlbumRating is int rating ? FormatAlbumRating(rating) : "未评分";
         AutomationProperties.SetHelpText(SourceAlbumRatingOptions, SourceAlbumRatingValue.Text);
-        SourceAlbumClearRating.IsEnabled = !busy && displayedAlbumRating is not null;
         var tags = sourceAlbumIndex.TagsFor(key);
         SourceAlbumTags.ItemsSource = tags;
         sourceAlbumHasTags = tags.Count > 0;
@@ -166,6 +166,12 @@ public sealed partial class MainWindow
     {
         if (!busy)
             RatingOptions.Open();
+    }
+
+    private void PrepareSourceAlbumRatingOptions(object sender, object args)
+    {
+        SourceAlbumZeroRating.IsChecked = displayedAlbumRating == 0;
+        SourceAlbumClearRating.IsChecked = displayedAlbumRating is null;
     }
 
     private void SetSourceAlbumZeroRating(object sender, RoutedEventArgs args) => SetSourceAlbumRating(0);
@@ -363,8 +369,7 @@ public sealed partial class MainWindow
 
         var panel = new StackPanel { Spacing = 8 };
         var input = new TextBox { Header = "新标签", PlaceholderText = "标签名称" };
-        var attached = sourceAlbumIndex.TagsFor(key).Select(tag => tag.Id).ToHashSet();
-        var picker = TagSelector(sourceAlbumIndex.Tags.Where(tag => !attached.Contains(tag.Id)).ToList());
+        var picker = TagSelector(AvailableTags());
         picker.Header = "已有标签";
         picker.PlaceholderText = "选择标签";
         picker.Visibility = picker.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -373,10 +378,21 @@ public sealed partial class MainWindow
         panel.Children.Add(picker);
         panel.Children.Add(status);
         var dialog = OrganizationDialog("添加专辑标签", panel);
-        dialog.CloseButtonText = "取消";
         dialog.PrimaryButtonText = "添加";
         dialog.IsPrimaryButtonEnabled = false;
-        dialog.DefaultButton = ContentDialogButton.Primary;
+        dialog.DefaultButton = ContentDialogButton.None;
+        dialog.Opened += (_, _) => input.Focus(FocusState.Programmatic);
+        var composing = false;
+        input.TextCompositionStarted += (_, _) => composing = true;
+        input.TextCompositionEnded += (_, _) => composing = false;
+        input.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key != VirtualKey.Enter || composing)
+                return;
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown && dialog.IsPrimaryButtonEnabled)
+                AddTag();
+        };
         input.TextChanged += (_, _) =>
         {
             if (!string.IsNullOrWhiteSpace(input.Text))
@@ -391,6 +407,13 @@ public sealed partial class MainWindow
         };
         dialog.PrimaryButtonClick += (_, args) =>
         {
+            args.Cancel = true;
+            AddTag();
+        };
+        await dialog.ShowAsync();
+
+        void AddTag()
+        {
             try
             {
                 if (picker.SelectedItem is SourceAlbumTag tag)
@@ -402,11 +425,23 @@ public sealed partial class MainWindow
             {
                 status.Message = error.Message;
                 status.IsOpen = true;
-                args.Cancel = true;
+                input.Focus(FocusState.Programmatic);
+                return;
             }
-        };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             RefreshSourceAlbumMetadata();
+            status.IsOpen = false;
+            input.Text = "";
+            picker.ItemsSource = AvailableTags();
+            picker.Visibility = picker.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            UpdateButton();
+            input.Focus(FocusState.Programmatic);
+        }
+
+        List<SourceAlbumTag> AvailableTags()
+        {
+            var attached = sourceAlbumIndex.TagsFor(key).Select(tag => tag.Id).ToHashSet();
+            return sourceAlbumIndex.Tags.Where(tag => !attached.Contains(tag.Id)).ToList();
+        }
 
         void UpdateButton() => dialog.IsPrimaryButtonEnabled =
             picker.SelectedItem is SourceAlbumTag || !string.IsNullOrWhiteSpace(input.Text);
