@@ -148,18 +148,19 @@ private struct VideoWorkOverview: View {
                 }
             } right: {
                 GeometryReader { geometry in
-                    let width = min(geometry.size.width * 0.34, 176)
+                    let width = min(geometry.size.width * 0.32, 165)
+                    let overlap = min(width * 0.28, 44)
                     ScrollView(.horizontal) {
-                        LazyHStack(spacing: 17) {
+                        LazyHStack(spacing: -overlap) {
                             ForEach(session.albums.indices, id: \.self) { index in
                                 let album = session.albums[index]
                                 let foreground = session.selectedAlbum == index
-                                collectible(.album(index), title: album.title, opens: false) {
+                                collectible(.album(index), title: album.title, opens: false,
+                                            titleWidth: width - overlap) {
                                     AlbumCase(album: album, revision: revision, width: width,
                                               foreground: foreground, opening: session.browsing)
                                 }
                                 .scaleEffect(session.browsing ? (foreground ? 1.54 : 0.69) : 1)
-                                .offset(y: session.browsing && !foreground ? 26 : 0)
                                 .opacity(session.browsing ? 0 : 1)
                                 .zIndex(foreground ? 1 : 0)
                                 .id(VideoWorkPreviewSession.Collectible.album(index))
@@ -191,7 +192,8 @@ private struct VideoWorkOverview: View {
     }
 
     private func collectible<Cover: View>(_ selection: VideoWorkPreviewSession.Collectible, title: String,
-                                          opens: Bool, @ViewBuilder cover: () -> Cover) -> some View {
+                                          opens: Bool, titleWidth: CGFloat? = nil,
+                                          @ViewBuilder cover: () -> Cover) -> some View {
         let selected = session.selection == selection
         return Button {
             session.select(selection)
@@ -203,6 +205,7 @@ private struct VideoWorkOverview: View {
                 Text(title)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
+                    .frame(width: titleWidth)
                     .opacity(session.browsing ? 0 : 1)
             }
             .padding(9)
@@ -233,5 +236,6 @@ private struct VideoWorkOverview: View {
         }
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityHint(opens ? "打开专辑并播放" : "选择此图册，按空格打开专辑")
+        .help(title)
     }
 }

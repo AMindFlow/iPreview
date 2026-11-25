@@ -23,6 +23,8 @@ struct VideoWorkWorkspace: View {
     private enum Pane { case video, photos }
     private enum Control: Hashable { case video, timeline, photos, albums, sort }
 
+    private var canSeek: Bool { video.duration > 0 && video.message == nil }
+
     init(work: IndexedVideoWork, video: VideoPlayback, albums: [VideoWorkPreviewSession.Album],
          initialAlbum: Int, revision: Int, back: @escaping () -> Void) {
         self.work = work
@@ -122,8 +124,8 @@ struct VideoWorkWorkspace: View {
             .labelsHidden()
             .controlSize(.small)
             .accessibilityLabel("视频进度")
-            .disabled(video.duration <= 0 || video.message != nil)
-            .focusable(video.duration > 0, interactions: .edit)
+            .disabled(!canSeek)
+            .focusable(canSeek, interactions: .edit)
             .focused($focus, equals: .timeline)
             Text(duration)
                 .monospacedDigit()
@@ -257,6 +259,12 @@ struct VideoWorkWorkspace: View {
                 if !event.isARepeat { video.toggle() }
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if !event.isARepeat && video.message == nil { locked.toggle() }
+            case kVK_DownArrow:
+                guard focus == .video, canSeek else { return false }
+                focus = .timeline
+            case kVK_UpArrow:
+                guard focus == .timeline else { return false }
+                focus = .video
             case kVK_LeftArrow, kVK_RightArrow:
                 guard locked || focus == .timeline else { return false }
                 let step = locked ? 15.0 : 0.25
