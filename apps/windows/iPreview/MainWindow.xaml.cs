@@ -1147,14 +1147,7 @@ public sealed partial class MainWindow : Window
         PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
-    private void ToggleVideoLock(object sender, RoutedEventArgs args)
-    {
-        var locked = VideoLock.IsChecked == true;
-        if (BrowsingVideoWork)
-            SetPreviewVideoLock(locked);
-        else
-            ChangePreviewVideoLock(locked);
-    }
+    private void ToggleVideoLock(object sender, RoutedEventArgs args) => ChangePreviewVideoLock(VideoLock.IsChecked == true);
 
     private void ChangePreviewVideoLock(bool locked)
     {
