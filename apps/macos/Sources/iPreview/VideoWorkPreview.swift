@@ -218,8 +218,10 @@ private struct VideoWorkOverview: View {
 
     @ViewBuilder
     private func albumSelector(width: CGFloat) -> some View {
+        let labelWidth = max(1, min(width, 230))
         if session.albums.count == 1 {
             caption(session.album.title, selected: focused == .photos)
+                .frame(maxWidth: labelWidth)
         } else {
             Menu {
                 ForEach(session.albums.indices, id: \.self) { index in
@@ -235,10 +237,12 @@ private struct VideoWorkOverview: View {
                     }
                 }
             } label: {
-                Text(session.album.title).lineLimit(1)
+                Text(session.album.title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .fixedSize()
-            .frame(maxWidth: max(1, width))
+            .frame(maxWidth: labelWidth)
+            .help(session.album.title)
             .accessibilityLabel("图册")
             .accessibilityValue(session.album.title)
             .opacity(session.browsing ? 0 : 1)
