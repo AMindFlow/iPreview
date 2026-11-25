@@ -50,7 +50,7 @@ struct AlbumHeaderRating: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            AlbumRatingOptions(ratingTitle: ratingTitle, canClear: ratingHalf != nil, setRating: setRating)
+            AlbumRatingOptions(ratingTitle: ratingTitle, ratingHalf: ratingHalf, setRating: setRating)
         }
         .accessibilityElement(children: .contain)
     }
@@ -84,7 +84,7 @@ struct AlbumHeaderRating: View {
 
 private struct AlbumRatingOptions: View {
     let ratingTitle: String
-    let canClear: Bool
+    let ratingHalf: Int?
     let setRating: (Int?) -> Void
 
     private enum Choice: Hashable { case zero, clear }
@@ -93,7 +93,10 @@ private struct AlbumRatingOptions: View {
     @ViewState private var presentation = Presentation.closed
     @ViewState private var anchorHovered = false
     @ViewState private var optionsHovered = false
+    @ViewState private var hoveredChoice: Choice?
     @FocusState private var choice: Choice?
+
+    private var canClear: Bool { ratingHalf != nil }
 
     var body: some View {
         Button(action: togglePinned) {
@@ -115,15 +118,18 @@ private struct AlbumRatingOptions: View {
             get: { presentation != .closed },
             set: { if !$0 { close() } }
         ), arrowEdge: .trailing) {
-            VStack(alignment: .leading, spacing: 3) {
+            let edge = RoundedRectangle(cornerRadius: 12)
+            VStack(alignment: .leading, spacing: 2) {
                 option("0 星", choice: .zero, rating: 0)
                 option("清除评分", choice: .clear, rating: nil)
                     .disabled(!canClear)
             }
-            .padding(5)
+            .padding(6)
+            .font(.callout)
             .contentShape(Rectangle())
             .onHover { optionsHovered = $0 }
-            .previewGlass(in: RoundedRectangle(cornerRadius: 10))
+            .previewGlass(in: edge)
+            .overlay { edge.strokeBorder(.primary.opacity(0.14)).allowsHitTesting(false) }
             .task(id: presentation) {
                 guard presentation == .pinned else { return }
                 await Task.yield()
@@ -156,6 +162,7 @@ private struct AlbumRatingOptions: View {
     private func close() {
         presentation = .closed
         optionsHovered = false
+        hoveredChoice = nil
     }
 
     private func option(_ title: String, choice: Choice, rating: Int?) -> some View {
@@ -163,14 +170,29 @@ private struct AlbumRatingOptions: View {
             close()
             setRating(rating)
         }
+        let selected = ratingHalf == rating
+        let highlighted = self.choice == choice || hoveredChoice == choice
         return Button(action: apply) {
-            Text(title)
-                .frame(width: 96, height: 26, alignment: .leading)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 16)
+                    .opacity(selected ? 1 : 0)
+                    .accessibilityHidden(true)
+                Text(title)
+            }
+            .frame(width: 108, height: 29, alignment: .leading)
+            .padding(.horizontal, 7)
+            .background(highlighted ? Color.primary.opacity(0.10) : .clear, in: .rect(cornerRadius: 6))
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .focused($choice, equals: choice)
+        .onHover { inside in
+            if inside && (choice != .clear || canClear) { hoveredChoice = choice }
+            else if hoveredChoice == choice { hoveredChoice = nil }
+        }
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onKeyPress(.return) {
             guard choice != .clear || canClear else { return .ignored }
             apply()

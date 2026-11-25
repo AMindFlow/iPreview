@@ -34,6 +34,7 @@ struct SourceAlbumOrganizationSheet: View {
     @ViewState private var deletingTag: SourceAlbumTag?
     @ViewState private var coverDraft: [Int64]?
     @ViewState private var coverSort = MediaSort()
+    @FocusState private var tagInputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -88,17 +89,22 @@ struct SourceAlbumOrganizationSheet: View {
         let attached = Set(model.sourceAlbumIndex.tags(for: key).map(\.id))
         let available = model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) }
         return HStack {
-            TextField("标签名称", text: $tagDraft).onSubmit { addTag(key) }
+            TextField("标签名称", text: $tagDraft)
+                .focused($tagInputFocused)
+                .onSubmit { addTag(key) }
             Button("添加") { addTag(key) }
-                .disabled(tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(working || tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Menu("已有标签") {
                 ForEach(available) { tag in
                     Button(tag.name) { apply { try await $0.addTag(tag.id, to: key) } }
                 }
             }
-            .disabled(available.isEmpty)
+            .disabled(working || available.isEmpty)
         }
-        .disabled(working)
+        .task {
+            await Task.yield()
+            if !Task.isCancelled { tagInputFocused = true }
+        }
     }
 
     private var globalTags: some View {
@@ -213,7 +219,13 @@ struct SourceAlbumOrganizationSheet: View {
 
     private func addTag(_ key: SourceAlbumKey) {
         let name = tagDraft
-        apply({ _ = try await $0.addTag(named: name, to: key) }) { tagDraft = "" }
+        let composing = tagInputFocused
+            && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
+        guard !composing, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        apply({ _ = try await $0.addTag(named: name, to: key) }) {
+            if tagDraft == name { tagDraft = "" }
+            tagInputFocused = true
+        }
     }
 
     private func saveTagName(_ tag: SourceAlbumTag) {
