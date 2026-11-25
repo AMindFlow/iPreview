@@ -755,6 +755,8 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(PreviewCloseAction, closeName);
         ToolTipService.SetToolTip(PreviewCloseAction, closeName + "（Esc）");
         previewLayout = layout;
+        PreviewOverlay.XYFocusKeyboardNavigation = work
+            ? XYFocusKeyboardNavigationMode.Disabled : XYFocusKeyboardNavigationMode.Auto;
         PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(work || layout.Mode == BrowseMode.Gallery ? 0 : 36);
         PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(work || layout.Mode == BrowseMode.List ? 0 : 44);
         PreviewOverlay.Visibility = Visibility.Visible;

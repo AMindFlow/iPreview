@@ -81,7 +81,7 @@ public sealed partial class MainWindow
         LibraryHost.IsEnabled = false;
         VideoWorkOverlay.Visibility = Visibility.Visible;
         LayoutVideoWorkShowcase();
-        VideoWorkTape.Focus(FocusState.Programmatic);
+        FocusVideoWorkEntrance(session);
     }
 
     private void VideoWorkShowcaseSizeChanged(object sender, SizeChangedEventArgs args) => LayoutVideoWorkShowcase();
@@ -128,8 +128,21 @@ public sealed partial class MainWindow
         PresentWorkPhotoPile(session);
     }
 
-    private void FocusVideoWorkEntrance(VideoWorkSession session) =>
-        (session.OpeningFromPile ? VideoWorkPhotoPile : VideoWorkTape).Focus(FocusState.Programmatic);
+    private void FocusVideoWorkEntrance(VideoWorkSession session)
+    {
+        VideoWorkOverlay.UpdateLayout();
+        var target = session.OpeningFromPile ? VideoWorkPhotoPile : VideoWorkTape;
+        if (!target.Focus(FocusState.Programmatic))
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var focus = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+                if (ReferenceEquals(videoWorkSession, session) && VideoWorkOverlay.Visibility == Visibility.Visible &&
+                    !IsWithin(focus, VideoWorkOverlay))
+                    target.Focus(FocusState.Programmatic);
+            });
+        }
+    }
 
     private void BackFromVideoWork(object sender, RoutedEventArgs args) => BackFromVideoWork();
 
@@ -195,26 +208,51 @@ public sealed partial class MainWindow
         ShowWorkPhotoGroup(session, opening: true);
     }
 
+    private void VideoWorkRootKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (videoWorkSession is not { } session || args.Key is not (VirtualKey.Escape or VirtualKey.Tab) ||
+            KeyIsDown(VirtualKey.Control) || KeyIsDown(VirtualKey.Menu) ||
+            KeyIsDown(VirtualKey.LeftWindows) || KeyIsDown(VirtualKey.RightWindows) ||
+            (args.Key == VirtualKey.Escape && KeyIsDown(VirtualKey.Shift)))
+            return;
+        var focus = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        if (VideoWorkOverviewGroups.IsDropDownOpen || WorkPhotoGroupPicker.IsDropDownOpen ||
+            focus is MenuFlyoutItemBase)
+            return;
+
+        args.Handled = true;
+        if (args.KeyStatus.WasKeyDown)
+            return;
+        if (args.Key == VirtualKey.Escape)
+        {
+            if (session.Browsing)
+                ClosePreview();
+            else if (workOpeningVisuals is not null)
+            {
+                CancelWorkOpening();
+                FocusVideoWorkEntrance(session);
+            }
+            else
+                BackFromVideoWork();
+            return;
+        }
+
+        if (session.Browsing)
+        {
+            SetActiveWorkPane(video: !workVideoActive);
+            (workVideoActive ? PreviewCanvas : WorkPhotoCanvas).Focus(FocusState.Keyboard);
+        }
+        else if (workOpeningVisuals is null)
+        {
+            var onPhotos = IsWithin(focus, VideoWorkPhotoPile) || IsWithin(focus, VideoWorkOverviewGroups);
+            (onPhotos ? VideoWorkTape : VideoWorkPhotoPile).Focus(FocusState.Keyboard);
+        }
+    }
+
     private void VideoWorkKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (VideoWorkOverviewGroups.IsDropDownOpen)
             return;
-
-        if (args.Key == VirtualKey.Escape)
-        {
-            args.Handled = true;
-            if (!args.KeyStatus.WasKeyDown)
-            {
-                if (workOpeningVisuals is not null && videoWorkSession is { } opening)
-                {
-                    CancelWorkOpening();
-                    FocusVideoWorkEntrance(opening);
-                }
-                else
-                    BackFromVideoWork();
-            }
-            return;
-        }
 
         if (workOpeningVisuals is not null)
         {
@@ -222,8 +260,8 @@ public sealed partial class MainWindow
             return;
         }
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
-        var onTape = ReferenceEquals(focused, VideoWorkTape);
-        var onPile = ReferenceEquals(focused, VideoWorkPhotoPile);
+        var onTape = IsWithin(focused, VideoWorkTape);
+        var onPile = IsWithin(focused, VideoWorkPhotoPile);
         if (!onTape && !onPile)
             return;
 
@@ -232,11 +270,6 @@ public sealed partial class MainWindow
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
                 BeginVideoWork(fromPile: onPile);
-        }
-        else if (onTape && args.Key == VirtualKey.Right)
-        {
-            args.Handled = true;
-            VideoWorkPhotoPile.Focus(FocusState.Keyboard);
         }
         else if (onPile && args.Key is VirtualKey.Left or VirtualKey.Right)
         {
@@ -294,21 +327,6 @@ public sealed partial class MainWindow
         if (WorkPhotoGroupPicker.IsDropDownOpen || focus is MenuFlyoutItemBase)
             return;
 
-        if (args.Key is VirtualKey.Escape or VirtualKey.Tab)
-        {
-            args.Handled = true;
-            if (!args.KeyStatus.WasKeyDown)
-            {
-                if (args.Key == VirtualKey.Escape)
-                    ClosePreview();
-                else
-                {
-                    SetActiveWorkPane(video: !workVideoActive);
-                    (workVideoActive ? PreviewCanvas : WorkPhotoCanvas).Focus(FocusState.Keyboard);
-                }
-            }
-            return;
-        }
         if (previewClosing || previewIndex < 0)
             return;
 
