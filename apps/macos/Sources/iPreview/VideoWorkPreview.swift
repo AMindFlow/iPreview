@@ -203,10 +203,14 @@ private struct VideoWorkOverview: View {
         let visibleBooks = CGFloat(min(session.albums.count, 3))
         let span = 1 + (visibleBooks - 1) * 0.74
         let shelfWidth = max(1, available.width - 24)
-        let area = available.width * available.height * 0.4
-        let fitted = sqrt(area / (span * aspect))
-        let target = fitted * span <= shelfWidth ? fitted : area / (shelfWidth * aspect)
-        return min(target, max(0, available.height - 92) / aspect, max(0, shelfWidth - 26))
+        let chromeWidth = 26 + (visibleBooks - 1) * 8
+        let halfArea = available.width * available.height
+        let targetArea = halfArea * 0.4
+        let target = sqrt(targetArea / (span * aspect))
+        let fitted = min(target, max(0, shelfWidth - chromeWidth) / span)
+        let fittedArea = (fitted * span + chromeWidth) * fitted * aspect
+        let width = fittedArea >= halfArea * 0.3 ? fitted : targetArea / (shelfWidth * aspect)
+        return min(width, max(0, available.height - 92) / aspect, max(0, shelfWidth - 26))
     }
 
     private func collectible<Cover: View>(_ selection: VideoWorkPreviewSession.Collectible, title: String,
