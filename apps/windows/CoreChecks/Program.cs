@@ -529,6 +529,8 @@ static void CheckVideoWorks(string root)
     var ordinary = Path.Combine(root, "Ordinary");
     Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Unrecognized &&
         MediaFiles.Probe(ordinary).Options.Keys.Single() == Layout.Flat, "ordinary videos remain in the generic album");
+    AddFile(compactRoot, "Other/Album/second.mp4");
+    Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous nested video");
     AddFile(compactRoot, "第二个影片.mp4");
     Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
     AddFile(completeRoot, "附加写真集/写真集 2/封面.png");

@@ -603,6 +603,10 @@ struct CatalogChecks {
         let normalImport = try SourceScanner.inspect(ordinary, dataDirectory: fixtures.databaseDirectory)
         try verify(normalImport.candidates.map(\.layout) == [.flat])
 
+        try fixtures.file("Compact/Other/Album/second.mp4")
+        guard case .ambiguous = try SourceScanner.inspectVideoWork(compactRoot, dataDirectory: fixtures.databaseDirectory) else {
+            throw CheckFailure(location: "额外层级中发现多个主视频时应报告歧义")
+        }
         try fixtures.file("Compact/第二个影片.mp4")
         guard case .ambiguous = try SourceScanner.inspectVideoWork(compactRoot, dataDirectory: fixtures.databaseDirectory) else {
             throw CheckFailure(location: "多个主视频应报告歧义")

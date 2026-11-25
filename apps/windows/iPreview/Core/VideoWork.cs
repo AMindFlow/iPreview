@@ -48,7 +48,8 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
         {
             if (photoFolders.Length == 0)
                 return new VideoWorkRecognition.Unrecognized();
-            if (rootVideos.Length != 1 || photoFolders.Length != directFolders.Length)
+            if (rootVideos.Length != 1 || photoFolders.Length != directFolders.Length ||
+                nestedFolders.Any(group => group.Any(media => media.IsVideo)))
                 return new VideoWorkRecognition.Ambiguous();
 
             var rootImages = byParent[""].Where(media => !media.IsVideo).ToArray();
