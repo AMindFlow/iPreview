@@ -3,7 +3,7 @@ import SwiftUI
 
 struct VideoWorkEvents: NSViewRepresentable {
     let handleKey: (NSEvent) -> Bool
-    let onClick: (Bool) -> Void
+    var onClick: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> EventsView { EventsView() }
 

@@ -7,7 +7,6 @@ struct VideoWorkPhotoPile: View {
     let revision: Int
     let width: CGFloat
     let open: () -> Void
-    let takeFocus: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var drag: CGFloat = 0
@@ -94,7 +93,6 @@ struct VideoWorkPhotoPile: View {
 
     private func finish(_ cancelled: Bool) {
         if !cancelled && abs(drag) >= min(72, width * 0.24) {
-            takeFocus()
             flip(drag < 0 ? 1 : -1)
         } else {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { drag = 0 }

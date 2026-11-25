@@ -8,7 +8,6 @@ struct VideoWorkWorkspace: View {
     let video: VideoPlayback
     let albums: [VideoWorkPreviewSession.Album]
     let revision: Int
-    let back: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var pane = Pane.video
@@ -26,12 +25,11 @@ struct VideoWorkWorkspace: View {
     private var canSeek: Bool { video.duration > 0 && video.message == nil }
 
     init(work: IndexedVideoWork, video: VideoPlayback, albums: [VideoWorkPreviewSession.Album],
-         initialAlbum: Int, initialPhotoID: Int64, revision: Int, back: @escaping () -> Void) {
+         initialAlbum: Int, initialPhotoID: Int64, revision: Int) {
         self.work = work
         self.video = video
         self.albums = albums
         self.revision = revision
-        self.back = back
         _selectedAlbum = ViewState(initialValue: initialAlbum)
         _selectedPhoto = ViewState(initialValue: initialPhotoID)
     }
@@ -242,10 +240,6 @@ struct VideoWorkWorkspace: View {
             return true
         }
         guard modifiers.isEmpty else { return false }
-        if key == kVK_Escape {
-            if !event.isARepeat { back() }
-            return true
-        }
         if pane == .photos {
             switch key {
             case kVK_LeftArrow, kVK_RightArrow:
@@ -261,15 +255,14 @@ struct VideoWorkWorkspace: View {
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if !event.isARepeat && video.message == nil { locked.toggle() }
             case kVK_DownArrow:
-                guard focus == .video, canSeek else { return false }
-                focus = .timeline
+                if focus == .video && canSeek { focus = .timeline }
             case kVK_UpArrow:
-                guard focus == .timeline else { return false }
-                focus = .video
+                if focus == .timeline { focus = .video }
             case kVK_LeftArrow, kVK_RightArrow:
-                guard locked || focus == .timeline else { return false }
-                let step = locked ? 15.0 : 0.25
-                video.seek(video.elapsed + (key == kVK_LeftArrow ? -step : step))
+                if locked || focus == .timeline {
+                    let step = locked ? 15.0 : 0.25
+                    video.seek(video.elapsed + (key == kVK_LeftArrow ? -step : step))
+                }
             default: return false
             }
         }

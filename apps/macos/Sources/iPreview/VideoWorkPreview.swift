@@ -1,3 +1,5 @@
+import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import iPreviewCore
 
@@ -48,7 +50,6 @@ final class VideoWorkPreviewSession {
     func stepPhoto(_ direction: Int) {
         let count = album.photos.count
         photoPositions[selectedAlbum] = (photoPosition + direction + count) % count
-        select(.photos)
     }
 }
 
@@ -83,7 +84,7 @@ struct VideoWorkPreview: View {
                 if let workspaceID = session.workspaceID {
                     VideoWorkWorkspace(work: session.work, video: video, albums: session.albums,
                                        initialAlbum: session.selectedAlbum, initialPhotoID: session.currentPhoto.id,
-                                       revision: revision, back: back)
+                                       revision: revision)
                         .id(workspaceID)
                         .transition(.opacity)
                 }
@@ -97,7 +98,10 @@ struct VideoWorkPreview: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
-        .onExitCommand(perform: back)
+        .background {
+            VideoWorkEvents(handleKey: handleOverlayKey)
+                .allowsHitTesting(false)
+        }
         .onDisappear { video.stop() }
         .accessibilityIdentifier("video-work-preview")
     }
@@ -126,6 +130,22 @@ struct VideoWorkPreview: View {
         } else {
             close()
         }
+    }
+
+    private func handleOverlayKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let key = Int(event.keyCode)
+        if key == kVK_Escape, modifiers.isEmpty {
+            if !event.isARepeat { back() }
+            return true
+        }
+        if !session.browsing, key == kVK_Tab, modifiers.isEmpty || modifiers == .shift {
+            if !event.isARepeat {
+                session.select(session.selection == .tape ? .photos : .tape)
+            }
+            return true
+        }
+        return false
     }
 }
 
@@ -169,10 +189,8 @@ private struct VideoWorkOverview: View {
                     .focusable()
                     .focusEffectDisabled()
                     .focused($focused, equals: .tape)
-                    .onKeyPress(.rightArrow) {
-                        focused = .photos
-                        return .handled
-                    }
+                    .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow],
+                                phases: [.down, .repeat]) { _ in .handled }
                     .onKeyPress(.space) {
                         open()
                         return .handled
@@ -193,10 +211,11 @@ private struct VideoWorkOverview: View {
                                        open: {
                                            session.select(.photos)
                                            open()
-                                       }, takeFocus: { focused = .photos })
+                                       })
                         .focused($focused, equals: .photos)
-                        .onKeyPress(.upArrow) {
-                            focused = .tape
+                        .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                            let next = session.selectedAlbum + (press.key == .upArrow ? -1 : 1)
+                            if session.albums.indices.contains(next) { session.selectAlbum(next) }
                             return .handled
                         }
                     albumSelector(width: width)
@@ -213,6 +232,9 @@ private struct VideoWorkOverview: View {
         }
         .onChange(of: focused) { _, selection in
             if let selection, !session.browsing { session.select(selection) }
+        }
+        .onChange(of: session.selection) { _, selection in
+            if !session.browsing { focused = selection }
         }
     }
 
