@@ -130,7 +130,13 @@ internal static class MediaFiles
                 var tagged = work.IndexEntries(prefix);
                 var included = tagged.Select(item => item.RelativePath).ToHashSet(StringComparer.Ordinal);
                 level.AddRange(tagged);
-                level.AddRange(workMedia.Select(Scoped).Where(item => !included.Contains(item.RelativePath)));
+                var videoFolder = SourceRename.SplitPath(work.Video.RelativePath).Parent;
+                var workFiles = workMedia.Where(item =>
+                {
+                    var parent = SourceRename.SplitPath(item.RelativePath).Parent;
+                    return parent.Length == 0 || parent == videoFolder;
+                });
+                level.AddRange(workFiles.Select(Scoped).Where(item => !included.Contains(item.RelativePath)));
                 if (!retainingLayoutDepth)
                     return;
                 // A saved layout can contain ordinary media at an additional level inside a work.
@@ -149,15 +155,23 @@ internal static class MediaFiles
         string root, FileSystemInfo[] children, ScannedMedia[] direct, out List<ScannedMedia> files)
     {
         files = direct.ToList();
-        var folders = children.OfType<DirectoryInfo>().Select(folder => ReadChildren(folder.FullName)).ToArray();
-        foreach (var folder in folders)
-            files.AddRange(ReadFiles(root, folder));
-        if (!files.Any(media => media.IsVideo))
-            return new VideoWorkRecognition.Unrecognized();
+        try
+        {
+            var folders = children.OfType<DirectoryInfo>().Select(folder => ReadChildren(folder.FullName)).ToArray();
+            foreach (var folder in folders)
+                files.AddRange(ReadFiles(root, folder));
+            if (!files.Any(media => media.IsVideo))
+                return new VideoWorkRecognition.Unrecognized();
 
-        foreach (var folder in folders.SelectMany(items => items.OfType<DirectoryInfo>()))
-            files.AddRange(ReadFiles(root, ReadChildren(folder.FullName)));
-        return VideoWork.Recognize(root, files);
+            foreach (var folder in folders.SelectMany(items => items.OfType<DirectoryInfo>()))
+                files.AddRange(ReadFiles(root, ReadChildren(folder.FullName)));
+            return VideoWork.Recognize(root, files);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The normal scan still reports errors in directories within its layout.
+            return new VideoWorkRecognition.Unrecognized();
+        }
     }
 
     private static FileSystemInfo[] ReadChildren(string path) => new DirectoryInfo(path).EnumerateFileSystemInfos()

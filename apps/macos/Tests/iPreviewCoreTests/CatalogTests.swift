@@ -32,11 +32,13 @@ struct CatalogChecks {
         }
 
         try checkLayouts()
+        try checkUnreadableWorkLookahead()
         try await checkMediaSort()
         try checkVideoWorks()
         try await checkVideoWorkIndex()
         try await checkFlexibleVideoWorks()
         try await checkLegacyVideoWorkRescan()
+        try await checkLegacyWorkRolesWithExtraPictures()
         try await checkLegacyWorkAlbumOrganization()
         try await checkVideoFormats()
         try await checkPersistence()
@@ -91,6 +93,35 @@ struct CatalogChecks {
                 $0.source.id == source.id && $0.existsInSource
             }.map { ($0.relativePath, $0.id) })
             try verify(original.allSatisfy { available[$0.relativePath] == $0.id })
+        }
+    }
+
+    static func checkLegacyWorkRolesWithExtraPictures() async throws {
+        let fixtures = try Fixtures()
+        let cases = [
+            ("Full", ["视频/main.mp4", "官方样张/sample.jpg", "附加写真集/册/封面.png", "附加写真集/册/1.png"]),
+            ("Compact", ["main.mp4", "官方样张.jpg", "附加写真集/1.png"]),
+        ]
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        for (name, files) in cases {
+            for file in files { try fixtures.file("\(name)/\(file)") }
+            let root = fixtures.directory(name)
+            let original = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+            try verify(original.candidates.map(\.layout) == [.flat])
+            try await catalog.importSource(root: original.root, candidate: required(original.candidates.first))
+            let before = try await catalog.snapshot()
+            let source = try required(before.sources.first { $0.path == original.root.path })
+            let work = try required(before.videoWorks.first { $0.video.source.id == source.id })
+
+            try fixtures.file("\(name)/Other pictures/1.png")
+            try fixtures.file("\(name)/Other books/Other set/1.png")
+            let reopened = try SourceScanner.inspect(root, dataDirectory: fixtures.databaseDirectory)
+            try verify(reopened.candidates.map(\.layout) == [.flat])
+            try verify(Set(reopened.candidates[0].entries.map(\.relativePath)) == Set(files))
+            try await catalog.update(source: source, entries: SourceScanner.rescan(source))
+            let after = try await catalog.snapshot()
+            try verify(after.videoWorks.first { $0.id == work.id } == work)
+            try verify(after.media.filter { $0.source.id == source.id } == before.media.filter { $0.source.id == source.id })
         }
     }
 
@@ -458,6 +489,19 @@ struct CatalogChecks {
         let clearedIndex = try await reopened.sourceAlbumIndex()
         try verify(clearedIndex.favoriteAlbums == [album] && clearedIndex.ratingsHalf == [sibling: 7])
         try verify(clearedIndex.albums(matchingAnyTagIDs: [trip.id]) == [])
+    }
+
+    static func checkUnreadableWorkLookahead() throws {
+        guard geteuid() != 0 else { return }
+        let fixtures = try Fixtures()
+        try fixtures.file("Source/Maker/Album/keep.jpg")
+        let locked = fixtures.directory("Source/Maker/Album/locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: false)
+        try verify(chmod(locked.path, 0) == 0)
+        defer { _ = chmod(locked.path, S_IRWXU) }
+        let inspection = try SourceScanner.inspect(fixtures.directory("Source"), dataDirectory: fixtures.databaseDirectory)
+        try verify(inspection.candidates.map(\.layout) == [.multiCreator])
+        try verify(inspection.candidates[0].entries.map(\.relativePath) == ["Maker/Album/keep.jpg"])
     }
 
     static func checkLayouts() throws {

@@ -25,6 +25,8 @@ public struct VideoWork: Sendable {
     public let photoSets: [PhotoSet]
     private let videoFolderImages: [ScanEntry]
 
+    private static let legacyVideoFolder = "视频"
+    private static let legacyBookContainer = "附加写真集"
     private static let samplesName = "官方样张"
     private static let coverName = "封面"
 
@@ -55,34 +57,44 @@ public struct VideoWork: Sendable {
         let videos = entries.filter { $0.kind == .video }
 
         if let video = rootVideos.first {
-            guard let folder = photoFolders.first else { return .unrecognized }
-            guard videos.count == 1, photoFolders.count == 1, bookPaths.isEmpty else { return .ambiguous }
+            guard !photoFolders.isEmpty else { return .unrecognized }
+            guard videos.count == 1 else { return .ambiguous }
             let rootImages = atRoot.filter { $0.kind == .image }
             let markedSamples = rootImages.filter { stem($0) == samplesName }
             guard markedSamples.count <= 1 else { return .ambiguous }
             let samples = markedSamples.isEmpty && rootImages.count == 1 ? rootImages : markedSamples
-            let book = PhotoSet(relativePath: folder.key, cover: nil, photos: sorted(folder.value))
+            let usesLegacyRoles = !markedSamples.isEmpty && photoFolders[legacyBookContainer] != nil
+                && !bookPaths.contains { ($0 as NSString).deletingLastPathComponent == legacyBookContainer }
+            let folder = usesLegacyRoles ? legacyBookContainer : photoFolders.first?.key
+            guard usesLegacyRoles || (photoFolders.count == 1 && bookPaths.isEmpty),
+                  let folder, let photos = photoFolders[folder] else { return .ambiguous }
+            let book = PhotoSet(relativePath: folder, cover: nil, photos: sorted(photos))
             return .recognized(VideoWork(root: root, structure: .compact, video: video,
                                          samples: samples, photoSets: [book], videoFolderImages: []))
         }
 
         guard !bookPaths.isEmpty, let video = videos.first else { return .unrecognized }
+        let videoFolder = (video.relativePath as NSString).deletingLastPathComponent
+        guard videos.count == 1, let videoFiles = firstLevel[videoFolder] else { return .ambiguous }
         let containers = Set(bookPaths.map { ($0 as NSString).deletingLastPathComponent })
-        guard videos.count == 1, let videoFolder = firstLevel[(video.relativePath as NSString).deletingLastPathComponent],
-              containers.count == 1, let container = containers.first, firstLevel[container] == nil,
-              photoFolders.count <= 1 else { return .ambiguous }
+        let usesLegacyRoles = videoFolder == legacyVideoFolder && containers.contains(legacyBookContainer)
+            && photoFolders[samplesName] != nil
+        let container = usesLegacyRoles ? legacyBookContainer : containers.count == 1 ? containers.first : nil
+        guard let container, firstLevel[container] == nil,
+              usesLegacyRoles || photoFolders.count <= 1 else { return .ambiguous }
 
         var photoSets: [PhotoSet] = []
-        for path in bookPaths {
+        for path in bookPaths where (path as NSString).deletingLastPathComponent == container {
             let images = byParent[path, default: []]
             let covers = images.filter { stem($0) == coverName }
             let photos = images.filter { stem($0) != coverName }
             guard covers.count <= 1, !photos.isEmpty else { return .ambiguous }
             photoSets.append(PhotoSet(relativePath: path, cover: covers.first, photos: sorted(photos)))
         }
+        let samples = usesLegacyRoles ? photoFolders[samplesName] : photoFolders.first?.value
         return .recognized(VideoWork(root: root, structure: .complete, video: video,
-                                     samples: sorted(photoFolders.first?.value ?? []), photoSets: photoSets,
-                                     videoFolderImages: sorted(videoFolder.filter { $0.kind == .image })))
+                                     samples: sorted(samples ?? []), photoSets: photoSets,
+                                     videoFolderImages: sorted(videoFiles.filter { $0.kind == .image })))
     }
 
     private static func stem(_ entry: ScanEntry) -> String {

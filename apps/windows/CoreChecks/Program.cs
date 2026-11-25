@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using IPreview;
 
 var list = new BrowseLayout(BrowseMode.List, 1);
@@ -203,8 +205,11 @@ try
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
     CheckStructuralVideoWorks(work);
+    if (OperatingSystem.IsWindows())
+        CheckUnreadableWorkLookahead(work);
     CheckVideoWorkIndex(work);
     CheckLegacyVideoWorkRescan(work);
+    CheckLegacyWorkRolesWithExtraPictures(work);
     CheckLegacyWorkAlbumOrganization(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
@@ -613,6 +618,31 @@ static void CheckStructuralVideoWorks(string root)
         "a root video with competing photo folders is ambiguous");
 }
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static void CheckUnreadableWorkLookahead(string root)
+{
+    var source = Path.Combine(root, "Unreadable work lookahead");
+    AddFile(source, "Maker/Album/keep.jpg");
+    var locked = Directory.CreateDirectory(Path.Combine(source, "Maker", "Album", "locked"));
+    using var identity = WindowsIdentity.GetCurrent();
+    var original = locked.GetAccessControl();
+    var restricted = locked.GetAccessControl();
+    restricted.AddAccessRule(new FileSystemAccessRule(
+        identity.User!, FileSystemRights.ListDirectory, AccessControlType.Deny));
+    locked.SetAccessControl(restricted);
+    try
+    {
+        var inspection = MediaFiles.Probe(source);
+        Check(inspection.Options.Keys.Single() == Layout.MultiCreator &&
+            inspection.Options[Layout.MultiCreator].Select(item => item.RelativePath)
+                .SequenceEqual(["Maker/Album/keep.jpg"]), "an unreadable extra directory keeps its ordinary album");
+    }
+    finally
+    {
+        locked.SetAccessControl(original);
+    }
+}
+
 static void CheckLegacyVideoWorkRescan(string root)
 {
     using var catalog = new Catalog(Path.Combine(root, "legacy-works-index"));
@@ -650,6 +680,41 @@ static void CheckLegacyVideoWorkRescan(string root)
             .ToDictionary(item => item.RelativePath, item => item.Id);
         Check(original.All(item => available.TryGetValue(item.RelativePath, out var id) && id == item.Id),
             "rescan preserves legacy depth and media identities");
+    }
+}
+
+static void CheckLegacyWorkRolesWithExtraPictures(string root)
+{
+    using var catalog = new Catalog(Path.Combine(root, "legacy-roles-index"));
+    (string Name, string[] Files)[] cases =
+    [
+        ("Full", ["视频/main.mp4", "官方样张/sample.jpg", "附加写真集/册/封面.png", "附加写真集/册/1.png"]),
+        ("Compact", ["main.mp4", "官方样张.jpg", "附加写真集/1.png"])
+    ];
+    foreach (var (name, files) in cases)
+    {
+        var path = Path.Combine(root, "Legacy roles", name);
+        foreach (var file in files)
+            AddFile(path, file);
+        var original = MediaFiles.Probe(path);
+        var source = catalog.Import(original.Path, Layout.Flat, original.Options[Layout.Flat]);
+        var before = catalog.Read();
+        var work = before.VideoWorks.Single(item => item.Video.Source.Id == source);
+        var previouslyAvailable = before.Media.Where(item => item.Source.Id == source).ToArray();
+
+        AddFile(path, "Other pictures/1.png");
+        AddFile(path, "Other books/Other set/1.png");
+        var reopened = MediaFiles.Probe(path);
+        Check(reopened.Options.Keys.Single() == Layout.Flat &&
+            reopened.Options[Layout.Flat].Select(item => item.RelativePath).ToHashSet().SetEquals(files),
+            "explicit legacy roles preserve the original groups alongside unrelated folders");
+        catalog.Rescan(source, MediaFiles.Scan(path, Layout.Flat));
+        var after = catalog.Read();
+        var updated = after.VideoWorks.Single(item => item.Video.Source.Id == source);
+        Check(updated.Video.Id == work.Video.Id && updated.Samples.SequenceEqual(work.Samples) &&
+            updated.PhotoSets.Single().Photos.SequenceEqual(work.PhotoSets.Single().Photos) &&
+            after.Media.Where(item => item.Source.Id == source).SequenceEqual(previouslyAvailable),
+            "a legacy work retains all indexed members after rescan");
     }
 }
 

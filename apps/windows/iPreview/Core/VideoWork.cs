@@ -14,6 +14,8 @@ internal sealed record VideoPhotoSet(string RelativePath, ScannedMedia? Cover, I
 internal sealed record VideoWork(string Root, VideoWorkStructure Structure, ScannedMedia Video,
     IReadOnlyList<ScannedMedia> Samples, IReadOnlyList<VideoPhotoSet> PhotoSets)
 {
+    private const string LegacyVideoFolder = "视频";
+    private const string LegacyBookContainer = "附加写真集";
     private const string SamplesName = "官方样张";
     private const string CoverName = "封面";
 
@@ -39,14 +41,14 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
         var byParent = entries.ToLookup(entry => SourceRename.SplitPath(entry.RelativePath).Parent, StringComparer.Ordinal);
         var directFolders = byParent.Where(group => group.Key.Length != 0 && !group.Key.Contains('/')).ToArray();
         var nestedFolders = byParent.Where(group => group.Key.Contains('/')).ToArray();
+        var photoFolders = directFolders.Where(group => group.All(media => !media.IsVideo)).ToArray();
         var rootVideos = byParent[""].Where(media => media.IsVideo).ToArray();
 
         if (rootVideos.Length != 0)
         {
-            if (directFolders.Length == 0)
+            if (photoFolders.Length == 0)
                 return new VideoWorkRecognition.Unrecognized();
-            if (rootVideos.Length != 1 || directFolders.Length != 1 || nestedFolders.Length != 0 ||
-                directFolders[0].Any(media => media.IsVideo))
+            if (rootVideos.Length != 1 || photoFolders.Length != directFolders.Length)
                 return new VideoWorkRecognition.Ambiguous();
 
             var rootImages = byParent[""].Where(media => !media.IsVideo).ToArray();
@@ -54,7 +56,14 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
             if (markedSamples.Length > 1)
                 return new VideoWorkRecognition.Ambiguous();
             var samples = markedSamples.Length == 0 && rootImages.Length == 1 ? rootImages : markedSamples;
-            var book = new VideoPhotoSet(directFolders[0].Key, null, Sorted(directFolders[0]));
+            var legacyBook = photoFolders.SingleOrDefault(group => group.Key == LegacyBookContainer);
+            var usesLegacyCompactRoles = markedSamples.Length == 1 && legacyBook is not null &&
+                !nestedFolders.Any(group => SourceRename.SplitPath(group.Key).Parent == LegacyBookContainer);
+            var folder = usesLegacyCompactRoles ? legacyBook :
+                photoFolders.Length == 1 && nestedFolders.Length == 0 ? photoFolders[0] : null;
+            if (folder is null)
+                return new VideoWorkRecognition.Ambiguous();
+            var book = new VideoPhotoSet(folder.Key, null, Sorted(folder));
             return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Compact, rootVideos[0], samples, [book]));
         }
 
@@ -67,15 +76,15 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
         var videoFolder = SourceRename.SplitPath(folderVideos[0].RelativePath).Parent;
         var bookContainers = nestedFolders.Select(group => SourceRename.SplitPath(group.Key).Parent)
             .Distinct(StringComparer.Ordinal).ToArray();
-        if (bookContainers.Length != 1 || byParent.Contains(bookContainers[0]))
-            return new VideoWorkRecognition.Ambiguous();
-
-        var sampleFolders = directFolders.Where(group => group.Key != videoFolder).ToArray();
-        if (sampleFolders.Length > 1)
+        var usesLegacyRoles = videoFolder == LegacyVideoFolder && bookContainers.Contains(LegacyBookContainer) &&
+            photoFolders.Any(group => group.Key == SamplesName);
+        var container = usesLegacyRoles ? LegacyBookContainer : bookContainers.Length == 1 ? bookContainers[0] : null;
+        if (container is null || byParent.Contains(container) || (!usesLegacyRoles && photoFolders.Length > 1))
             return new VideoWorkRecognition.Ambiguous();
 
         var photoSets = new List<VideoPhotoSet>();
-        foreach (var group in nestedFolders.OrderBy(group => group.Key, MediaSearch.NaturalName)
+        foreach (var group in nestedFolders.Where(group => SourceRename.SplitPath(group.Key).Parent == container)
+            .OrderBy(group => group.Key, MediaSearch.NaturalName)
             .ThenBy(group => group.Key, StringComparer.Ordinal))
         {
             var covers = group.Where(media => Stem(media) == CoverName).ToArray();
@@ -85,7 +94,8 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
             photoSets.Add(new VideoPhotoSet(group.Key, covers.SingleOrDefault(), Sorted(photos)));
         }
 
-        var folderSamples = sampleFolders.Length == 0 ? [] : Sorted(sampleFolders[0]);
+        var folderSamples = usesLegacyRoles ? Sorted(byParent[SamplesName]) :
+            photoFolders.Length == 0 ? [] : Sorted(photoFolders[0]);
         return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Complete, folderVideos[0],
             folderSamples, photoSets));
     }
