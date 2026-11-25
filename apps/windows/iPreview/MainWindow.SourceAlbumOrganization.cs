@@ -15,7 +15,7 @@ public sealed partial class MainWindow
         public SourceAlbumKey Key { get; } = key;
         public string Title { get; } = title;
         public bool IsFavorite { get; private set; } = isFavorite;
-        public string Glyph => IsFavorite ? "\uE735" : "\uE734";
+        public Visibility BookmarkFill => IsFavorite ? Visibility.Visible : Visibility.Collapsed;
         public string ActionLabel => IsFavorite ? $"取消收藏专辑「{Title}」" : $"收藏专辑「{Title}」";
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -25,7 +25,7 @@ public sealed partial class MainWindow
             if (IsFavorite == value)
                 return;
             IsFavorite = value;
-            PropertyChanged?.Invoke(this, new(nameof(Glyph)));
+            PropertyChanged?.Invoke(this, new(nameof(BookmarkFill)));
             PropertyChanged?.Invoke(this, new(nameof(ActionLabel)));
         }
     }
@@ -35,6 +35,8 @@ public sealed partial class MainWindow
 
     private readonly FontIcon[] sourceAlbumStarFills = new FontIcon[5];
     private int? displayedAlbumRating;
+    private HoverFlyout? ratingOptions;
+    private HoverFlyout RatingOptions => ratingOptions ??= new(SourceAlbumRatingOptions, SourceAlbumRatingFlyout);
     private bool sourceAlbumHasTags;
     private Button? hoveredTagAction;
 
@@ -121,11 +123,12 @@ public sealed partial class MainWindow
         SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, members)));
         var favorite = sourceAlbumIndex.FavoriteAlbums.Contains(key);
         SourceAlbumFavorite.IsChecked = favorite;
-        SourceAlbumFavoriteIcon.Glyph = favorite ? "\uE735" : "\uE734";
+        SourceAlbumFavoriteFill.Visibility = favorite ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(SourceAlbumFavorite, favorite ? "取消收藏专辑" : "收藏专辑");
         displayedAlbumRating = sourceAlbumIndex.RatingsHalf.TryGetValue(key, out var half) ? half : null;
         DrawSourceAlbumStars(displayedAlbumRating ?? 0);
         SourceAlbumRatingValue.Text = displayedAlbumRating is int rating ? FormatAlbumRating(rating) : "未评分";
+        AutomationProperties.SetHelpText(SourceAlbumRatingOptions, SourceAlbumRatingValue.Text);
         SourceAlbumClearRating.IsEnabled = !busy && displayedAlbumRating is not null;
         var tags = sourceAlbumIndex.TagsFor(key);
         SourceAlbumTags.ItemsSource = tags;
@@ -151,6 +154,18 @@ public sealed partial class MainWindow
     {
         if (!busy && sender is Button { DataContext: Navigation { Favorite: { } favorite } })
             SaveAlbumMetadata(() => Database.SetFavorite(!favorite.IsFavorite, favorite.Key));
+    }
+
+    private void PeekSourceAlbumRatingOptions(object sender, PointerRoutedEventArgs args)
+    {
+        if (!busy)
+            RatingOptions.Peek(args);
+    }
+
+    private void OpenSourceAlbumRatingOptions(object sender, RoutedEventArgs args)
+    {
+        if (!busy)
+            RatingOptions.Open();
     }
 
     private void SetSourceAlbumZeroRating(object sender, RoutedEventArgs args) => SetSourceAlbumRating(0);

@@ -2,7 +2,6 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Data;
 using Windows.System;
@@ -22,7 +21,8 @@ public sealed partial class MainWindow
     private List<SourceAlbumTag> searchTagSuggestions = [];
     private readonly List<long> searchTagIds = [];
     private bool suggestingTags;
-    private bool openingSearchTagsAfterHover;
+    private HoverFlyout? searchTagOptions;
+    private HoverFlyout SearchTagOptions => searchTagOptions ??= new(SearchTagStack, SearchTagsFlyout);
 
     private sealed class SearchResultGroup(SearchResultCategory category, IEnumerable<GlobalSearchHit> hits)
         : List<GlobalSearchHit>(hits)
@@ -333,7 +333,11 @@ public sealed partial class MainWindow
         var tags = searchTagIds.Select(id => tagsById[id]).ToArray();
         SearchActiveTags.ItemsSource = tags;
         SearchTagStack.Visibility = tags.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        SearchTagStackedIcon.Visibility = tags.Length > 1 ? Visibility.Visible : Visibility.Collapsed;
+        var depth = Math.Clamp(tags.Length - 1, 0, 2);
+        SearchTagRearCard.Visibility = depth == 2 ? Visibility.Visible : Visibility.Collapsed;
+        SearchTagMiddleCard.Visibility = depth >= 1 ? Visibility.Visible : Visibility.Collapsed;
+        SearchTagMiddleCard.Margin = depth == 2 ? new(5, 4, 5, 4) : new(5, 4, 0, 0);
+        SearchTagFrontCard.Margin = new(0, 0, depth * 5, depth * 4);
         SearchTagName.Text = tags.LastOrDefault()?.Name ?? "";
         AutomationProperties.SetName(SearchTagStack, "标签筛选 " + string.Join("、", tags.Select(tag => tag.Name)));
     }
@@ -349,43 +353,13 @@ public sealed partial class MainWindow
 
     private void PeekSearchTags(object sender, PointerRoutedEventArgs args)
     {
-        if (!openingSearchTagsAfterHover && !SearchTagsFlyout.IsOpen && searchTagIds.Count > 0 &&
-            args.GetCurrentPoint(SearchTagStack).PointerDeviceType == PointerDeviceType.Mouse)
-            SearchTagsFlyout.ShowAt(SearchTagStack, new FlyoutShowOptions
-            {
-                ShowMode = FlyoutShowMode.TransientWithDismissOnPointerMoveAway
-            });
+        if (searchTagIds.Count > 0)
+            SearchTagOptions.Peek(args);
     }
 
-    private void OpenSearchTags(object sender, RoutedEventArgs args)
-    {
-        if (openingSearchTagsAfterHover)
-            return;
-        if (!SearchTagsFlyout.IsOpen)
-            ShowStandardSearchTags();
-        else if (SearchTagsFlyout.ShowMode != FlyoutShowMode.Standard)
-        {
-            openingSearchTagsAfterHover = true;
-            SearchTagsFlyout.Hide();
-        }
-    }
+    private void OpenSearchTags(object sender, RoutedEventArgs args) => SearchTagOptions.Open();
 
-    private void SearchTagsClosed(object? sender, object args)
-    {
-        if (!openingSearchTagsAfterHover)
-            return;
-        openingSearchTagsAfterHover = false;
-        ShowStandardSearchTags();
-    }
-
-    private void ShowStandardSearchTags() =>
-        SearchTagsFlyout.ShowAt(SearchTagStack, new FlyoutShowOptions { ShowMode = FlyoutShowMode.Standard });
-
-    private void HideSearchTags()
-    {
-        openingSearchTagsAfterHover = false;
-        SearchTagsFlyout.Hide();
-    }
+    private void HideSearchTags() => SearchTagOptions.Hide();
 
     private async void RemoveSearchTag(object sender, RoutedEventArgs args)
     {
@@ -494,7 +468,7 @@ public sealed partial class MainWindow
                 args.Handled = true;
                 if (args.KeyStatus.WasKeyDown)
                     return;
-                if (SearchTagsFlyout.IsOpen || openingSearchTagsAfterHover)
+                if (SearchTagOptions.IsOpen)
                 {
                     HideSearchTags();
                     return;

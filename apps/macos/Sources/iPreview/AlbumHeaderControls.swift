@@ -8,7 +8,7 @@ struct AlbumFavoriteButton: View {
 
     var body: some View {
         Button(action: toggle) {
-            Image(systemName: favorite ? "star.fill" : "star")
+            Image(systemName: favorite ? "bookmark.fill" : "bookmark")
                 .font(.system(size: size, weight: .medium))
                 .foregroundStyle(favorite ? Color.accentColor : .secondary)
                 .frame(width: size + 9, height: size + 9)
@@ -46,19 +46,11 @@ struct AlbumHeaderRating: View {
                 .frame(width: 21, height: 23)
             }
 
-            Menu {
-                Button("0 星") { setRating(0) }
-                Button("清除评分") { setRating(nil) }
-                    .disabled(ratingHalf == nil)
-            } label: {
-                Text(ratingTitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .accessibilityLabel("评分")
-            .accessibilityValue(ratingTitle)
+            Text(ratingTitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            AlbumRatingOptions(ratingTitle: ratingTitle, canClear: ratingHalf != nil, setRating: setRating)
         }
         .accessibilityElement(children: .contain)
     }
@@ -87,6 +79,103 @@ struct AlbumHeaderRating: View {
         }
         .accessibilityLabel("设为 \(Double(value) / 2, format: .number) 星")
         .help("设为 \(Double(value) / 2, format: .number) 星")
+    }
+}
+
+private struct AlbumRatingOptions: View {
+    let ratingTitle: String
+    let canClear: Bool
+    let setRating: (Int?) -> Void
+
+    private enum Choice: Hashable { case zero, clear }
+    private enum Presentation { case closed, hovered, pinned }
+
+    @ViewState private var presentation = Presentation.closed
+    @ViewState private var anchorHovered = false
+    @ViewState private var optionsHovered = false
+    @FocusState private var choice: Choice?
+
+    var body: some View {
+        Button(action: togglePinned) {
+            Image(systemName: "ellipsis")
+                .rotationEffect(.degrees(90))
+                .font(.caption.weight(.semibold))
+                .frame(width: 23, height: 23)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("评分选项")
+        .accessibilityValue(ratingTitle)
+        .onHover { anchorHovered = $0 }
+        .onKeyPress(.return) {
+            togglePinned()
+            return .handled
+        }
+        .popover(isPresented: Binding(
+            get: { presentation != .closed },
+            set: { if !$0 { close() } }
+        ), arrowEdge: .leading) {
+            VStack(alignment: .leading, spacing: 3) {
+                option("0 星", choice: .zero, rating: 0)
+                option("清除评分", choice: .clear, rating: nil)
+                    .disabled(!canClear)
+            }
+            .padding(5)
+            .contentShape(Rectangle())
+            .onHover { optionsHovered = $0 }
+            .previewGlass(in: RoundedRectangle(cornerRadius: 10))
+            .task(id: presentation) {
+                guard presentation == .pinned else { return }
+                await Task.yield()
+                if !Task.isCancelled { choice = .zero }
+            }
+            .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                choice = press.key == .downArrow && canClear ? .clear : .zero
+                return .handled
+            }
+            .onExitCommand(perform: close)
+        }
+        .task(id: anchorHovered || optionsHovered) {
+            if anchorHovered || optionsHovered {
+                if presentation == .closed { presentation = .hovered }
+            } else if presentation == .hovered {
+                try? await Task.sleep(for: .milliseconds(300))
+                if !Task.isCancelled && presentation == .hovered { close() }
+            }
+        }
+    }
+
+    private func togglePinned() {
+        if presentation == .pinned {
+            close()
+        } else {
+            presentation = .pinned
+        }
+    }
+
+    private func close() {
+        presentation = .closed
+        optionsHovered = false
+    }
+
+    private func option(_ title: String, choice: Choice, rating: Int?) -> some View {
+        let apply = {
+            close()
+            setRating(rating)
+        }
+        return Button(action: apply) {
+            Text(title)
+                .frame(width: 96, height: 26, alignment: .leading)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .focused($choice, equals: choice)
+        .onKeyPress(.return) {
+            guard choice != .clear || canClear else { return .ignored }
+            apply()
+            return .handled
+        }
     }
 }
 

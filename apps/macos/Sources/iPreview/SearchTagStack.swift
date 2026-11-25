@@ -3,6 +3,7 @@ import iPreviewCore
 
 struct SearchTagStack: View {
     let tags: [SourceAlbumTag]
+    let focusSearch: () -> Void
     let remove: (SourceAlbumTag) -> Void
 
     @ViewState private var anchorHovered = false
@@ -14,20 +15,23 @@ struct SearchTagStack: View {
     @FocusState private var focusedTag: Int64?
 
     var body: some View {
-        if let first = tags.first {
+        if let front = tags.last {
+            let depth = min(tags.count - 1, 2)
             Button { pinned.toggle() } label: {
-                label(first)
+                label(front)
                     .padding(.vertical, 4)
                     .padding(.horizontal, 8)
-                    .background(.quaternary, in: Capsule())
-                    .background(alignment: .trailing) {
-                        if tags.count > 1 {
-                            Capsule()
-                                .fill(.quaternary)
-                                .offset(x: 4, y: 2)
+                    .background {
+                        ZStack {
+                            ForEach((0..<depth).reversed(), id: \.self) { index in
+                                card(.windowBackgroundColor)
+                                    .offset(x: CGFloat(index + 1) * 5, y: CGFloat(index + 1) * 4)
+                            }
+                            card(.controlBackgroundColor)
                         }
                     }
-                    .padding(.trailing, tags.count > 1 ? 4 : 0)
+                    .padding(.trailing, CGFloat(depth) * 5)
+                    .padding(.bottom, CGFloat(depth) * 4)
             }
             .buttonStyle(.plain)
             .focused($anchorFocused)
@@ -38,8 +42,15 @@ struct SearchTagStack: View {
             .overlay(alignment: .topTrailing) {
                 if expanded {
                     tagList
-                        .padding(.top, 26)
+                        .padding(.top, 26 + CGFloat(depth) * 4)
                 }
+            }
+            .onKeyPress(.escape) {
+                guard expanded else { return .ignored }
+                pinned = false
+                hoverExpanded = false
+                focusSearch()
+                return .handled
             }
             .task(id: anchorHovered || listHovered) {
                 if anchorHovered || listHovered {
@@ -95,6 +106,13 @@ struct SearchTagStack: View {
         .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary).allowsHitTesting(false) }
         .shadow(color: .black.opacity(0.14), radius: 8, y: 4)
         .onHover { listHovered = $0 }
+    }
+
+    private func card(_ fill: NSColor) -> some View {
+        let edge = RoundedRectangle(cornerRadius: 7)
+        return edge.fill(Color(nsColor: fill))
+            .overlay { edge.strokeBorder(Color.primary.opacity(0.32)) }
+            .accessibilityHidden(true)
     }
 
     private func label(_ tag: SourceAlbumTag) -> some View {

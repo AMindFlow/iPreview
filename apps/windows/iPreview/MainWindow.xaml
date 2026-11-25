@@ -55,6 +55,20 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="4" />
                 </Style>
+                <PathGeometry x:Key="AlbumBookmarkGeometry">
+                    <PathFigure StartPoint="1,1" IsClosed="True">
+                        <LineSegment Point="10,1" />
+                        <LineSegment Point="10,14" />
+                        <LineSegment Point="5.5,11" />
+                        <LineSegment Point="1,14" />
+                    </PathFigure>
+                </PathGeometry>
+                <Style x:Key="AlbumBookmarkPath" TargetType="Path">
+                    <Setter Property="Data" Value="{StaticResource AlbumBookmarkGeometry}" />
+                    <Setter Property="Stretch" Value="Uniform" />
+                    <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Setter Property="StrokeThickness" Value="1.15" />
+                </Style>
                 <Style x:Key="SourceRowActionButton" TargetType="Button" BasedOn="{StaticResource LibraryIconButton}">
                     <Setter Property="Height" Value="28" />
                     <Setter Property="CornerRadius" Value="14" />
@@ -81,8 +95,12 @@
                         <Button Grid.Column="2" Style="{StaticResource LibraryIconButton}" Visibility="{Binding FavoriteVisibility}"
                                 Click="ToggleSidebarAlbumFavorite" AutomationProperties.Name="{Binding Favorite.ActionLabel}"
                                 ToolTipService.ToolTip="{Binding Favorite.ActionLabel}">
-                            <FontIcon Glyph="{Binding Favorite.Glyph}" FontSize="13"
-                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Grid Width="12" Height="15" AutomationProperties.AccessibilityView="Raw">
+                                <Path Style="{StaticResource AlbumBookmarkPath}" />
+                                <Path Style="{StaticResource AlbumBookmarkPath}"
+                                      Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                                      Visibility="{Binding Favorite.BookmarkFill}" />
+                            </Grid>
                         </Button>
                     </Grid>
                 </DataTemplate>
@@ -277,7 +295,11 @@
                                 <ToggleButton x:Name="SourceAlbumFavorite" Grid.Column="1" Visibility="Collapsed"
                                               Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="0" CornerRadius="15"
                                               Click="ToggleSourceAlbumFavorite" AutomationProperties.Name="专辑收藏">
-                                    <FontIcon x:Name="SourceAlbumFavoriteIcon" Glyph="&#xE734;" FontSize="17" />
+                                    <Grid Width="15" Height="18" AutomationProperties.AccessibilityView="Raw">
+                                        <Path Style="{StaticResource AlbumBookmarkPath}" />
+                                        <Path x:Name="SourceAlbumFavoriteFill" Style="{StaticResource AlbumBookmarkPath}"
+                                              Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" />
+                                    </Grid>
                                 </ToggleButton>
                             </Grid>
                             <StackPanel x:Name="SourceAlbumMetadata" Visibility="Collapsed" Spacing="1">
@@ -286,19 +308,22 @@
                                     <TextBlock x:Name="SourceAlbumRatingValue" VerticalAlignment="Center" FontSize="12"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                AutomationProperties.LiveSetting="Polite" />
-                                    <Button Style="{StaticResource LibraryIconButton}"
-                                            Content="0" Click="SetSourceAlbumZeroRating" AutomationProperties.Name="设为 0 星"
-                                            ToolTipService.ToolTip="设为 0 星" />
-                                    <Button x:Name="SourceAlbumClearRating" Style="{StaticResource LibraryIconButton}"
-                                            Click="ClearSourceAlbumRating" AutomationProperties.Name="清除评分"
-                                            ToolTipService.ToolTip="清除评分">
-                                        <Button.Resources>
-                                            <ResourceDictionary>
-                                                <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
-                                                <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="SystemFillColorCriticalBrush" />
-                                            </ResourceDictionary>
-                                        </Button.Resources>
-                                        <FontIcon Glyph="&#xE8BB;" FontSize="10" />
+                                    <Button x:Name="SourceAlbumRatingOptions" Style="{StaticResource LibraryIconButton}"
+                                            Click="OpenSourceAlbumRatingOptions" PointerEntered="PeekSourceAlbumRatingOptions"
+                                            AutomationProperties.Name="评分选项">
+                                        <TextBlock Text="&#x22EE;" FontSize="17" />
+                                        <FlyoutBase.AttachedFlyout>
+                                            <MenuFlyout x:Name="SourceAlbumRatingFlyout" Placement="Right">
+                                                <MenuFlyout.MenuFlyoutPresenterStyle>
+                                                    <Style TargetType="MenuFlyoutPresenter">
+                                                        <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                                                    </Style>
+                                                </MenuFlyout.MenuFlyoutPresenterStyle>
+                                                <MenuFlyoutItem Text="0 星" Click="SetSourceAlbumZeroRating" />
+                                                <MenuFlyoutItem x:Name="SourceAlbumClearRating" Text="清除评分"
+                                                                Click="ClearSourceAlbumRating" />
+                                            </MenuFlyout>
+                                        </FlyoutBase.AttachedFlyout>
                                     </Button>
                                 </StackPanel>
                                 <Grid ColumnSpacing="4" HorizontalAlignment="Left">
@@ -800,18 +825,29 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
-                        <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="14" Padding="7,3"
+                        <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="9" Padding="0"
+                                Background="Transparent" BorderThickness="0"
                                 Visibility="Collapsed" VerticalAlignment="Center" Click="OpenSearchTags" PointerEntered="PeekSearchTags">
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Grid>
-                                    <FontIcon x:Name="SearchTagStackedIcon" Glyph="&#xE8EC;" FontSize="13" Margin="0,0,6,3"
-                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
-                                    <FontIcon Glyph="&#xE8EC;" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
-                                </Grid>
-                                <TextBlock x:Name="SearchTagName" MaxWidth="76" FontSize="12" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                            <Grid>
+                                <Border x:Name="SearchTagRearCard" CornerRadius="7" Margin="10,8,0,0"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1"
+                                        Visibility="Collapsed" IsHitTestVisible="False" />
+                                <Border x:Name="SearchTagMiddleCard" CornerRadius="7" Margin="5,4,0,0"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1"
+                                        Visibility="Collapsed" IsHitTestVisible="False" />
+                                <Border x:Name="SearchTagFrontCard" CornerRadius="7" Padding="7,3"
+                                        Background="{ThemeResource ControlSolidFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" />
+                                        <TextBlock x:Name="SearchTagName" MaxWidth="76" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                             <FlyoutBase.AttachedFlyout>
-                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight" Closed="SearchTagsClosed">
+                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight">
                                     <ScrollViewer MaxHeight="220" MinWidth="160">
                                         <ItemsControl x:Name="SearchActiveTags">
                                             <ItemsControl.ItemTemplate>

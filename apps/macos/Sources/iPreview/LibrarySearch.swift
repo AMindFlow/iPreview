@@ -262,7 +262,7 @@ struct LibrarySearchPanel: View {
     @ViewBuilder
     private var tagFilter: some View {
         if !selectedTags.isEmpty {
-            SearchTagStack(tags: selectedTags) { tag in
+            SearchTagStack(tags: selectedTags, focusSearch: { focus.wrappedValue = .searchQuery }) { tag in
                 selectedTagIDs.removeAll { $0 == tag.id }
                 focus.wrappedValue = .searchQuery
             }
