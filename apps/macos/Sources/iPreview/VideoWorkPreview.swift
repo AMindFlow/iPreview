@@ -18,11 +18,14 @@ final class VideoWorkPreviewSession {
 
     init(work: IndexedVideoWork) {
         self.work = work
-        groups = [Group(name: "影碟", symbol: "opticaldisc", cover: work.video, items: [work.video])]
-            + [Group(name: "官方样张", symbol: "photo.on.rectangle", cover: work.samples[0], items: work.samples)]
-            + work.photoSets.map {
-                Group(name: $0.title, symbol: "book.closed", cover: $0.cover ?? $0.photos[0], items: $0.photos)
-            }
+        var groups = [Group(name: "影碟", symbol: "opticaldisc", cover: work.video, items: [work.video])]
+        if let cover = work.samples.first {
+            groups.append(Group(name: "官方样张", symbol: "photo.on.rectangle", cover: cover, items: work.samples))
+        }
+        groups += work.photoSets.map {
+            Group(name: $0.title, symbol: "book.closed", cover: $0.cover ?? $0.photos[0], items: $0.photos)
+        }
+        self.groups = groups
     }
 
     var group: Group { groups[groupIndex] }

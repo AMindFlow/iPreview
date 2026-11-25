@@ -23,12 +23,10 @@ public struct VideoWork: Sendable {
     public let video: ScanEntry
     public let samples: [ScanEntry]
     public let photoSets: [PhotoSet]
+    private let videoFolderImages: [ScanEntry]
 
-    private static let videoFolder = "视频"
     private static let samplesName = "官方样张"
-    static let photoSetsFolder = "附加写真集"
     private static let coverName = "封面"
-    static let folders: Set<String> = [videoFolder, samplesName, photoSetsFolder]
 
     func indexEntries(prefix: [String]) -> [ScanEntry] {
         func path(_ file: ScanEntry) -> String { (prefix + [file.relativePath]).joined(separator: "/") }
@@ -43,45 +41,48 @@ public struct VideoWork: Sendable {
             if let cover = book.cover { entries.append(image(cover, role: .cover, set: set, position: 0)) }
             entries += book.photos.enumerated().map { image($1, role: .photo, set: set, position: $0) }
         }
-        return entries
+        return entries + videoFolderImages.map { ScanEntry(relativePath: path($0), kind: .image) }
     }
 
     static func recognize(root: URL, entries: [ScanEntry]) -> VideoWorkRecognition {
-        let byParent = Dictionary(grouping: entries) { entry -> String in
-            guard let slash = entry.relativePath.lastIndex(of: "/") else { return "" }
-            return String(entry.relativePath[..<slash])
-        }
+        let byParent = Dictionary(grouping: entries) { ($0.relativePath as NSString).deletingLastPathComponent }
         let atRoot = byParent["", default: []]
         let rootVideos = atRoot.filter { $0.kind == .video }
-        let rootSamples = atRoot.filter { $0.kind == .image && stem($0) == samplesName }
-        let folderVideos = byParent[videoFolder, default: []].filter { $0.kind == .video }
-        let folderSamples = byParent[samplesName, default: []].filter { $0.kind == .image }
-        let flatPhotos = byParent[photoSetsFolder, default: []].filter { $0.kind == .image }
-        let nestedPhotoSets = byParent.keys.filter { $0.hasPrefix(photoSetsFolder + "/") }
+        let firstLevel = byParent.filter { !$0.key.isEmpty && !$0.key.contains("/") }
+        let photoFolders = firstLevel.filter { $0.value.allSatisfy { $0.kind == .image } }
+        let bookPaths = byParent.keys.filter { $0.contains("/") }
             .sorted { compareNaturally($0, $1) == .orderedAscending }
+        let videos = entries.filter { $0.kind == .video }
 
-        guard !rootSamples.isEmpty || byParent[samplesName] != nil || byParent[photoSetsFolder] != nil
-                || !nestedPhotoSets.isEmpty else { return .unrecognized }
-
-        if byParent[videoFolder] != nil || byParent[samplesName] != nil || !nestedPhotoSets.isEmpty {
-            guard folderVideos.count == 1, !folderSamples.isEmpty, !nestedPhotoSets.isEmpty,
-                  rootVideos.isEmpty, rootSamples.isEmpty, flatPhotos.isEmpty else { return .ambiguous }
-            var photoSets: [PhotoSet] = []
-            for path in nestedPhotoSets {
-                let images = byParent[path, default: []].filter { $0.kind == .image }
-                let covers = images.filter { stem($0) == coverName }
-                let photos = images.filter { stem($0) != coverName }
-                guard covers.count == 1, !photos.isEmpty else { return .ambiguous }
-                photoSets.append(PhotoSet(relativePath: path, cover: covers[0], photos: sorted(photos)))
-            }
-            return .recognized(VideoWork(root: root, structure: .complete, video: folderVideos[0],
-                                         samples: sorted(folderSamples), photoSets: photoSets))
+        if let video = rootVideos.first {
+            guard let folder = photoFolders.first else { return .unrecognized }
+            guard videos.count == 1, photoFolders.count == 1, bookPaths.isEmpty else { return .ambiguous }
+            let rootImages = atRoot.filter { $0.kind == .image }
+            let markedSamples = rootImages.filter { stem($0) == samplesName }
+            guard markedSamples.count <= 1 else { return .ambiguous }
+            let samples = markedSamples.isEmpty && rootImages.count == 1 ? rootImages : markedSamples
+            let book = PhotoSet(relativePath: folder.key, cover: nil, photos: sorted(folder.value))
+            return .recognized(VideoWork(root: root, structure: .compact, video: video,
+                                         samples: samples, photoSets: [book], videoFolderImages: []))
         }
 
-        guard rootVideos.count == 1, rootSamples.count == 1, !flatPhotos.isEmpty else { return .ambiguous }
-        let book = PhotoSet(relativePath: photoSetsFolder, cover: nil, photos: sorted(flatPhotos))
-        return .recognized(VideoWork(root: root, structure: .compact, video: rootVideos[0],
-                                     samples: rootSamples, photoSets: [book]))
+        guard !bookPaths.isEmpty, let video = videos.first else { return .unrecognized }
+        let containers = Set(bookPaths.map { ($0 as NSString).deletingLastPathComponent })
+        guard videos.count == 1, let videoFolder = firstLevel[(video.relativePath as NSString).deletingLastPathComponent],
+              containers.count == 1, let container = containers.first, firstLevel[container] == nil,
+              photoFolders.count <= 1 else { return .ambiguous }
+
+        var photoSets: [PhotoSet] = []
+        for path in bookPaths {
+            let images = byParent[path, default: []]
+            let covers = images.filter { stem($0) == coverName }
+            let photos = images.filter { stem($0) != coverName }
+            guard covers.count <= 1, !photos.isEmpty else { return .ambiguous }
+            photoSets.append(PhotoSet(relativePath: path, cover: covers.first, photos: sorted(photos)))
+        }
+        return .recognized(VideoWork(root: root, structure: .complete, video: video,
+                                     samples: sorted(photoFolders.first?.value ?? []), photoSets: photoSets,
+                                     videoFolderImages: sorted(videoFolder.filter { $0.kind == .image })))
     }
 
     private static func stem(_ entry: ScanEntry) -> String {

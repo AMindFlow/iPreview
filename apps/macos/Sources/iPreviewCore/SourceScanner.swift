@@ -110,10 +110,10 @@ public enum SourceScanner {
                   recognizeWorks: Bool) throws {
             var recognizeChildWorks = recognizeWorks
             if recognizeWorks, case .recognized(let work) = try probeVideoWork(directory, children: values) {
-                let tagged = work.indexEntries(prefix: prefix)
-                let included = Set(tagged.map(\.relativePath))
+                let indexed = work.indexEntries(prefix: prefix)
+                let included = Set(indexed.map(\.relativePath))
                 let extras = entries(in: values, prefix: prefix).filter { !included.contains($0.relativePath) }
-                levels[prefix.count] += tagged + extras
+                levels[prefix.count] += indexed + extras
                 guard retainingLayoutDepth else { return }
                 // A saved layout can contain ordinary media at an additional level inside a work.
                 recognizeChildWorks = false
@@ -134,15 +134,16 @@ public enum SourceScanner {
         _ root: URL, children values: [(URL, URLResourceValues)]
     ) throws -> VideoWorkRecognition {
         var files = entries(in: values, prefix: [])
-        for (child, resource) in values where resource.isDirectory == true
-             && VideoWork.folders.contains(child.lastPathComponent) {
-            let name = child.lastPathComponent
-            let nested = try children(of: child)
-            files += entries(in: nested, prefix: [name])
-            if name == VideoWork.photoSetsFolder {
-                for (book, attributes) in nested where attributes.isDirectory == true {
-                    files += entries(in: try children(of: book), prefix: [name, book.lastPathComponent])
-                }
+        let folders = try values.filter { $0.1.isDirectory == true }.map { folder, _ in
+            (name: folder.lastPathComponent, children: try children(of: folder))
+        }
+        for folder in folders {
+            files += entries(in: folder.children, prefix: [folder.name])
+        }
+        guard files.contains(where: { $0.kind == .video }) else { return .unrecognized }
+        for folder in folders {
+            for (book, attributes) in folder.children where attributes.isDirectory == true {
+                files += entries(in: try children(of: book), prefix: [folder.name, book.lastPathComponent])
             }
         }
         return VideoWork.recognize(root: root, entries: files)
