@@ -30,7 +30,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
 | ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
 | ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
-| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 双端用玻璃录像带与层叠图册展示专辑，按 Space 进入双区，Tab 在播放和翻图间切换。详见 [PRE-004](../specs/official/preview.md#pre-004-视频作品的专辑模式)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
+| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 双端用玻璃录像带与层叠图册展示专辑，按 Space 进入双区，Tab 在播放和翻图间切换。详见 [PRE-004](../specs/official/preview.md#pre-004-视频作品的沉浸模式)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
 | ORIG-18 | 音频封面与 CD 机模拟，其他由代理设计 | 待审阅与实施：[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-19 | 多工作区，分别保存文件夹与专辑管理数据 | 待实施：[LIB-004](../specs/spike/library.md#lib-004-多工作区)。一期只有默认本地库，测试用数据目录不算工作区产品功能。 |
 | ORIG-20 | 跨 macOS／Windows 原生可用并实机测试 | 实机证据按 [0.1.0](releases/0.1.0.md)、[0.2.0](releases/0.2.0.md) 与 [0.3.0](releases/0.3.0.md) 登记。构建包含 macOS 15 启动 CI。正式双端验收结果随本版归档。 |
