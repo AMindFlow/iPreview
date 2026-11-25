@@ -9,7 +9,10 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
-    private sealed record WorkGroup(string Title, Tile Cover, IReadOnlyList<Media> Items);
+    private sealed record WorkGroup(string Title, Tile Cover, IReadOnlyList<Media> Items)
+    {
+        public override string ToString() => Title;
+    }
 
     private sealed class VideoWorkSession(IndexedVideoWork work, IReadOnlyList<WorkGroup> groups)
     {
@@ -180,27 +183,12 @@ public sealed partial class MainWindow
             return;
         }
 
-        BrowseDirection? direction = args.Key switch
-        {
-            VirtualKey.Left => BrowseDirection.Left,
-            VirtualKey.Right => BrowseDirection.Right,
-            VirtualKey.Up => BrowseDirection.Up,
-            VirtualKey.Down => BrowseDirection.Down,
-            _ => null
-        };
-        if (direction is not { } arrow)
+        if (args.Key is not (VirtualKey.Left or VirtualKey.Right))
             return;
         args.Handled = true;
-        if (onTape && arrow == BrowseDirection.Right && VideoWorkItems.Items.Count != 0)
-            SelectVideoWorkItem(1, FocusState.Keyboard);
-        else if (!onTape)
-        {
-            var layout = new BrowseLayout(BrowseMode.Icons, GridColumns(VideoWorkItems));
-            if (layout.NeighborOf(index, VideoWorkItems.Items.Count, arrow) is int next)
-                SelectVideoWorkItem(next + 1, FocusState.Keyboard);
-            else if (arrow == BrowseDirection.Left)
-                SelectVideoWorkItem(0, FocusState.Keyboard);
-        }
+        var next = index + (args.Key == VirtualKey.Right ? 1 : -1);
+        if (next >= -1 && next < VideoWorkItems.Items.Count)
+            SelectVideoWorkItem(next + 1, FocusState.Keyboard);
     }
 
     private static bool IsWithin(DependencyObject? element, DependencyObject ancestor)
@@ -306,6 +294,10 @@ public sealed partial class MainWindow
             case VirtualKey.Down when onCanvas && Timeline.IsEnabled:
                 args.Handled = true;
                 Timeline.Focus(FocusState.Keyboard);
+                break;
+            case VirtualKey.Up when onTimeline:
+                args.Handled = true;
+                PreviewCanvas.Focus(FocusState.Keyboard);
                 break;
         }
     }
@@ -431,12 +423,6 @@ public sealed partial class MainWindow
         Grid.SetColumnSpan(Timeline, compact ? 5 : 1);
         Grid.SetRow(DurationLabel, compact ? 1 : 0);
         Grid.SetColumn(DurationLabel, compact ? 6 : 5);
-    }
-
-    private void VideoWorkBooksSizeChanged(object sender, SizeChangedEventArgs args)
-    {
-        if (VideoWorkItems.ItemsPanelRoot is ItemsWrapGrid books && args.NewSize.Width > 10)
-            books.ItemWidth = Math.Min(157, args.NewSize.Width - 6);
     }
 
     private bool RestoreVideoWorkAfterMediaPreview()

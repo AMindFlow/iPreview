@@ -1060,22 +1060,26 @@
                     </StackPanel>
                 </Button>
                 <GridView x:Name="VideoWorkItems" Grid.Column="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
-                          IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked"
-                          SizeChanged="VideoWorkBooksSizeChanged" AutomationProperties.Name="作品图册">
+                          IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" Padding="0,0,24,0"
+                          ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="作品图册">
                     <GridView.ItemContainerStyle>
                         <Style TargetType="GridViewItem" BasedOn="{StaticResource LibraryCardStyle}">
+                            <Setter Property="Width" Value="136" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         </Style>
                     </GridView.ItemContainerStyle>
                     <GridView.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="157" ItemHeight="218" />
+                            <ItemsStackPanel Orientation="Horizontal" />
                         </ItemsPanelTemplate>
                     </GridView.ItemsPanel>
                     <GridView.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Padding="7,8,7,0" Spacing="7">
-                                <Grid Height="178" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="154" Height="178" HorizontalAlignment="Left" Margin="0,0,-30,0"
+                                      IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
                                     <Grid.Projection>
                                         <PlaneProjection RotationY="-6" RotationX="2" />
                                     </Grid.Projection>
@@ -1108,8 +1112,8 @@
                                         </Grid>
                                     </Border>
                                 </Grid>
-                                <TextBlock Text="{Binding Title}" HorizontalAlignment="Center" FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Title}" TextAlignment="Center" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
                             </StackPanel>
                         </DataTemplate>
                     </GridView.ItemTemplate>
