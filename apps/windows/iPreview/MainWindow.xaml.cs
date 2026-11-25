@@ -44,7 +44,6 @@ public sealed partial class MainWindow : Window
     private int previewGeneration;
     private int previewImageGeneration;
     private bool previewVideoLocked;
-    private bool previewVideoWaiting;
     private readonly DispatcherTimer previewCopyTimer = new() { Interval = TimeSpan.FromSeconds(1.2) };
     private MediaPlayer? player;
     private MediaSource? videoSource;
@@ -56,6 +55,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetBrowseMode(browseMode);
         InitializeMediaSort();
+        PreviewWorkspace.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(WorkPanePointerPressed), true);
+        workMotionSettings.AnimationsEnabledChanged += WorkAnimationsChanged;
         InitializeSourceAlbumStars();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
@@ -72,6 +73,10 @@ public sealed partial class MainWindow : Window
             browserSort.Cancel();
             previewSort.Cancel();
             videoWorkSession?.CancelPhotoTasks();
+            videoWorkSession = null;
+            CancelWorkOpening();
+            workMotionSettings.AnimationsEnabledChanged -= WorkAnimationsChanged;
+            StopWorkAura();
             previewNeighborGeneration++;
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
@@ -738,7 +743,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout,
-        BitmapImage? poster = null, bool startVideo = true)
+        BitmapImage? poster = null)
     {
         var work = BrowsingVideoWork;
         originalPreviewTiles = items;
@@ -756,12 +761,11 @@ public sealed partial class MainWindow : Window
         var thumbnail = ThumbnailOf(items[selectedIndex].Media.Id);
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
-        ShowPreview(selectedIndex, poster ?? thumbnail?.Image, startVideo);
+        ShowPreview(selectedIndex, poster ?? thumbnail?.Image);
         if (!work)
             AnimatePreview(thumbnail, opening: true, complete: null);
-        var target = work && !startVideo ? WorkPhotoCanvas : PreviewCanvas;
-        if (!target.Focus(FocusState.Programmatic))
-            DispatcherQueue.TryEnqueue(() => target.Focus(FocusState.Programmatic));
+        if (!PreviewCanvas.Focus(FocusState.Programmatic))
+            DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
 
     private int Columns => browseMode == BrowseMode.Icons ? GridColumns(Gallery) : 1;
@@ -870,10 +874,11 @@ public sealed partial class MainWindow : Window
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        var work = BrowsingVideoWork;
-        var focus = FocusManager.GetFocusedElement(Root.XamlRoot);
-        if (work && (WorkPhotoGroupPicker.IsDropDownOpen || focus is MenuFlyoutItemBase))
+        if (BrowsingVideoWork)
+        {
+            WorkWorkspaceKeyDown(args);
             return;
+        }
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
@@ -883,15 +888,7 @@ public sealed partial class MainWindow : Window
         }
         if (previewIndex < 0 || previewClosing)
             return;
-        if (work && !ReferenceEquals(focus, PreviewCanvas))
-        {
-            if (ReferenceEquals(focus, WorkPhotoCanvas) && args.Key is VirtualKey.Left or VirtualKey.Right)
-            {
-                args.Handled = true;
-                MoveWorkPhoto(args.Key == VirtualKey.Left ? -1 : 1);
-            }
-            return;
-        }
+        var focus = FocusManager.GetFocusedElement(Root.XamlRoot);
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
             if (ReferenceEquals(focus, PreviewCloseAction) || ReferenceEquals(focus, PreviewSortButton))
@@ -920,16 +917,9 @@ public sealed partial class MainWindow : Window
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
-            {
-                if (work)
-                    ToggleVideo();
-                else
-                    ClosePreview();
-            }
+                ClosePreview();
             return;
         }
-        if (work)
-            return;
         BrowseDirection? direction = args.Key switch
         {
             VirtualKey.Left => BrowseDirection.Left,
@@ -944,7 +934,7 @@ public sealed partial class MainWindow : Window
         MovePreview(arrow);
     }
 
-    private async void ShowPreview(int index, BitmapImage? poster, bool startVideo = true)
+    private async void ShowPreview(int index, BitmapImage? poster)
     {
         previewIndex = index;
         var generation = ++previewGeneration;
@@ -971,14 +961,7 @@ public sealed partial class MainWindow : Window
         {
             if (tile.Media.IsVideo)
             {
-                if (startVideo)
-                    await OpenPreviewVideo(tile.Media, generation);
-                else
-                {
-                    previewVideoWaiting = true;
-                    PlayPause.Content = "播放";
-                    PlayPause.IsEnabled = true;
-                }
+                await OpenPreviewVideo(tile.Media, generation);
                 return;
             }
 
@@ -1071,7 +1054,6 @@ public sealed partial class MainWindow : Window
     private void StopVideo()
     {
         playbackClock.Stop();
-        previewVideoWaiting = false;
         awaitingNativeVideo = null;
         nativePausedByUser = false;
         deferredNativeVideoRecovery = null;
@@ -1165,7 +1147,14 @@ public sealed partial class MainWindow : Window
         PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
-    private void ToggleVideoLock(object sender, RoutedEventArgs args) => ChangePreviewVideoLock(VideoLock.IsChecked == true);
+    private void ToggleVideoLock(object sender, RoutedEventArgs args)
+    {
+        var locked = VideoLock.IsChecked == true;
+        if (BrowsingVideoWork)
+            SetPreviewVideoLock(locked);
+        else
+            ChangePreviewVideoLock(locked);
+    }
 
     private void ChangePreviewVideoLock(bool locked)
     {
@@ -1222,13 +1211,6 @@ public sealed partial class MainWindow : Window
 
     private void ToggleVideo()
     {
-        if (previewVideoWaiting)
-        {
-            previewVideoWaiting = false;
-            PlayPause.IsEnabled = false;
-            _ = OpenPreviewVideo(previewTiles[previewIndex].Media, previewGeneration);
-            return;
-        }
         if (fallbackVideo is { } fallback)
         {
             ToggleFallbackVideo(fallback);
