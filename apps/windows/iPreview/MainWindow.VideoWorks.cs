@@ -9,17 +9,20 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
-    private sealed record WorkGroup(string Title, Tile Cover, IReadOnlyList<Media> Items)
-    {
-        public override string ToString() => Title;
-    }
+    private sealed record WorkGroup(string Title, IReadOnlyList<Media> Items);
 
     private sealed class VideoWorkSession(IndexedVideoWork work, IReadOnlyList<WorkGroup> groups)
     {
         public IndexedVideoWork Work { get; } = work;
         public IReadOnlyList<WorkGroup> Groups { get; } = groups;
-        public int OverviewIndex { get; set; }
-        public int OpeningGroup { get; set; }
+        private readonly int[] overviewPhotoPositions = new int[groups.Count];
+        public bool OpeningFromPile { get; set; }
+        public int OverviewGroup { get; set; }
+        public int OverviewPhotoIndex
+        {
+            get => overviewPhotoPositions[OverviewGroup];
+            set => overviewPhotoPositions[OverviewGroup] = value;
+        }
         public int PhotoGroup { get; set; } = -1;
         public bool Browsing => PhotoGroup >= 0;
         public IReadOnlyList<Media> Photos { get; set; } = [];
@@ -36,12 +39,10 @@ public sealed partial class MainWindow
         }
     }
 
-    // These dimensions coordinate the horizontal hit slots with the XAML cover template.
-    private const double WorkBookCoverWidth = 154;
-    private const double WorkBookCoverHeight = 178;
-    private const double WorkBookSlotWidth = 64;
-    private const double WorkBookEndSlotWidth = 172;
-    private const double WorkBookShelfHeight = 242;
+    private const double WorkTapeWidth = 196;
+    private const double WorkTapeHeight = 332;
+    private const double WorkPileWidth = 224;
+    private const double WorkPileHeight = 252;
 
     private List<IndexedVideoWork> videoWorks = [];
     private VideoWorkSession? videoWorkSession;
@@ -63,19 +64,24 @@ public sealed partial class MainWindow
             return;
         List<WorkGroup> groups = [];
         if (work.Samples.Count != 0)
-            groups.Add(new("官方样张", new Tile(work.Samples[0], 0), work.Samples));
+            groups.Add(new("官方样张", work.Samples));
         groups.AddRange(work.PhotoSets.Select(book =>
-            new WorkGroup(book.Title, new Tile(book.Cover ?? book.Photos[0], 0), book.Photos)));
+            new WorkGroup(book.Title, book.Photos)));
         var session = new VideoWorkSession(work, groups);
         videoWorkSession = session;
         VideoWorkTitle.Text = work.Title;
         VideoWorkTapeCover.DataContext = new Tile(work.Video, 0);
-        VideoWorkItems.ItemsSource = groups;
+        VideoWorkSingleGroup.Visibility = groups.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
+        VideoWorkSingleGroup.Text = groups[0].Title;
+        VideoWorkOverviewGroups.Visibility = groups.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        VideoWorkOverviewGroups.ItemsSource = groups.Select(group => group.Title).ToArray();
+        VideoWorkOverviewGroups.SelectedIndex = 0;
+        PresentWorkPhotoPile(session);
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
         VideoWorkOverlay.Visibility = Visibility.Visible;
         LayoutVideoWorkShowcase();
-        SelectVideoWorkItem(0, FocusState.Programmatic);
+        VideoWorkTape.Focus(FocusState.Programmatic);
     }
 
     private void VideoWorkShowcaseSizeChanged(object sender, SizeChangedEventArgs args) => LayoutVideoWorkShowcase();
@@ -84,45 +90,46 @@ public sealed partial class MainWindow
     {
         var halfWidth = (VideoWorkShowcase.ActualWidth - VideoWorkShowcase.ColumnSpacing) / 2;
         var regionHeight = VideoWorkShowcase.ActualHeight;
-        if (videoWorkSession is not { } session || halfWidth <= 0 || regionHeight <= 0)
+        if (videoWorkSession is null || halfWidth <= 0 || regionHeight <= 0)
             return;
 
-        const double tapeRatio = 9.0 / 16;
         var targetArea = .40 * halfWidth * regionHeight;
-        var maxWidth = Math.Max(1, halfWidth - 24);
-        var maxHeight = Math.Max(1, regionHeight - 24);
-        // The tape button needs 8 points of padding and a 28-point row on either side of the artwork.
-        var tapeHeightLimit = Math.Min(Math.Max(1, maxHeight - 72), Math.Max(1, maxWidth - 16) / tapeRatio);
-        var tapeHeight = Math.Min(Math.Sqrt(targetArea / tapeRatio), tapeHeightLimit);
-        VideoWorkTapeArtwork.Height = tapeHeight;
-        VideoWorkTapeArtwork.Width = tapeHeight * tapeRatio;
+        var maxWidth = Math.Max(1, halfWidth - 40);
+        // Both artwork slots sit between matching 28-point rows and 8-point gaps.
+        var maxHeight = Math.Max(1, regionHeight - 88);
+        var tapeScale = Math.Min(Math.Sqrt(targetArea / (WorkTapeWidth * WorkTapeHeight)),
+            Math.Min(maxWidth / WorkTapeWidth, maxHeight / WorkTapeHeight));
+        var pileScale = Math.Min(Math.Sqrt(targetArea / (200 * 238)),
+            Math.Min(maxWidth / WorkPileWidth, maxHeight / WorkPileHeight));
+        VideoWorkTapeArtwork.Width = WorkTapeWidth * tapeScale;
+        VideoWorkTapeArtwork.Height = WorkTapeHeight * tapeScale;
+        VideoWorkPileArtwork.Width = WorkPileWidth * pileScale;
+        VideoWorkPileArtwork.Height = WorkPileHeight * pileScale;
 
-        var overlapSlots = Math.Min(session.Groups.Count, 3) - 1;
-        var coverWidth = WorkBookCoverWidth + WorkBookSlotWidth * overlapSlots;
-        var shelfWidth = WorkBookEndSlotWidth + WorkBookSlotWidth * overlapSlots;
-        var shelfScale = Math.Min(Math.Sqrt(targetArea / (coverWidth * WorkBookCoverHeight)),
-            Math.Min(maxWidth / shelfWidth, maxHeight / WorkBookShelfHeight));
-        VideoWorkItems.Width = shelfWidth;
-        VideoWorkShelf.Width = shelfWidth * shelfScale;
-        VideoWorkShelf.Height = WorkBookShelfHeight * shelfScale;
+        var innerSpace = (halfWidth - Math.Max(VideoWorkTapeArtwork.Width, VideoWorkPileArtwork.Width)) / 2;
+        var inward = Math.Clamp(innerSpace - 16, 0, halfWidth * .075);
+        VideoWorkTapeInward.X = inward;
+        VideoWorkPileInward.X = -inward;
     }
 
-    private void VideoWorkBookContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    private void VideoWorkOverviewGroupChanged(object sender, SelectionChangedEventArgs args)
     {
-        if (!args.InRecycleQueue)
-            args.ItemContainer.Width = args.ItemIndex == sender.Items.Count - 1 ? WorkBookEndSlotWidth : WorkBookSlotWidth;
-    }
-
-    private void SelectVideoWorkItem(int index, FocusState focus)
-    {
-        if (index == 0)
+        var index = VideoWorkOverviewGroups.SelectedIndex;
+        if (videoWorkSession is not { Browsing: false } session || index < 0 || index == session.OverviewGroup)
+            return;
+        if (workOpeningVisuals is not null)
         {
-            VideoWorkTape.Focus(focus);
+            VideoWorkOverviewGroups.SelectedIndex = session.OverviewGroup;
             return;
         }
-        VideoWorkItems.SelectedIndex = index - 1;
-        FocusBrowserItem(VideoWorkItems, VideoWorkItems.SelectedItem, focus);
+        CancelWorkPhotoPeel();
+        ResetWorkPileWheel();
+        session.OverviewGroup = index;
+        PresentWorkPhotoPile(session);
     }
+
+    private void FocusVideoWorkEntrance(VideoWorkSession session) =>
+        (session.OpeningFromPile ? VideoWorkPhotoPile : VideoWorkTape).Focus(FocusState.Programmatic);
 
     private void BackFromVideoWork(object sender, RoutedEventArgs args) => BackFromVideoWork();
 
@@ -134,9 +141,13 @@ public sealed partial class MainWindow
             ClosePreview();
         videoWorkSession = null;
         CancelWorkOpening();
+        CancelWorkPhotoPeel();
+        ResetWorkPileWheel();
         VideoWorkOverlay.Visibility = Visibility.Collapsed;
         VideoWorkTapeCover.DataContext = null;
-        VideoWorkItems.ItemsSource = null;
+        VideoWorkOverviewGroups.ItemsSource = null;
+        workPhotoCards.Clear();
+        VideoWorkPrints.Children.Clear();
         LibraryHost.IsEnabled = true;
         LibraryView.IsHitTestVisible = true;
         if (browsingFolders)
@@ -145,29 +156,23 @@ public sealed partial class MainWindow
             FocusSelectedMedia();
     }
 
-    private void VideoWorkTapeClicked(object sender, RoutedEventArgs args) => BeginVideoWork(0);
+    private void VideoWorkTapeClicked(object sender, RoutedEventArgs args) => BeginVideoWork(fromPile: false);
+    private void VideoWorkPileClicked(object sender, RoutedEventArgs args) => BeginVideoWork(fromPile: true);
 
-    private void VideoWorkItemClicked(object sender, ItemClickEventArgs args)
-    {
-        if (workOpeningVisuals is not null)
-            return;
-        var index = VideoWorkItems.Items.IndexOf(args.ClickedItem);
-        if (index >= 0)
-            SelectVideoWorkItem(index + 1, FocusState.Pointer);
-    }
-
-    private void BeginVideoWork(int index)
+    private void BeginVideoWork(bool fromPile)
     {
         if (videoWorkSession is not { Browsing: false } session || workOpeningVisuals is not null)
             return;
-        session.OverviewIndex = index;
-        session.OpeningGroup = Math.Max(0, VideoWorkItems.SelectedIndex);
+        session.OpeningFromPile = fromPile;
+        CancelWorkPhotoPeel();
+        ResetWorkPileWheel();
+        PresentWorkPhotoPile(session);
         AnimateWorkOpening(session, () => EnterVideoWork(session));
     }
 
     private void EnterVideoWork(VideoWorkSession session)
     {
-        var group = session.OpeningGroup;
+        var group = session.OverviewGroup;
         session.Sort.Order = default;
         WorkPhotoGroupPicker.ItemsSource = session.Groups.Select(item => item.Title).ToArray();
         WorkPhotoGroupPicker.SelectedIndex = group;
@@ -192,6 +197,9 @@ public sealed partial class MainWindow
 
     private void VideoWorkKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (VideoWorkOverviewGroups.IsDropDownOpen)
+            return;
+
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
@@ -200,7 +208,7 @@ public sealed partial class MainWindow
                 if (workOpeningVisuals is not null && videoWorkSession is { } opening)
                 {
                     CancelWorkOpening();
-                    SelectVideoWorkItem(opening.OverviewIndex, FocusState.Programmatic);
+                    FocusVideoWorkEntrance(opening);
                 }
                 else
                     BackFromVideoWork();
@@ -215,23 +223,31 @@ public sealed partial class MainWindow
         }
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
         var onTape = ReferenceEquals(focused, VideoWorkTape);
-        if (!onTape && !IsWithin(focused, VideoWorkItems))
+        var onPile = ReferenceEquals(focused, VideoWorkPhotoPile);
+        if (!onTape && !onPile)
             return;
-        var index = onTape ? -1 : Math.Max(0, VideoWorkItems.SelectedIndex);
-        if (args.Key == VirtualKey.Space)
+
+        if (args.Key is VirtualKey.Space or VirtualKey.Enter)
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
-                BeginVideoWork(index + 1);
-            return;
+                BeginVideoWork(fromPile: onPile);
         }
-
-        if (args.Key is not (VirtualKey.Left or VirtualKey.Right))
-            return;
-        args.Handled = true;
-        var next = index + (args.Key == VirtualKey.Right ? 1 : -1);
-        if (next >= -1 && next < VideoWorkItems.Items.Count)
-            SelectVideoWorkItem(next + 1, FocusState.Keyboard);
+        else if (onTape && args.Key == VirtualKey.Right)
+        {
+            args.Handled = true;
+            VideoWorkPhotoPile.Focus(FocusState.Keyboard);
+        }
+        else if (onPile && args.Key is VirtualKey.Left or VirtualKey.Right)
+        {
+            args.Handled = true;
+            MoveWorkPile(args.Key == VirtualKey.Left ? -1 : 1);
+        }
+        else if (onPile && args.Key == VirtualKey.Down && VideoWorkOverviewGroups.Visibility == Visibility.Visible)
+        {
+            args.Handled = true;
+            VideoWorkOverviewGroups.Focus(FocusState.Keyboard);
+        }
     }
 
     private static bool IsWithin(DependencyObject? element, DependencyObject ancestor)
@@ -358,7 +374,7 @@ public sealed partial class MainWindow
     private void ShowWorkPhotoGroup(VideoWorkSession session, bool opening = false)
     {
         session.Photos = session.Groups[session.PhotoGroup].Items;
-        session.PhotoIndex = 0;
+        session.PhotoIndex = opening ? session.OverviewPhotoIndex : 0;
         WorkPhotoSortButton.IsEnabled = session.Photos.Count > 1;
         LoadWorkPhoto(session, opening);
     }
@@ -484,7 +500,7 @@ public sealed partial class MainWindow
         WorkPhotoSortButton.Flyout = null;
         LayoutWorkPhotoPane(PreviewWorkspace.ActualWidth);
         VideoWorkOverlay.Visibility = Visibility.Visible;
-        SelectVideoWorkItem(session.OverviewIndex, FocusState.Programmatic);
+        FocusVideoWorkEntrance(session);
         return true;
     }
 }

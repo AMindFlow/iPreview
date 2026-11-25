@@ -1,7 +1,6 @@
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -38,18 +37,15 @@ public sealed partial class MainWindow
         lid.StartAnimation("RotationAngleInDegrees", hinge);
         AnimateWorkOpacity(lid, 1, .36f, duration);
 
-        var selected = VideoWorkItems.ContainerFromIndex(session.OpeningGroup);
-        if (VideoWorkItems.ItemsPanelRoot is Panel panel)
+        for (var depth = 0; depth < workPhotoCards.Count; depth++)
         {
-            foreach (var book in panel.Children.OfType<GridViewItem>())
-            {
-                var visual = ElementCompositionPreview.GetElementVisual(book);
-                visuals.Add(visual);
-                visual.CenterPoint = new((float)book.ActualWidth / 2, (float)book.ActualHeight / 2, 0);
-                var comingForward = ReferenceEquals(book, selected);
-                AnimateWorkScale(visual, 1, comingForward ? 1.15f : .76f, duration, easing);
-                AnimateWorkOpacity(visual, 1, comingForward ? .86f : .16f, duration);
-            }
+            var print = workPhotoCards[depth].Print;
+            var visual = ElementCompositionPreview.GetElementVisual(print);
+            visuals.Add(visual);
+            visual.CenterPoint = new((float)print.ActualWidth / 2, (float)print.ActualHeight / 2, 0);
+            var comingForward = depth == 0;
+            AnimateWorkScale(visual, 1, comingForward ? 1.15f : .76f, duration, easing);
+            AnimateWorkOpacity(visual, 1, comingForward ? .86f : .16f, duration);
         }
 
         batch.Completed += (_, _) =>
