@@ -996,18 +996,23 @@
                 <TextBlock x:Name="VideoWorkTitle" Grid.Column="1" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
             </Grid>
-            <Grid Grid.Row="1" ColumnSpacing="16">
+            <Grid x:Name="VideoWorkShowcase" Grid.Row="1" ColumnSpacing="16" SizeChanged="VideoWorkShowcaseSizeChanged">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="VideoWorkTape" Click="VideoWorkTapeClicked" Padding="8"
                         Style="{StaticResource LibrarySubtleButton}" CornerRadius="12"
-                        HorizontalAlignment="Center" VerticalAlignment="Top" MaxWidth="216"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
                         AutomationProperties.Name="录像带">
-                    <StackPanel Spacing="10">
-                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" MaxHeight="272"
-                                 AutomationProperties.AccessibilityView="Raw">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="28" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="28" />
+                        </Grid.RowDefinitions>
+                        <Viewbox x:Name="VideoWorkTapeArtwork" Grid.Row="1" Width="153" Height="272"
+                                 Stretch="Uniform" AutomationProperties.AccessibilityView="Raw">
                             <Grid Width="153" Height="272">
                                 <Border Margin="3,3,0,0" CornerRadius="14"
                                         Background="{ThemeResource ControlFillColorSecondaryBrush}"
@@ -1056,68 +1061,72 @@
                                 </Border>
                             </Grid>
                         </Viewbox>
-                        <TextBlock Text="录像带" HorizontalAlignment="Center" FontWeight="SemiBold" />
-                    </StackPanel>
+                        <TextBlock Grid.Row="2" Text="录像带" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                   FontWeight="SemiBold" />
+                    </Grid>
                 </Button>
-                <GridView x:Name="VideoWorkItems" Grid.Column="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
-                          IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" Padding="0,0,24,0"
-                          ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          AutomationProperties.Name="作品图册">
-                    <GridView.ItemContainerStyle>
-                        <Style TargetType="GridViewItem" BasedOn="{StaticResource LibraryCardStyle}">
-                            <Setter Property="Width" Value="136" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        </Style>
-                    </GridView.ItemContainerStyle>
-                    <GridView.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <ItemsStackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </GridView.ItemsPanel>
-                    <GridView.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Padding="7,8,7,0" Spacing="7">
-                                <Grid Width="154" Height="178" HorizontalAlignment="Left" Margin="0,0,-30,0"
-                                      IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
-                                    <Grid.Projection>
-                                        <PlaneProjection RotationY="-6" RotationX="2" />
-                                    </Grid.Projection>
-                                    <Border Margin="16,12,0,0" CornerRadius="8"
-                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1" />
-                                    <Border Margin="10,7,6,6" CornerRadius="8"
-                                            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1" />
-                                    <StackPanel VerticalAlignment="Bottom" Margin="14,0,7,4" Spacing="2">
-                                        <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
-                                        <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
-                                        <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
-                                    </StackPanel>
-                                    <Border Margin="0,0,12,12" CornerRadius="8,5,5,8"
-                                            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
-                                        <Grid>
-                                            <Border Width="7" HorizontalAlignment="Left" Margin="2,5,0,5" CornerRadius="3"
-                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}" />
-                                            <Border Margin="13,11,8,22" CornerRadius="4" Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                                <Grid>
-                                                    <FontIcon Glyph="&#xE91B;" FontSize="22"
-                                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                    <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
-                                                           Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
-                                                </Grid>
-                                            </Border>
-                                            <Border Height="1" VerticalAlignment="Bottom" Margin="14,0,9,8" Background="#60FFFFFF" />
-                                        </Grid>
-                                    </Border>
-                                </Grid>
-                                <TextBlock Text="{Binding Title}" TextAlignment="Center" FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </GridView.ItemTemplate>
-                </GridView>
+                <Viewbox x:Name="VideoWorkShelf" Grid.Column="1" Stretch="Uniform"
+                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <GridView x:Name="VideoWorkItems" Width="172" Height="242" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
+                              IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" Padding="0,22,0,0"
+                              ContainerContentChanging="VideoWorkBookContainerChanging"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              AutomationProperties.Name="作品图册">
+                        <GridView.ItemContainerStyle>
+                            <Style TargetType="GridViewItem" BasedOn="{StaticResource LibraryCardStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </GridView.ItemContainerStyle>
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Padding="7,8,7,0" Spacing="7">
+                                    <Grid Width="154" Height="178" HorizontalAlignment="Left" Margin="0,0,-108,0"
+                                          IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+                                        <Grid.Projection>
+                                            <PlaneProjection RotationY="-6" RotationX="2" />
+                                        </Grid.Projection>
+                                        <Border Margin="16,12,0,0" CornerRadius="8"
+                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1" />
+                                        <Border Margin="10,7,6,6" CornerRadius="8"
+                                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1" />
+                                        <StackPanel VerticalAlignment="Bottom" Margin="14,0,7,4" Spacing="2">
+                                            <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                            <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                            <Border Height="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                        </StackPanel>
+                                        <Border Margin="0,0,12,12" CornerRadius="8,5,5,8"
+                                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+                                            <Grid>
+                                                <Border Width="7" HorizontalAlignment="Left" Margin="2,5,0,5" CornerRadius="3"
+                                                        Background="{ThemeResource ControlFillColorSecondaryBrush}" />
+                                                <Border Margin="13,11,8,22" CornerRadius="4" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                                    <Grid>
+                                                        <FontIcon Glyph="&#xE91B;" FontSize="22"
+                                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                        <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
+                                                               Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
+                                                    </Grid>
+                                                </Border>
+                                                <Border Height="1" VerticalAlignment="Bottom" Margin="14,0,9,8" Background="#60FFFFFF" />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock Text="{Binding Title}" TextAlignment="Center" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+                </Viewbox>
             </Grid>
         </Grid>
 

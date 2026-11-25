@@ -36,6 +36,13 @@ public sealed partial class MainWindow
         }
     }
 
+    // These dimensions coordinate the horizontal hit slots with the XAML cover template.
+    private const double WorkBookCoverWidth = 154;
+    private const double WorkBookCoverHeight = 178;
+    private const double WorkBookSlotWidth = 64;
+    private const double WorkBookEndSlotWidth = 172;
+    private const double WorkBookShelfHeight = 242;
+
     private List<IndexedVideoWork> videoWorks = [];
     private VideoWorkSession? videoWorkSession;
     private bool BrowsingVideoWork => videoWorkSession?.Browsing == true;
@@ -67,7 +74,43 @@ public sealed partial class MainWindow
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
         VideoWorkOverlay.Visibility = Visibility.Visible;
+        LayoutVideoWorkShowcase();
         SelectVideoWorkItem(0, FocusState.Programmatic);
+    }
+
+    private void VideoWorkShowcaseSizeChanged(object sender, SizeChangedEventArgs args) => LayoutVideoWorkShowcase();
+
+    private void LayoutVideoWorkShowcase()
+    {
+        var halfWidth = (VideoWorkShowcase.ActualWidth - VideoWorkShowcase.ColumnSpacing) / 2;
+        var regionHeight = VideoWorkShowcase.ActualHeight;
+        if (videoWorkSession is not { } session || halfWidth <= 0 || regionHeight <= 0)
+            return;
+
+        const double tapeRatio = 9.0 / 16;
+        var targetArea = .40 * halfWidth * regionHeight;
+        var maxWidth = Math.Max(1, halfWidth - 24);
+        var maxHeight = Math.Max(1, regionHeight - 24);
+        // The tape button needs 8 points of padding and a 28-point row on either side of the artwork.
+        var tapeHeightLimit = Math.Min(Math.Max(1, maxHeight - 72), Math.Max(1, maxWidth - 16) / tapeRatio);
+        var tapeHeight = Math.Min(Math.Sqrt(targetArea / tapeRatio), tapeHeightLimit);
+        VideoWorkTapeArtwork.Height = tapeHeight;
+        VideoWorkTapeArtwork.Width = tapeHeight * tapeRatio;
+
+        var overlapSlots = Math.Min(session.Groups.Count, 3) - 1;
+        var coverWidth = WorkBookCoverWidth + WorkBookSlotWidth * overlapSlots;
+        var shelfWidth = WorkBookEndSlotWidth + WorkBookSlotWidth * overlapSlots;
+        var shelfScale = Math.Min(Math.Sqrt(targetArea / (coverWidth * WorkBookCoverHeight)),
+            Math.Min(maxWidth / shelfWidth, maxHeight / WorkBookShelfHeight));
+        VideoWorkItems.Width = shelfWidth;
+        VideoWorkShelf.Width = shelfWidth * shelfScale;
+        VideoWorkShelf.Height = WorkBookShelfHeight * shelfScale;
+    }
+
+    private void VideoWorkBookContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (!args.InRecycleQueue)
+            args.ItemContainer.Width = args.ItemIndex == sender.Items.Count - 1 ? WorkBookEndSlotWidth : WorkBookSlotWidth;
     }
 
     private void SelectVideoWorkItem(int index, FocusState focus)
