@@ -41,9 +41,10 @@ public sealed partial class MainWindow
             return;
         List<WorkGroup> groups =
         [
-            new("影碟", "\uEC4F", new Tile(work.Video, 0), [work.Video]),
-            new("官方样张", "\uE91B", new Tile(work.Samples[0], 0), work.Samples)
+            new("影碟", "\uEC4F", new Tile(work.Video, 0), [work.Video])
         ];
+        if (work.Samples.Count != 0)
+            groups.Add(new WorkGroup("官方样张", "\uE91B", new Tile(work.Samples[0], 0), work.Samples));
         groups.AddRange(work.PhotoSets.Select(book =>
             new WorkGroup(book.Title, "\uE82D", new Tile(book.Cover ?? book.Photos[0], 0), book.Photos)));
         var session = new VideoWorkSession(work, groups, FocusManager.GetFocusedElement(Root.XamlRoot) as Control);

@@ -202,6 +202,7 @@ try
     CheckSourceAlbumOrganization(work);
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
+    CheckStructuralVideoWorks(work);
     CheckVideoWorkIndex(work);
     CheckLegacyVideoWorkRescan(work);
     CheckLegacyWorkAlbumOrganization(work);
@@ -529,18 +530,100 @@ static void CheckVideoWorks(string root)
     Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
 }
 
+static void CheckStructuralVideoWorks(string root)
+{
+    var parent = Path.Combine(root, "Structural works");
+    foreach (var file in new[]
+    {
+        "album/video.mp4", "album/pictures/1.png", "album/pictures/2.png",
+        "seventeen/movie.MKV", "seventeen/Photos/.hidden.jpg",
+        "boxed/Screen/main.mp4", "boxed/Screen/behind-the-scenes.png",
+        "boxed/Extras/Book 2/p1.png", "boxed/Extras/Book 10/p2.jpg",
+        "boxed/Sample cards/promo.png", "boxed/ordinary.jpg",
+        "books/Disc/main.mov", "books/Pages/Set A/front.jpg",
+        "Ordinary album/frame.png"
+    })
+        AddFile(parent, file);
+    foreach (var number in Enumerable.Range(1, 17).Reverse())
+        AddFile(parent, $"seventeen/Photos/{number}.png");
+
+    var exact = MediaFiles.Probe(Path.Combine(parent, "album")).Options[Layout.Flat];
+    Check(exact.Count == 3 && exact.Count(file => file.VideoWork is VideoWorkMembership.Video) == 1,
+        "the minimal arbitrary-name compact work imports three files at the root album level");
+
+    var summary = MediaFiles.Probe(parent);
+    Check(summary.Options.Keys.Single() == Layout.Creator, "sibling works and an ordinary album share the parent layout");
+    var data = Path.Combine(root, "structural-works-index");
+    long source;
+    using (var catalog = new Catalog(data))
+        source = catalog.Import(summary.Path, Layout.Creator, summary.Options[Layout.Creator]);
+
+    using var reopened = new Catalog(data);
+    var snapshot = reopened.Read();
+    Check(snapshot.VideoWorks.Select(work => work.RelativePath).ToHashSet().SetEquals(["album", "seventeen", "boxed", "books"]),
+        "arbitrary-name works are persisted individually");
+    var minimal = snapshot.VideoWorks.Single(work => work.RelativePath == "album");
+    Check(minimal.Structure == VideoWorkStructure.Compact && minimal.Samples.Count == 0 &&
+        minimal.PhotoSets.Single().Title == "pictures" && minimal.PhotoSets.Single().Photos
+            .Select(photo => photo.FileName).SequenceEqual(["1.png", "2.png"]),
+        "a work without samples retains the disk and the named picture group");
+    var many = snapshot.VideoWorks.Single(work => work.RelativePath == "seventeen");
+    Check(many.Samples.Count == 0 &&
+        many.PhotoSets.Single().Photos.Select(photo => photo.FileName).SequenceEqual(
+            Enumerable.Range(1, 17).Select(number => $"{number}.png")), "a sample-free work with 17 photos in natural order");
+    var complete = snapshot.VideoWorks.Single(work => work.RelativePath == "boxed");
+    Check(complete.Structure == VideoWorkStructure.Complete && complete.Samples.Single().FileName == "promo.png" &&
+        complete.PhotoSets.Select(book => book.Title).SequenceEqual(["Book 2", "Book 10"]) &&
+        complete.PhotoSets.All(book => book.Cover is null), "complete work recognizes arbitrary directory names and optional covers");
+    var noSamples = snapshot.VideoWorks.Single(work => work.RelativePath == "books");
+    Check(noSamples.Samples.Count == 0 && noSamples.PhotoSets.Single().Photos.Single().FileName == "front.jpg",
+        "complete work accepts a book without a dedicated cover or samples");
+    Check(snapshot.Media.Count(item => item.RelativePath is "boxed/ordinary.jpg" or "boxed/Screen/behind-the-scenes.png") == 2 &&
+        snapshot.Media.Single(item => item.RelativePath == "Ordinary album/frame.png").WorkAlbumPath is null,
+        "work import retains non-group media and an ordinary album remains independent");
+
+    AddFile(parent, "album/pictures/10.png");
+    AddFile(parent, "seventeen/alphabetical.jpg");
+    reopened.Rescan(source, MediaFiles.Scan(parent, Layout.Creator));
+    var rescanned = reopened.Read();
+    var updated = rescanned.VideoWorks.Single(work => work.RelativePath == "album");
+    Check(updated.Video.Id == minimal.Video.Id && updated.Samples.Count == 0 &&
+        updated.PhotoSets.Single().Photos.Select(photo => photo.FileName).SequenceEqual(["1.png", "2.png", "10.png"]),
+        "rescan keeps a sample-free work and refreshes its picture group");
+    Check(rescanned.VideoWorks.Single(work => work.Video.Id == many.Video.Id)
+        .Samples.Single().FileName == "alphabetical.jpg", "rescan adds a single optional root sample");
+    var available = rescanned.Media.Where(item => item.Present).ToDictionary(item => item.RelativePath, item => item.Id);
+    Check(snapshot.Media.All(item => available.TryGetValue(item.RelativePath, out var id) && id == item.Id),
+        "rescan preserves work, ordinary media and their identities");
+
+    var ordinary = Path.Combine(root, "Ordinary creators");
+    AddFile(ordinary, "Photos A/1.png");
+    AddFile(ordinary, "Photos B/2.png");
+    var ordinaryFiles = MediaFiles.Probe(ordinary).Options[Layout.Creator];
+    Check(ordinaryFiles.Count == 2 && ordinaryFiles.All(file => file.VideoWork is null),
+        "an ordinary picture collection keeps its independent albums");
+    var split = Path.Combine(root, "Separate albums");
+    AddFile(split, "Video album/movie.mp4");
+    AddFile(split, "Picture album/1.png");
+    var splitFiles = MediaFiles.Probe(split).Options[Layout.Creator];
+    Check(splitFiles.Count == 2 && splitFiles.All(file => file.VideoWork is null),
+        "adjacent video and picture albums without nested books are independent");
+    AddFile(ordinary, "movie.mp4");
+    Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Ambiguous,
+        "a root video with competing photo folders is ambiguous");
+}
+
 static void CheckLegacyVideoWorkRescan(string root)
 {
     using var catalog = new Catalog(Path.Combine(root, "legacy-works-index"));
     (string Directory, Layout Layout, string Work, string[] Previous, string Added)[] cases =
     [
         ("Legacy Multi", Layout.MultiCreator, "Work",
-            ["Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg",
-             "Work/附加写真集/写真集/图片.png", "Maker/Album/keep.png"],
-            "Work/附加写真集/写真集/封面.png"),
+            ["Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg", "Maker/Album/keep.png"],
+            "Work/附加写真集/写真集/图片.png"),
         ("Legacy Creator", Layout.Creator, "",
-            ["视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg", "附加写真集/写真集/图片.png"],
-            "附加写真集/写真集/封面.png"),
+            ["视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg"],
+            "附加写真集/写真集/图片.png"),
         ("Legacy Flat", Layout.Flat, "",
             ["movie.mp4", "官方样张.jpg", "keep.png"], "附加写真集/图片.png")
     ];

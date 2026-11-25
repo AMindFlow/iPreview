@@ -14,11 +14,8 @@ internal sealed record VideoPhotoSet(string RelativePath, ScannedMedia? Cover, I
 internal sealed record VideoWork(string Root, VideoWorkStructure Structure, ScannedMedia Video,
     IReadOnlyList<ScannedMedia> Samples, IReadOnlyList<VideoPhotoSet> PhotoSets)
 {
-    private const string VideoFolder = "视频";
     private const string SamplesName = "官方样张";
-    public const string PhotoSetsFolder = "附加写真集";
     private const string CoverName = "封面";
-    public static readonly HashSet<string> Folders = [VideoFolder, SamplesName, PhotoSetsFolder];
 
     public List<ScannedMedia> IndexEntries(string prefix)
     {
@@ -40,44 +37,57 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
     public static VideoWorkRecognition Recognize(string root, IEnumerable<ScannedMedia> entries)
     {
         var byParent = entries.ToLookup(entry => SourceRename.SplitPath(entry.RelativePath).Parent, StringComparer.Ordinal);
-        var atRoot = byParent[""];
-        var rootVideos = atRoot.Where(media => media.IsVideo).ToArray();
-        var rootSamples = atRoot.Where(media => !media.IsVideo && Stem(media) == SamplesName).ToArray();
-        var folderVideos = byParent[VideoFolder].Where(media => media.IsVideo).ToArray();
-        var folderSamples = byParent[SamplesName].Where(media => !media.IsVideo).ToArray();
-        var flatPhotos = byParent[PhotoSetsFolder].Where(media => !media.IsVideo).ToArray();
-        var nestedPhotoSets = byParent.Where(group => group.Key.StartsWith(PhotoSetsFolder + "/", StringComparison.Ordinal))
-            .OrderBy(group => group.Key, MediaSearch.NaturalName).ThenBy(group => group.Key, StringComparer.Ordinal).ToArray();
+        var directFolders = byParent.Where(group => group.Key.Length != 0 && !group.Key.Contains('/')).ToArray();
+        var nestedFolders = byParent.Where(group => group.Key.Contains('/')).ToArray();
+        var rootVideos = byParent[""].Where(media => media.IsVideo).ToArray();
 
-        if (rootSamples.Length == 0 && !byParent.Contains(SamplesName) && !byParent.Contains(PhotoSetsFolder)
-            && nestedPhotoSets.Length == 0)
-            return new VideoWorkRecognition.Unrecognized();
-
-        if (byParent.Contains(VideoFolder) || byParent.Contains(SamplesName) || nestedPhotoSets.Length != 0)
+        if (rootVideos.Length != 0)
         {
-            if (folderVideos.Length != 1 || folderSamples.Length == 0 || nestedPhotoSets.Length == 0
-                || rootVideos.Length != 0 || rootSamples.Length != 0 || flatPhotos.Length != 0)
+            if (directFolders.Length == 0)
+                return new VideoWorkRecognition.Unrecognized();
+            if (rootVideos.Length != 1 || directFolders.Length != 1 || nestedFolders.Length != 0 ||
+                directFolders[0].Any(media => media.IsVideo))
                 return new VideoWorkRecognition.Ambiguous();
 
-            var photoSets = new List<VideoPhotoSet>();
-            foreach (var group in nestedPhotoSets)
-            {
-                var images = group.Where(media => !media.IsVideo).ToArray();
-                var covers = images.Where(media => Stem(media) == CoverName).ToArray();
-                var photos = images.Where(media => Stem(media) != CoverName).ToArray();
-                if (covers.Length != 1 || photos.Length == 0)
-                    return new VideoWorkRecognition.Ambiguous();
-                photoSets.Add(new VideoPhotoSet(group.Key, covers[0], Sorted(photos)));
-            }
-            return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Complete, folderVideos[0],
-                Sorted(folderSamples), photoSets));
+            var rootImages = byParent[""].Where(media => !media.IsVideo).ToArray();
+            var markedSamples = rootImages.Where(media => Stem(media) == SamplesName).ToArray();
+            if (markedSamples.Length > 1)
+                return new VideoWorkRecognition.Ambiguous();
+            var samples = markedSamples.Length == 0 && rootImages.Length == 1 ? rootImages : markedSamples;
+            var book = new VideoPhotoSet(directFolders[0].Key, null, Sorted(directFolders[0]));
+            return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Compact, rootVideos[0], samples, [book]));
         }
 
-        if (rootVideos.Length != 1 || rootSamples.Length != 1 || flatPhotos.Length == 0)
+        var folderVideos = directFolders.SelectMany(group => group).Where(media => media.IsVideo).ToArray();
+        if (folderVideos.Length == 0 || nestedFolders.Length == 0)
+            return new VideoWorkRecognition.Unrecognized();
+        if (folderVideos.Length != 1 || nestedFolders.Any(group => group.Any(media => media.IsVideo)))
             return new VideoWorkRecognition.Ambiguous();
-        var book = new VideoPhotoSet(PhotoSetsFolder, null, Sorted(flatPhotos));
-        return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Compact, rootVideos[0],
-            rootSamples, [book]));
+
+        var videoFolder = SourceRename.SplitPath(folderVideos[0].RelativePath).Parent;
+        var bookContainers = nestedFolders.Select(group => SourceRename.SplitPath(group.Key).Parent)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        if (bookContainers.Length != 1 || byParent.Contains(bookContainers[0]))
+            return new VideoWorkRecognition.Ambiguous();
+
+        var sampleFolders = directFolders.Where(group => group.Key != videoFolder).ToArray();
+        if (sampleFolders.Length > 1)
+            return new VideoWorkRecognition.Ambiguous();
+
+        var photoSets = new List<VideoPhotoSet>();
+        foreach (var group in nestedFolders.OrderBy(group => group.Key, MediaSearch.NaturalName)
+            .ThenBy(group => group.Key, StringComparer.Ordinal))
+        {
+            var covers = group.Where(media => Stem(media) == CoverName).ToArray();
+            var photos = group.Where(media => Stem(media) != CoverName).ToArray();
+            if (covers.Length > 1 || photos.Length == 0)
+                return new VideoWorkRecognition.Ambiguous();
+            photoSets.Add(new VideoPhotoSet(group.Key, covers.SingleOrDefault(), Sorted(photos)));
+        }
+
+        var folderSamples = sampleFolders.Length == 0 ? [] : Sorted(sampleFolders[0]);
+        return new VideoWorkRecognition.Recognized(new(root, VideoWorkStructure.Complete, folderVideos[0],
+            folderSamples, photoSets));
     }
 
     private static string Stem(ScannedMedia entry) => Path.GetFileNameWithoutExtension(entry.RelativePath);
