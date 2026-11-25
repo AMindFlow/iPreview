@@ -139,7 +139,7 @@ private struct VideoWorkOverview: View {
         ScrollViewReader { reader in
             VideoWorkColumns {
                 GeometryReader { geometry in
-                    let height = min(geometry.size.height * 0.7, 340)
+                    let height = tapeHeight(in: geometry.size)
                     collectible(.tape, title: "录像带", opens: true) {
                         TapeCase(video: session.work.video, revision: revision, height: height,
                                  opening: session.browsing)
@@ -148,15 +148,15 @@ private struct VideoWorkOverview: View {
                 }
             } right: {
                 GeometryReader { geometry in
-                    let width = min(geometry.size.width * 0.32, 165)
-                    let overlap = min(width * 0.28, 44)
+                    let width = bookWidth(in: geometry.size)
+                    let overlap = width * 0.26 + 18
                     ScrollView(.horizontal) {
                         LazyHStack(spacing: -overlap) {
                             ForEach(session.albums.indices, id: \.self) { index in
                                 let album = session.albums[index]
                                 let foreground = session.selectedAlbum == index
                                 collectible(.album(index), title: album.title, opens: false,
-                                            titleWidth: width - overlap) {
+                                            titleWidth: width * 0.74) {
                                     AlbumCase(album: album, revision: revision, width: width,
                                               foreground: foreground, opening: session.browsing)
                                 }
@@ -189,6 +189,24 @@ private struct VideoWorkOverview: View {
                 if case .album = selection { reader.scrollTo(selection) }
             }
         }
+    }
+
+    private func tapeHeight(in available: CGSize) -> CGFloat {
+        let aspect: CGFloat = 9.0 / 16.0
+        let area = available.width * available.height * 0.4
+        return min(sqrt(area / aspect), max(0, available.height - 48),
+                   max(0, available.width - 30) / aspect)
+    }
+
+    private func bookWidth(in available: CGSize) -> CGFloat {
+        let aspect: CGFloat = 1.29
+        let visibleBooks = CGFloat(min(session.albums.count, 3))
+        let span = 1 + (visibleBooks - 1) * 0.74
+        let shelfWidth = max(1, available.width - 24)
+        let area = available.width * available.height * 0.4
+        let fitted = sqrt(area / (span * aspect))
+        let target = fitted * span <= shelfWidth ? fitted : area / (shelfWidth * aspect)
+        return min(target, max(0, available.height - 92) / aspect, max(0, shelfWidth - 26))
     }
 
     private func collectible<Cover: View>(_ selection: VideoWorkPreviewSession.Collectible, title: String,
