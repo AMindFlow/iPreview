@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -43,6 +44,7 @@ public sealed partial class MainWindow : Window
     private int previewGeneration;
     private int previewImageGeneration;
     private bool previewVideoLocked;
+    private bool previewVideoWaiting;
     private readonly DispatcherTimer previewCopyTimer = new() { Interval = TimeSpan.FromSeconds(1.2) };
     private MediaPlayer? player;
     private MediaSource? videoSource;
@@ -69,6 +71,7 @@ public sealed partial class MainWindow : Window
             CancelAlbumAdjustmentPointer();
             browserSort.Cancel();
             previewSort.Cancel();
+            videoWorkSession?.CancelPhotoTasks();
             previewNeighborGeneration++;
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
@@ -108,6 +111,7 @@ public sealed partial class MainWindow : Window
 
     private void Reload(long? selected = null, Navigation? destination = null)
     {
+        BackFromVideoWork();
         var snapshot = Database.Read();
         current = destination ?? current;
         libraryDataVersion = snapshot.DataVersion;
@@ -658,14 +662,14 @@ public sealed partial class MainWindow : Window
     }
 
     private static async Task<BitmapImage> DecodeImage(Media media, int width, bool animated,
-                                                       ExceptionRoutedEventHandler? imageFailed = null)
+        ExceptionRoutedEventHandler? imageFailed = null, CancellationToken cancellationToken = default)
     {
-        var file = await OpenMediaFile(media);
-        using var stream = await file.OpenReadAsync();
+        var file = await OpenMediaFile(media, cancellationToken);
+        using var stream = await file.OpenReadAsync().AsTask(cancellationToken);
         var bitmap = new BitmapImage { DecodePixelWidth = width, AutoPlay = animated };
         if (imageFailed is not null)
             bitmap.ImageFailed += imageFailed;
-        await bitmap.SetSourceAsync(stream);
+        await bitmap.SetSourceAsync(stream).AsTask(cancellationToken);
         return bitmap;
     }
 
@@ -680,10 +684,11 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    private static async Task<StorageFile> OpenMediaFile(Media media)
+    private static async Task<StorageFile> OpenMediaFile(Media media, CancellationToken cancellationToken = default)
     {
-        var path = await Task.Run(() => MediaFiles.OpenPath(media));
-        return await StorageFile.GetFileFromPathAsync(path);
+        var path = await Task.Run(() => MediaFiles.OpenPath(media), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await StorageFile.GetFileFromPathAsync(path).AsTask(cancellationToken);
     }
 
     private static bool MediaFailure(Exception error) =>
@@ -732,23 +737,31 @@ public sealed partial class MainWindow : Window
         OpenPreview(tiles.ToList(), browser.SelectedIndex, new(browseMode, Columns));
     }
 
-    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
+    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout,
+        BitmapImage? poster = null, bool startVideo = true)
     {
+        var work = BrowsingVideoWork;
         originalPreviewTiles = items;
         previewTiles = items;
         previewSort.Order = default;
         PreviewSortButton.IsEnabled = items.Count > 1;
+        PreviewSortButton.Visibility = IndexLabel.Visibility = work ? Visibility.Collapsed : Visibility.Visible;
+        var closeName = work ? "返回作品总览" : "退出预览";
+        AutomationProperties.SetName(PreviewCloseAction, closeName);
+        ToolTipService.SetToolTip(PreviewCloseAction, closeName + "（Esc）");
         previewLayout = layout;
-        PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
-        PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
+        PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(work || layout.Mode == BrowseMode.Gallery ? 0 : 36);
+        PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(work || layout.Mode == BrowseMode.List ? 0 : 44);
         PreviewOverlay.Visibility = Visibility.Visible;
         var thumbnail = ThumbnailOf(items[selectedIndex].Media.Id);
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
-        ShowPreview(selectedIndex, thumbnail?.Image);
-        AnimatePreview(thumbnail, opening: true, complete: null);
-        if (!PreviewCanvas.Focus(FocusState.Programmatic))
-            DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
+        ShowPreview(selectedIndex, poster ?? thumbnail?.Image, startVideo);
+        if (!work)
+            AnimatePreview(thumbnail, opening: true, complete: null);
+        var target = work && !startVideo ? WorkPhotoCanvas : PreviewCanvas;
+        if (!target.Focus(FocusState.Programmatic))
+            DispatcherQueue.TryEnqueue(() => target.Focus(FocusState.Programmatic));
     }
 
     private int Columns => browseMode == BrowseMode.Icons ? GridColumns(Gallery) : 1;
@@ -784,7 +797,10 @@ public sealed partial class MainWindow : Window
                 browser.UpdateLayout();
             }
         }
-        AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
+        if (BrowsingVideoWork)
+            FinishClosePreview(selectedId);
+        else
+            AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
     }
 
     private void FinishClosePreview(long? selectedId)
@@ -797,12 +813,12 @@ public sealed partial class MainWindow : Window
         PreviewOverlay.Visibility = Visibility.Collapsed;
         if (videoWorkSession is null)
             LibraryHost.IsEnabled = true;
-        if (!RestoreVideoWorkAfterMediaPreview(selectedId) && !RestoreSearchAfterPreview(selectedId))
+        StopVideo();
+        if (!RestoreVideoWorkAfterMediaPreview() && !RestoreSearchAfterPreview(selectedId))
         {
             FocusSelectedMedia();
             LibraryView.IsHitTestVisible = true;
         }
-        StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         previewClosing = false;
@@ -854,6 +870,10 @@ public sealed partial class MainWindow : Window
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        var work = BrowsingVideoWork;
+        var focus = FocusManager.GetFocusedElement(Root.XamlRoot);
+        if (work && (WorkPhotoGroupPicker.IsDropDownOpen || focus is MenuFlyoutItemBase))
+            return;
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
@@ -863,10 +883,18 @@ public sealed partial class MainWindow : Window
         }
         if (previewIndex < 0 || previewClosing)
             return;
+        if (work && !ReferenceEquals(focus, PreviewCanvas))
+        {
+            if (ReferenceEquals(focus, WorkPhotoCanvas) && args.Key is VirtualKey.Left or VirtualKey.Right)
+            {
+                args.Handled = true;
+                MoveWorkPhoto(args.Key == VirtualKey.Left ? -1 : 1);
+            }
+            return;
+        }
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
-            var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
-            if (ReferenceEquals(focused, PreviewCloseAction) || ReferenceEquals(focused, PreviewSortButton))
+            if (ReferenceEquals(focus, PreviewCloseAction) || ReferenceEquals(focus, PreviewSortButton))
                 return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
@@ -886,15 +914,22 @@ public sealed partial class MainWindow : Window
                 SeekVideoBy(VideoSeekInterval);
             return;
         }
-        if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCanvas))
+        if (!ReferenceEquals(focus, PreviewCanvas))
             return;
         if (args.Key == VirtualKey.Space)
         {
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
-                ClosePreview();
+            {
+                if (work)
+                    ToggleVideo();
+                else
+                    ClosePreview();
+            }
             return;
         }
+        if (work)
+            return;
         BrowseDirection? direction = args.Key switch
         {
             VirtualKey.Left => BrowseDirection.Left,
@@ -909,7 +944,7 @@ public sealed partial class MainWindow : Window
         MovePreview(arrow);
     }
 
-    private async void ShowPreview(int index, BitmapImage? poster)
+    private async void ShowPreview(int index, BitmapImage? poster, bool startVideo = true)
     {
         previewIndex = index;
         var generation = ++previewGeneration;
@@ -936,7 +971,14 @@ public sealed partial class MainWindow : Window
         {
             if (tile.Media.IsVideo)
             {
-                await OpenPreviewVideo(tile.Media, generation);
+                if (startVideo)
+                    await OpenPreviewVideo(tile.Media, generation);
+                else
+                {
+                    previewVideoWaiting = true;
+                    PlayPause.Content = "播放";
+                    PlayPause.IsEnabled = true;
+                }
                 return;
             }
 
@@ -1029,6 +1071,7 @@ public sealed partial class MainWindow : Window
     private void StopVideo()
     {
         playbackClock.Stop();
+        previewVideoWaiting = false;
         awaitingNativeVideo = null;
         nativePausedByUser = false;
         deferredNativeVideoRecovery = null;
@@ -1068,7 +1111,8 @@ public sealed partial class MainWindow : Window
         PreviewError.Visibility = Visibility.Visible;
         VideoControls.Visibility = Visibility.Collapsed;
         SetPreviewVideoLock(false);
-        PreviewCanvas.Focus(FocusState.Programmatic);
+        if (!BrowsingVideoWork)
+            PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
     private void UpdateTime()
@@ -1142,6 +1186,13 @@ public sealed partial class MainWindow : Window
             PreviewHint.Text = "← / → 跳转 15 秒    Space 播放或暂停    Enter 解锁    Esc 退出";
             return;
         }
+        if (BrowsingVideoWork)
+        {
+            PreviewHint.Text = VideoControls.Visibility == Visibility.Visible
+                ? "Space 播放或暂停    Enter 锁定    Esc 返回"
+                : "";
+            return;
+        }
         var navigation = previewLayout.Mode switch
         {
             BrowseMode.List => "↑ / ↓ 切换媒体",
@@ -1171,6 +1222,13 @@ public sealed partial class MainWindow : Window
 
     private void ToggleVideo()
     {
+        if (previewVideoWaiting)
+        {
+            previewVideoWaiting = false;
+            PlayPause.IsEnabled = false;
+            _ = OpenPreviewVideo(previewTiles[previewIndex].Media, previewGeneration);
+            return;
+        }
         if (fallbackVideo is { } fallback)
         {
             ToggleFallbackVideo(fallback);
