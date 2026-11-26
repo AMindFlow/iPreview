@@ -74,6 +74,7 @@ public sealed partial class MainWindow : Window
             previewSort.Cancel();
             videoWorkSession?.CancelPhotoTasks();
             videoWorkSession = null;
+            workTapeCoverRequest?.Cancel();
             CancelWorkOpening();
             workMotionSettings.AnimationsEnabledChanged -= WorkAnimationsChanged;
             StopWorkAura();
@@ -160,7 +161,13 @@ public sealed partial class MainWindow : Window
     private IEnumerable<Navigation> SourceSidebarRows(
         IReadOnlyDictionary<SourceAlbumKey, SidebarAlbumFavorite> sidebarFavorites)
     {
-        foreach (var source in sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id))
+        var favorites = sourceAlbumIndex.FavoriteAlbums.Where(sourceAlbumKeys.Contains).ToHashSet();
+        var nestedFavorites = favorites.Where(album => album.RelativePath.Length != 0)
+            .OrderBy(album => album.RelativePath, MediaSearch.NaturalName)
+            .ThenBy(album => album.RelativePath, StringComparer.Ordinal)
+            .ToLookup(album => album.SourceId);
+        foreach (var source in sources.Values.OrderByDescending(source => favorites.Contains(new(source.Id, "")))
+            .ThenBy(source => source.Name).ThenBy(source => source.Id))
         {
             var label = source.Available ? source.Name : $"{source.Name}（离线）";
             var glyph = source.Layout switch
@@ -172,7 +179,17 @@ public sealed partial class MainWindow : Window
             var rootFavorite = AlbumKeyAt(source, null) is { } rootKey
                 ? SidebarFavoriteFor(rootKey, label, sidebarFavorites) : null;
             yield return new Navigation(label, Source: source.Id, Glyph: glyph, Help: source.Path, Favorite: rootFavorite);
-            if (current.Source == source.Id && current.Folder is { } folder && AlbumKeyAt(source, folder) is { } album)
+
+            foreach (var favorite in nestedFavorites[source.Id])
+            {
+                var path = favorite.RelativePath + "/";
+                var title = current.Source == source.Id && current.Folder == path
+                    ? current.Label : SourceRename.SplitPath(favorite.RelativePath).Leaf;
+                yield return new Navigation(title, Source: source.Id, Folder: path, Help: favorite.RelativePath,
+                    Favorite: SidebarFavoriteFor(favorite, title, sidebarFavorites));
+            }
+            if (current.Source == source.Id && current.Folder is { } folder &&
+                AlbumKeyAt(source, folder) is { } album && !favorites.Contains(album))
                 yield return new Navigation(current.Label, Source: source.Id, Folder: folder,
                     Favorite: SidebarFavoriteFor(album, current.Label, sidebarFavorites));
         }
@@ -678,14 +695,16 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media, uint width = 320)
+    private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media, uint width = 320,
+        CancellationToken cancellationToken = default)
     {
-        var file = await OpenMediaFile(media);
-        using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, width, ThumbnailOptions.ResizeThumbnail);
+        var file = await OpenMediaFile(media, cancellationToken);
+        using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, width, ThumbnailOptions.ResizeThumbnail)
+            .AsTask(cancellationToken);
         if (stream is null || stream.Type != ThumbnailType.Image)
             return null;
         var bitmap = new BitmapImage();
-        await bitmap.SetSourceAsync(stream);
+        await bitmap.SetSourceAsync(stream).AsTask(cancellationToken);
         return bitmap;
     }
 

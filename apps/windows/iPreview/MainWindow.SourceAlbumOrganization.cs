@@ -152,8 +152,36 @@ public sealed partial class MainWindow
 
     private void ToggleSidebarAlbumFavorite(object sender, RoutedEventArgs args)
     {
-        if (!busy && sender is Button { DataContext: Navigation { Favorite: { } favorite } })
-            SaveAlbumMetadata(() => Database.SetFavorite(!favorite.IsFavorite, favorite.Key));
+        if (busy || sender is not Button { DataContext: Navigation { Favorite: { } favorite } } button)
+            return;
+        var focus = button.FocusState;
+        SaveAlbumMetadata(() => Database.SetFavorite(!favorite.IsFavorite, favorite.Key));
+        if (focus == FocusState.Unfocused || button.FocusState != FocusState.Unfocused)
+            return;
+
+        var rows = SourceNavigation.Items.OfType<Navigation>();
+        var row = rows.FirstOrDefault(item => item.Favorite?.Key == favorite.Key);
+        if (row is not null)
+        {
+            SourceNavigation.ScrollIntoView(row);
+            SourceNavigation.UpdateLayout();
+            if (SourceNavigation.ContainerFromItem(row) is { } container &&
+                FindSidebarBookmark(container)?.Focus(focus) == true)
+                return;
+        }
+        // An inactive nested favorite is removed from the sidebar once unpinned.
+        FocusBrowserItem(SourceNavigation, row ?? rows.FirstOrDefault(item =>
+            item.Source == favorite.Key.SourceId && item.Folder is null), focus);
+    }
+
+    private static Button? FindSidebarBookmark(DependencyObject element)
+    {
+        if (element is Button { Name: "SidebarBookmark" } bookmark)
+            return bookmark;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+            if (FindSidebarBookmark(VisualTreeHelper.GetChild(element, index)) is { } child)
+                return child;
+        return null;
     }
 
     private void PeekSourceAlbumRatingOptions(object sender, PointerRoutedEventArgs args)

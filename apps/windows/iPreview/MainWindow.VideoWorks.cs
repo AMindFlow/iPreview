@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Graphics.Imaging;
 using Windows.System;
 
 namespace IPreview;
@@ -15,6 +16,7 @@ public sealed partial class MainWindow
     {
         public IndexedVideoWork Work { get; } = work;
         public IReadOnlyList<WorkGroup> Groups { get; } = groups;
+        public BitmapImage? VideoPoster { get; set; }
         private readonly int[] overviewPhotoPositions = new int[groups.Count];
         public bool OpeningFromPile { get; set; }
         public int OverviewGroup { get; set; }
@@ -46,6 +48,7 @@ public sealed partial class MainWindow
 
     private List<IndexedVideoWork> videoWorks = [];
     private VideoWorkSession? videoWorkSession;
+    private CancellationTokenSource? workTapeCoverRequest;
     private bool BrowsingVideoWork => videoWorkSession?.Browsing == true;
     private bool workVideoActive;
 
@@ -70,7 +73,7 @@ public sealed partial class MainWindow
         var session = new VideoWorkSession(work, groups);
         videoWorkSession = session;
         VideoWorkTitle.Text = work.Title;
-        VideoWorkTapeCover.DataContext = new Tile(work.Video, 0);
+        _ = LoadWorkTapeCover(session);
         VideoWorkSingleGroup.Visibility = groups.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
         VideoWorkSingleGroup.Text = groups[0].Title;
         VideoWorkOverviewGroups.Visibility = groups.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
@@ -157,7 +160,8 @@ public sealed partial class MainWindow
         CancelWorkPhotoPeel();
         ResetWorkPileWheel();
         VideoWorkOverlay.Visibility = Visibility.Collapsed;
-        VideoWorkTapeCover.DataContext = null;
+        workTapeCoverRequest?.Cancel();
+        VideoWorkTapeCover.ImageSource = null;
         VideoWorkOverviewGroups.ItemsSource = null;
         workPhotoCards.Clear();
         VideoWorkPrints.Children.Clear();
@@ -200,12 +204,101 @@ public sealed partial class MainWindow
         WorkPhotoPane.Visibility = Visibility.Visible;
         LayoutWorkPhotoPane(PreviewWorkspace.ActualWidth);
 
-        var poster = VideoWorkTapeCover.Source as BitmapImage;
         VideoWorkOverlay.Visibility = Visibility.Collapsed;
-        OpenPreview([new Tile(session.Work.Video, 0)], 0, new(BrowseMode.Icons, 1), poster);
+        OpenPreview([new Tile(session.Work.Video, 0)], 0, new(BrowseMode.Icons, 1), session.VideoPoster);
         SetActiveWorkPane(video: true);
         AnimateWorkArrival(PreviewStage, .55f);
         ShowWorkPhotoGroup(session, opening: true);
+    }
+
+    private static IEnumerable<Media> WorkTapeCandidates(Media video, IEnumerable<Media> indexedMedia)
+    {
+        var parent = SourceRename.SplitPath(video.RelativePath).Parent;
+        return indexedMedia.Where(item => item.Source.Id == video.Source.Id && item.Available && !item.IsVideo &&
+            SourceRename.SplitPath(item.RelativePath).Parent == parent);
+    }
+
+    private static IEnumerable<Media> RankWorkTapeCovers(IEnumerable<(Media Media, uint Width, uint Height)> images) =>
+        images.Where(image => image.Width > 0 && image.Height > 0)
+            .OrderBy(image => Math.Abs(Math.Log((16d * image.Width) / (9d * image.Height))))
+            .ThenByDescending(image => (ulong)image.Width * image.Height)
+            .ThenBy(image => image.Media.FileName, MediaSearch.NaturalName)
+            .ThenBy(image => image.Media.Id)
+            .Select(image => image.Media);
+
+    private async Task LoadWorkTapeCover(VideoWorkSession session)
+    {
+        workTapeCoverRequest?.Cancel();
+        using var request = new CancellationTokenSource();
+        workTapeCoverRequest = request;
+        var cancellation = request.Token;
+        var video = session.Work.Video;
+        session.VideoPoster = ThumbnailOf(video.Id)?.Image;
+        VideoWorkTapeCover.ImageSource = session.VideoPoster;
+        var posterTask = LoadWorkTapePoster(session, cancellation);
+        try
+        {
+            List<(Media Media, uint Width, uint Height)> dimensions = [];
+            foreach (var candidate in WorkTapeCandidates(video, media).ToArray())
+            {
+                try
+                {
+                    var file = await OpenMediaFile(candidate, cancellation);
+                    using var stream = await file.OpenReadAsync().AsTask(cancellation);
+                    var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellation);
+                    dimensions.Add((candidate, decoder.OrientedPixelWidth, decoder.OrientedPixelHeight));
+                }
+                catch (Exception error) when (MediaFailure(error)) { }
+            }
+            foreach (var candidate in RankWorkTapeCovers(dimensions))
+            {
+                try
+                {
+                    var file = await OpenMediaFile(candidate, cancellation);
+                    using var stream = await file.OpenReadAsync().AsTask(cancellation);
+                    var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellation);
+                    // WinRT scales in the source coordinates before applying EXIF orientation.
+                    var scale = Math.Min(1, 900d / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+                    var transform = new BitmapTransform
+                    {
+                        ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * scale)),
+                        ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * scale))
+                    };
+                    using var pixels = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8,
+                        BitmapAlphaMode.Premultiplied, transform, ExifOrientationMode.RespectExifOrientation,
+                        ColorManagementMode.ColorManageToSRgb).AsTask(cancellation);
+                    var cover = new SoftwareBitmapSource();
+                    await cover.SetBitmapAsync(pixels).AsTask(cancellation);
+                    if (ReferenceEquals(videoWorkSession, session) && !cancellation.IsCancellationRequested)
+                        VideoWorkTapeCover.ImageSource = cover;
+                    break;
+                }
+                catch (Exception error) when (MediaFailure(error)) { }
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            await posterTask;
+            if (ReferenceEquals(workTapeCoverRequest, request))
+                workTapeCoverRequest = null;
+        }
+    }
+
+    private async Task LoadWorkTapePoster(VideoWorkSession session, CancellationToken cancellation)
+    {
+        if (session.VideoPoster is not null || !session.Work.Video.Available)
+            return;
+        try
+        {
+            var poster = await DecodeVideoThumbnail(session.Work.Video, cancellationToken: cancellation);
+            if (!ReferenceEquals(videoWorkSession, session) || cancellation.IsCancellationRequested)
+                return;
+            session.VideoPoster = poster;
+            VideoWorkTapeCover.ImageSource ??= poster;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception error) when (MediaFailure(error)) { }
     }
 
     private void VideoWorkRootKeyDown(object sender, KeyRoutedEventArgs args)
