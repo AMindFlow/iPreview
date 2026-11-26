@@ -2,12 +2,22 @@ import SwiftUI
 import iPreviewCore
 
 enum AlbumOrganizationTarget: Identifiable {
-    case album(name: String, key: SourceAlbumKey, media: [Media])
+    case cover(name: String, key: SourceAlbumKey, media: [Media])
+    case addTag(SourceAlbumKey)
     case tags
 
-    var id: SourceAlbumKey? {
-        if case .album(_, let key, _) = self { return key }
-        return nil
+    enum ID: Hashable {
+        case cover(SourceAlbumKey)
+        case addTag(SourceAlbumKey)
+        case tags
+    }
+
+    var id: ID {
+        switch self {
+        case .cover(_, let key, _): .cover(key)
+        case .addTag(let key): .addTag(key)
+        case .tags: .tags
+        }
     }
 }
 
@@ -20,23 +30,27 @@ struct SourceAlbumOrganizationSheet: View {
     @ViewState private var working = false
     @ViewState private var error: String?
     @ViewState private var tagDraft = ""
+    @ViewState private var selectedTagSuggestion: Int64?
+    @ViewState private var hoveredTagSuggestion: Int64?
     @ViewState private var renamingTag: SourceAlbumTag?
     @ViewState private var deletingTag: SourceAlbumTag?
     @ViewState private var coverDraft: [Int64]?
     @ViewState private var coverSort = MediaSort()
+    @FocusState private var tagInputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             switch target {
-            case .album(let name, let key, let media):
+            case .cover(let name, let key, let media):
                 Text(name).font(.title2.bold())
                 if let organization {
-                    albumControls(key: key, organization: organization)
-                    Divider()
                     coverControls(key: key, media: media, organization: organization)
                 } else if error == nil {
-                    ProgressView().accessibilityLabel("正在读取专辑组织")
+                    ProgressView().accessibilityLabel("正在读取专辑封面")
                 }
+            case .addTag(let key):
+                Text("添加标签").font(.title2.bold())
+                addTagControls(key)
             case .tags:
                 Text("管理标签").font(.title2.bold())
                 globalTags
@@ -45,18 +59,21 @@ struct SourceAlbumOrganizationSheet: View {
                 Text(error).foregroundStyle(.red)
                     .accessibilityAddTraits(.updatesFrequently)
             }
-            HStack {
-                Spacer()
-                Button("完成") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(working)
+            switch target {
+            case .addTag:
+                EmptyView()
+            default:
+                HStack {
+                    Spacer()
+                    doneButton
+                }
             }
         }
         .padding(20)
         .frame(width: 490)
         .task {
             do {
-                if case .album(_, let key, _) = target {
+                if case .cover(_, let key, _) = target {
                     organization = try await model.organization(for: key)
                 }
             } catch {
@@ -73,54 +90,106 @@ struct SourceAlbumOrganizationSheet: View {
         }
     }
 
-    private func albumControls(key: SourceAlbumKey, organization: SourceAlbumOrganization) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle("收藏", isOn: Binding(get: { organization.favorite },
-                                         set: { value in apply { try await $0.setFavorite(value, for: key) } }))
-            Picker("评分", selection: Binding(get: { organization.ratingHalf },
-                                              set: { value in apply { try await $0.setRatingHalf(value, for: key) } })) {
-                Text("未评分").tag(nil as Int?)
-                ForEach(0...10, id: \.self) { value in
-                    Text("\(Double(value) / 2, format: .number) 星").tag(Optional(value))
-                }
+    private var doneButton: some View {
+        Button("完成") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .disabled(working)
+    }
+
+    private var isComposingTag: Bool {
+        tagInputFocused && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
+    }
+
+    private func addTagControls(_ key: SourceAlbumKey) -> some View {
+        let query = SourceAlbumTag.names(from: tagDraft).normalized
+        let attached = Set(model.sourceAlbumIndex.tags(for: key).map(\.id))
+        let suggestions = query.isEmpty ? [] : SourceAlbumTag.suggestions(matching: query, from:
+            model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) && $0.normalizedName.hasPrefix(query) })
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                TextField("标签名称", text: $tagDraft)
+                    .focused($tagInputFocused)
+                    .onSubmit { addTag(key) }
+                    .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                        guard !isComposingTag, !suggestions.isEmpty else { return .ignored }
+                        let forward = press.key == .downArrow
+                        let current = suggestions.firstIndex { $0.id == selectedTagSuggestion }
+                        let next = current.map { min(max(0, $0 + (forward ? 1 : -1)), suggestions.count - 1) }
+                            ?? (forward ? 0 : suggestions.count - 1)
+                        selectedTagSuggestion = suggestions[next].id
+                        return .handled
+                    }
+                Button("添加") { addTag(key) }
+                    .disabled(working || query.isEmpty)
+                doneButton
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("标签").font(.headline)
-                if !organization.tags.isEmpty {
+            if !suggestions.isEmpty {
+                let rowHeight: CGFloat = 32
+                let inset: CGFloat = 4
+                ScrollViewReader { reader in
                     ScrollView {
-                        VStack(spacing: 5) {
-                            ForEach(organization.tags) { tag in
-                                HStack {
-                                    Text(tag.name).lineLimit(1)
-                                    Spacer()
-                                    Button {
-                                        apply { try await $0.removeTag(tag.id, from: key) }
-                                    } label: {
-                                        Image(systemName: "xmark.circle")
-                                    }
-                                    .accessibilityLabel("移除标签 \(tag.name)")
-                                    .buttonStyle(.borderless)
+                        VStack(spacing: 2) {
+                            ForEach(suggestions) { tag in
+                                let selected = selectedTagSuggestion == tag.id
+                                let hovered = hoveredTagSuggestion == tag.id
+                                Button {
+                                    addTag(key, suggestion: tag)
+                                } label: {
+                                    Text(tag.name)
+                                        .lineLimit(1)
+                                        .foregroundStyle(.primary)
+                                        .padding(.horizontal, 8)
+                                        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                                        .background {
+                                            if selected {
+                                                RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.26))
+                                            } else if hovered {
+                                                RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.12))
+                                            }
+                                        }
+                                        .overlay {
+                                            if selected {
+                                                RoundedRectangle(cornerRadius: 5)
+                                                    .strokeBorder(Color.accentColor.opacity(0.85))
+                                                    .allowsHitTesting(false)
+                                            }
+                                        }
+                                        .contentShape(Rectangle())
                                 }
-                                .frame(height: 20)
+                                .buttonStyle(.plain)
+                                .onHover { inside in
+                                    if inside { hoveredTagSuggestion = tag.id }
+                                    else if hoveredTagSuggestion == tag.id { hoveredTagSuggestion = nil }
+                                }
+                                .accessibilityAddTraits(selected ? .isSelected : [])
+                                .id(tag.id)
                             }
                         }
+                        .padding(inset)
                     }
-                    .frame(height: CGFloat(min(organization.tags.count, 4) * 25 - 5))
-                }
-                HStack {
-                    TextField("标签名称", text: $tagDraft).onSubmit { addTag(key) }
-                    Button("添加") { addTag(key) }
-                        .disabled(tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Menu("已有标签") {
-                        let attached = Set(organization.tags.map(\.id))
-                        ForEach(model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) }) { tag in
-                            Button(tag.name) { apply { try await $0.addTag(tag.id, to: key) } }
-                        }
+                    .frame(height: CGFloat(min(5, suggestions.count)) * (rowHeight + 2) + inset * 2 - 2)
+                    .onChange(of: selectedTagSuggestion) { _, id in
+                        if let id { reader.scrollTo(id) }
                     }
                 }
+                .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.primary.opacity(0.35))
+                        .allowsHitTesting(false)
+                }
+                .disabled(working)
+                .accessibilityLabel("相关已有标签")
             }
         }
-        .disabled(working)
+        .onChange(of: tagDraft) { _, _ in
+            selectedTagSuggestion = nil
+            hoveredTagSuggestion = nil
+        }
+        .task {
+            await Task.yield()
+            if !Task.isCancelled { tagInputFocused = true }
+        }
     }
 
     private var globalTags: some View {
@@ -233,9 +302,23 @@ struct SourceAlbumOrganizationSheet: View {
         .disabled(position == nil && selection.count >= 4)
     }
 
-    private func addTag(_ key: SourceAlbumKey) {
+    private func addTag(_ key: SourceAlbumKey, suggestion: SourceAlbumTag? = nil) {
         let name = tagDraft
-        apply({ _ = try await $0.addTag(named: name, to: key) }) { tagDraft = "" }
+        let prefix = SourceAlbumTag.names(from: name).normalized
+        guard !isComposingTag, !prefix.isEmpty else { return }
+        let tag = suggestion ?? model.sourceAlbumIndex.tags.first {
+            $0.id == selectedTagSuggestion && $0.normalizedName.hasPrefix(prefix)
+        }
+        apply({ catalog in
+            if let tag {
+                try await catalog.addTag(tag.id, to: key)
+            } else {
+                _ = try await catalog.addTag(named: name, to: key)
+            }
+        }) {
+            if tagDraft == name { tagDraft = "" }
+            tagInputFocused = true
+        }
     }
 
     private func saveTagName(_ tag: SourceAlbumTag) {
@@ -251,7 +334,7 @@ struct SourceAlbumOrganizationSheet: View {
             defer { working = false }
             do {
                 try await model.organize(action)
-                if case .album(_, let key, _) = target {
+                if case .cover(_, let key, _) = target {
                     organization = try await model.organization(for: key)
                 }
                 success()

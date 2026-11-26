@@ -12,20 +12,24 @@ struct SourceSwipeRow<Label: View>: View {
 
     var body: some View {
         label()
-            .offset(x: isRevealed ? -68 : 0)
+            .offset(x: isRevealed ? -72 : 0)
             .overlay(alignment: .trailing) {
                 if isRevealed {
-                    HStack(spacing: 0) {
+                    HStack(spacing: 6) {
                         action("重新扫描", symbol: "arrow.clockwise", color: .accentColor, perform: rescan)
                         action("删除媒体源", symbol: "trash", color: .red, perform: delete)
                     }
-                    .clipShape(.rect(cornerRadius: 8))
+                    .padding(.trailing, 2)
                 }
             }
             .clipped()
             .contentShape(Rectangle())
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isRevealed)
             .background {
+                if isRevealed {
+                    OutsideClickBoundary { setRevealed(false) }
+                        .allowsHitTesting(false)
+                }
                 SourceTrackpadSwipe { open in
                     if enabled { setRevealed(open) }
                 }
@@ -42,8 +46,10 @@ struct SourceSwipeRow<Label: View>: View {
         Button(action: perform) {
             Image(systemName: symbol)
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(color)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .background(color, in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

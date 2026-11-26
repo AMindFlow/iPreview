@@ -1,11 +1,14 @@
+using System.Numerics;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Data;
 using Windows.System;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 
 namespace IPreview;
 
@@ -14,13 +17,15 @@ public sealed partial class MainWindow
     private bool searchOpen;
     private bool searchAllSources;
     private bool searchExact;
-    private bool consumingExactPrefix;
+    private bool updatingSearchInput;
     private int searchRevision;
     private GlobalSearchScope searchResultKind;
     private List<GlobalSearchHit> searchHits = [];
     private List<SourceAlbumTag> searchTagSuggestions = [];
-    private SourceAlbumTag? searchTag;
+    private readonly List<long> searchTagIds = [];
     private bool suggestingTags;
+    private HoverFlyout? searchTagOptions;
+    private HoverFlyout SearchTagOptions => searchTagOptions ??= new(SearchTagStack, SearchTagsFlyout);
 
     private sealed class SearchResultGroup(SearchResultCategory category, IEnumerable<GlobalSearchHit> hits)
         : List<GlobalSearchHit>(hits)
@@ -91,8 +96,8 @@ public sealed partial class MainWindow
             SearchFiles.IsChecked = SearchDirectories.IsChecked = false;
             SearchInput.Text = "";
             searchExact = false;
-            searchTag = null;
-            UpdateSearchTagFilter();
+            searchTagIds.Clear();
+            UpdateSearchTagStack();
             UpdateSearchExactIndicator();
             searchOpen = true;
             SearchOverlay.Visibility = Visibility.Visible;
@@ -149,6 +154,7 @@ public sealed partial class MainWindow
     {
         searchOpen = false;
         searchRevision++;
+        HideSearchTags();
         SearchOverlay.Visibility = Visibility.Collapsed;
         LibraryView.IsHitTestVisible = true;
         SetSearchHits([]);
@@ -172,7 +178,7 @@ public sealed partial class MainWindow
 
     private void SearchEdited(object sender, TextChangedEventArgs args)
     {
-        if (!consumingExactPrefix)
+        if (!updatingSearchInput)
             CommitSearchInput();
     }
 
@@ -186,12 +192,12 @@ public sealed partial class MainWindow
         if (!searchExact && parsed.Exact)
         {
             searchExact = true;
-            consumingExactPrefix = true;
+            updatingSearchInput = true;
             var prefixLength = input.TrimEnd().Length - parsed.Text.Length;
             var caret = Math.Clamp(SearchInput.SelectionStart - prefixLength, 0, parsed.Text.Length);
             SearchInput.Text = parsed.Text;
             SearchInput.SelectionStart = caret;
-            consumingExactPrefix = false;
+            updatingSearchInput = false;
             UpdateSearchExactIndicator();
         }
         await RefreshSearch();
@@ -208,24 +214,25 @@ public sealed partial class MainWindow
     {
         SearchKeyHelp.Text = suggestingTags ? "↑ / ↓ 选择    Enter 应用标签" : searchExact
             ? "↑ / ↓ 选择    Enter 前往    Space 预览    Esc 取消精确匹配"
-            : "↑ / ↓ 选择    Enter 前往    Space 预览    Esc 关闭";
+            : "↑ / ↓ 选择    Enter 前往    Space 预览    Esc 关闭    # 筛选标签";
     }
 
     private async Task RefreshSearch()
     {
         var generation = ++searchRevision;
-        var query = new GlobalSearchTerm(SearchInput.Text.Trim(), searchExact);
+        var input = SearchInput.Text;
+        var query = new GlobalSearchTerm(input.Trim(), searchExact);
         SetSearchHits([]);
-        if (query.Text.Length > 0 && query.Text[0] is '#' or '＃')
+        if (SearchTagTrigger(input) is int marker)
         {
-            SetTagSuggestions(SourceAlbumTag.Suggestions(query.Text[1..], sourceAlbumIndex.Tags));
+            SetTagSuggestions(SourceAlbumTag.Suggestions(input[(marker + 1)..], sourceAlbumIndex.Tags));
             SearchStatus.Visibility = searchTagSuggestions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             SearchStatus.Text = "没有匹配标签";
             return;
         }
         SetTagSuggestions(null);
-        var taggedAlbums = searchTag is null ? null
-            : sourceAlbumIndex.TaggedAlbums.GetValueOrDefault(searchTag.Id) ?? [];
+        var taggedAlbums = searchTagIds.Count == 0 ? null
+            : sourceAlbumIndex.AlbumsMatchingAnyTagIds(searchTagIds.ToHashSet());
         var hasQuery = query.Text.Length > 0 || taggedAlbums is not null;
         SearchStatus.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
         if (!hasQuery)
@@ -301,41 +308,150 @@ public sealed partial class MainWindow
             await ApplySearchTag(tag);
     }
 
-    private void UpdateSearchTagFilter()
+    private static int? SearchTagTrigger(string input)
     {
-        SearchTagFilter.Content = searchTag is null ? new FontIcon { Glyph = "\uE8EC", FontSize = 13 } : searchTag.Name;
-        SearchTagFilter.IsEnabled = sourceAlbumIndex.Tags.Count > 0;
-        if (searchTag is not null)
-            AutomationProperties.SetName(SearchTagFilter, $"标签筛选：{searchTag.Name}");
-        else
-            AutomationProperties.SetName(SearchTagFilter, "标签筛选");
-
-        var menu = new MenuFlyout();
-        if (searchTag is not null)
+        for (var index = input.Length - 1; index >= 0; index--)
         {
-            var clear = new MenuFlyoutItem { Text = "清除标签筛选" };
-            clear.Click += async (_, _) => await ApplySearchTag(null);
-            menu.Items.Add(clear);
+            if ((input[index] is '#' or '＃') && (index == 0 || char.IsWhiteSpace(input[index - 1])))
+                return index;
         }
-        foreach (var tag in sourceAlbumIndex.Tags)
-        {
-            var item = new MenuFlyoutItem { Text = tag.Name };
-            item.Click += async (_, _) => await ApplySearchTag(tag);
-            menu.Items.Add(item);
-        }
-        SearchTagFilter.Flyout = menu;
+        return null;
     }
 
-    private Task ApplySearchTag(SourceAlbumTag? tag)
+    private bool RemoveSearchTagTrigger()
     {
-        if (suggestingTags)
+        if (SearchTagTrigger(SearchInput.Text) is not int marker)
+            return false;
+        updatingSearchInput = true;
+        SearchInput.Text = SearchInput.Text[..marker];
+        SearchInput.SelectionStart = marker;
+        updatingSearchInput = false;
+        return true;
+    }
+
+    private void UpdateSearchTagStack()
+    {
+        var tagsById = sourceAlbumIndex.Tags.ToDictionary(tag => tag.Id);
+        searchTagIds.RemoveAll(id => !tagsById.ContainsKey(id));
+        var tags = searchTagIds.Select(id => tagsById[id]).ToArray();
+        SearchActiveTags.ItemsSource = tags.Reverse().ToArray();
+        SearchTagStack.Visibility = tags.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var depth = Math.Clamp(tags.Length - 1, 0, 2);
+        SearchTagRearCard.Visibility = depth == 2 ? Visibility.Visible : Visibility.Collapsed;
+        SearchTagMiddleCard.Visibility = depth >= 1 ? Visibility.Visible : Visibility.Collapsed;
+        SearchTagMiddleCard.Margin = depth == 2 ? new(5, 4, 5, 4) : new(5, 4, 0, 0);
+        SearchTagFrontCard.Margin = new(0, 0, depth * 5, depth * 4);
+        SearchTagName.Text = tags.LastOrDefault()?.Name ?? "";
+        AutomationProperties.SetName(SearchTagStack, "标签筛选 " + string.Join("、", tags.Select(tag => tag.Name)));
+    }
+
+    private void RefreshSearchTagsFromCatalog()
+    {
+        if (!searchOpen)
+            return;
+        UpdateSearchTagStack();
+        if (SearchOverlay.Visibility == Visibility.Visible)
+            _ = RefreshSearch();
+    }
+
+    private void PeekSearchTags(object sender, PointerRoutedEventArgs args)
+    {
+        if (searchTagIds.Count > 0)
+            SearchTagOptions.Peek(args);
+    }
+
+    private void OpenSearchTags(object sender, RoutedEventArgs args) => SearchTagOptions.Open();
+
+    private void HideSearchTags() => SearchTagOptions.Hide();
+
+    private void SearchTagsOpened(object sender, object args)
+    {
+        var continuing = SearchTagArtwork.Opacity == 0;
+        SearchTagArtwork.Opacity = 0;
+        if (continuing)
+            return;
+
+        SearchTagsScroll.ChangeView(null, 0, null, disableAnimation: true);
+        if (!new UISettings().AnimationsEnabled)
+            return;
+
+        SearchActiveTags.UpdateLayout();
+        if (SearchActiveTags.ContainerFromIndex(0) is not FrameworkElement firstRow)
+            return;
+
+        var compositor = ElementCompositionPreview.GetElementVisual(firstRow).Compositor;
+        var settle = compositor.CreateCubicBezierEasingFunction(new(.20f, .67f), new(.27f, 1));
+        var count = SearchActiveTags.Items.Count;
+        var stackDepth = Math.Min(count - 1, 2);
+        for (var index = 0; index < count; index++)
         {
-            consumingExactPrefix = true;
-            SearchInput.Text = "";
-            consumingExactPrefix = false;
+            if (SearchActiveTags.ContainerFromIndex(index) is not FrameworkElement row ||
+                row.ActualOffset.Y >= SearchTagsScroll.ViewportHeight)
+                break;
+
+            var depth = Math.Min(index, stackDepth);
+            var width = (float)row.ActualWidth;
+            row.CenterPoint = new(width, 0, 0);
+            Canvas.SetZIndex(row, count - index);
+            var startScale = Math.Clamp((float)SearchTagFrontCard.ActualWidth / Math.Max(width, 1), .35f, 1);
+            var duration = TimeSpan.FromMilliseconds(190);
+            var slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.Target = "Translation";
+            slide.Duration = duration;
+            slide.InsertKeyFrame(0, new((depth - stackDepth) * 5, firstRow.ActualOffset.Y + depth * 4 - row.ActualOffset.Y, 0));
+            slide.InsertKeyFrame(1, Vector3.Zero, settle);
+            row.StartAnimation(slide);
+
+            var stretch = compositor.CreateVector3KeyFrameAnimation();
+            stretch.Target = "Scale";
+            stretch.Duration = duration;
+            stretch.InsertKeyFrame(0, new(startScale, 1, 1));
+            stretch.InsertKeyFrame(1, Vector3.One, settle);
+            row.StartAnimation(stretch);
         }
-        searchTag = tag;
-        UpdateSearchTagFilter();
+    }
+
+    private void SearchTagsClosed(object sender, object args)
+    {
+        // A transient flyout closes and immediately reopens when the anchor is clicked.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!SearchTagOptions.IsOpen)
+                SearchTagArtwork.Opacity = 1;
+        });
+    }
+
+    private void SearchTagsKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Escape)
+            return;
+        args.Handled = true;
+        if (!args.KeyStatus.WasKeyDown)
+            DismissSearchTagsToInput();
+    }
+
+    private void DismissSearchTagsToInput()
+    {
+        HideSearchTags();
+        SearchInput.Focus(FocusState.Programmatic);
+    }
+
+    private async void RemoveSearchTag(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: SourceAlbumTag tag })
+            return;
+        searchTagIds.Remove(tag.Id);
+        DismissSearchTagsToInput();
+        UpdateSearchTagStack();
+        await RefreshSearch();
+    }
+
+    private Task ApplySearchTag(SourceAlbumTag tag)
+    {
+        RemoveSearchTagTrigger();
+        if (!searchTagIds.Contains(tag.Id))
+            searchTagIds.Add(tag.Id);
+        UpdateSearchTagStack();
         SearchInput.Focus(FocusState.Programmatic);
         return RefreshSearch();
     }
@@ -426,6 +542,16 @@ public sealed partial class MainWindow
                 args.Handled = true;
                 if (args.KeyStatus.WasKeyDown)
                     return;
+                if (SearchTagOptions.IsOpen)
+                {
+                    DismissSearchTagsToInput();
+                    return;
+                }
+                if (suggestingTags && RemoveSearchTagTrigger())
+                {
+                    await RefreshSearch();
+                    return;
+                }
                 if (!searchExact)
                 {
                     CloseSearch();
@@ -467,6 +593,7 @@ public sealed partial class MainWindow
         var files = searchHits.Select(hit => hit.Media).OfType<Media>();
         var results = files.Select((media, index) => new Tile(media, index)).ToList();
         var selected = results.FindIndex(tile => tile.Media.Id == item.Id);
+        HideSearchTags();
         SearchOverlay.Visibility = Visibility.Collapsed;
         OpenPreview(results, selected, new(BrowseMode.List, 1));
     }

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -19,8 +20,11 @@ namespace IPreview;
 public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
-        long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null, string Caption = "")
+        long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null,
+        string Caption = "", SidebarAlbumFavorite? Favorite = null)
     {
+        public Thickness SidebarIndent => Folder is null ? new() : new(14, 0, 0, 0);
+        public Visibility FavoriteVisibility => Favorite is null ? Visibility.Collapsed : Visibility.Visible;
         public override string ToString() => Label;
     }
 
@@ -51,11 +55,15 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetBrowseMode(browseMode);
         InitializeMediaSort();
+        PreviewWorkspace.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(WorkPanePointerPressed), true);
+        workMotionSettings.AnimationsEnabledChanged += WorkAnimationsChanged;
+        InitializeSourceAlbumStars();
         SystemBackdrop = new MicaBackdrop();
         InitializeTitleBar();
         RestoreTheme();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 760));
         Root.Loaded += OpenCatalog;
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DismissSourceActionsOnOutsideClick), true);
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
         previewCopyTimer.Tick += (_, _) => ResetPreviewCopyFeedback();
@@ -64,6 +72,12 @@ public sealed partial class MainWindow : Window
             CancelAlbumAdjustmentPointer();
             browserSort.Cancel();
             previewSort.Cancel();
+            videoWorkSession?.CancelPhotoTasks();
+            videoWorkSession = null;
+            workTapeCoverRequest?.Cancel();
+            CancelWorkOpening();
+            workMotionSettings.AnimationsEnabledChanged -= WorkAnimationsChanged;
+            StopWorkAura();
             previewNeighborGeneration++;
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
@@ -103,6 +117,7 @@ public sealed partial class MainWindow : Window
 
     private void Reload(long? selected = null, Navigation? destination = null)
     {
+        BackFromVideoWork();
         var snapshot = Database.Read();
         current = destination ?? current;
         libraryDataVersion = snapshot.DataVersion;
@@ -111,17 +126,10 @@ public sealed partial class MainWindow : Window
         albums = snapshot.Albums;
         albumMembers = snapshot.AlbumMembers;
         sourceAlbumIndex = Database.ReadSourceAlbumIndex();
+        sourceAlbumKeys = media.Where(item => item.Present).Select(SourceAlbumKey.FromMedia).ToHashSet();
         videoWorks = snapshot.VideoWorks;
 
         RevealSourceActions(null);
-        SourceNavigation.ItemsSource = sources.Values.OrderBy(source => source.Name).ThenBy(source => source.Id)
-            .Select(source => new Navigation(source.Available ? source.Name : $"{source.Name}（离线）",
-                Source: source.Id, Glyph: source.Layout switch
-                {
-                    Layout.MultiCreator => "\uE902",
-                    Layout.Creator => "\uE77B",
-                    _ => "\uE8B7"
-                }, Help: source.Path)).ToList();
         AlbumNavigation.ItemsSource = albums.Select(album => new Navigation(album.Name, Album: album.Id,
             Glyph: "\uE7B8")).ToList();
 
@@ -132,14 +140,59 @@ public sealed partial class MainWindow : Window
                 ? new(album.Name, Album: albumId) : Library;
         UpdateNavigationSelection();
         ShowItems(selected);
+        RefreshSearchTagsFromCatalog();
     }
 
     private void UpdateNavigationSelection()
     {
-        SourceNavigation.SelectedItem = SourceNavigation.Items.OfType<Navigation>()
-            .FirstOrDefault(item => item.Source == current.Source);
+        var sidebarFavorites = SourceNavigation.Items.OfType<Navigation>()
+            .Select(item => item.Favorite).OfType<SidebarAlbumFavorite>()
+            .ToDictionary(favorite => favorite.Key);
+        var rows = SourceSidebarRows(sidebarFavorites).ToList();
+        if (!SourceNavigation.Items.OfType<Navigation>().SequenceEqual(rows))
+            SourceNavigation.ItemsSource = rows;
+        var sourceRows = SourceNavigation.Items.OfType<Navigation>().Where(item => item.Source == current.Source);
+        SourceNavigation.SelectedItem = sourceRows.FirstOrDefault(item => item.Folder == current.Folder)
+            ?? sourceRows.FirstOrDefault();
         AlbumNavigation.SelectedItem = AlbumNavigation.Items.OfType<Navigation>()
             .FirstOrDefault(item => item.Album == current.Album);
+    }
+
+    private IEnumerable<Navigation> SourceSidebarRows(
+        IReadOnlyDictionary<SourceAlbumKey, SidebarAlbumFavorite> sidebarFavorites)
+    {
+        var favorites = sourceAlbumIndex.FavoriteAlbums.Where(sourceAlbumKeys.Contains).ToHashSet();
+        var nestedFavorites = favorites.Where(album => album.RelativePath.Length != 0)
+            .OrderBy(album => album.RelativePath, MediaSearch.NaturalName)
+            .ThenBy(album => album.RelativePath, StringComparer.Ordinal)
+            .ToLookup(album => album.SourceId);
+        foreach (var source in sources.Values.OrderByDescending(source => favorites.Contains(new(source.Id, "")))
+            .ThenBy(source => source.Name).ThenBy(source => source.Id))
+        {
+            var label = source.Available ? source.Name : $"{source.Name}（离线）";
+            var glyph = source.Layout switch
+            {
+                Layout.MultiCreator => "\uE902",
+                Layout.Creator => "\uE77B",
+                _ => "\uE8B7"
+            };
+            var rootFavorite = AlbumKeyAt(source, null) is { } rootKey
+                ? SidebarFavoriteFor(rootKey, label, sidebarFavorites) : null;
+            yield return new Navigation(label, Source: source.Id, Glyph: glyph, Help: source.Path, Favorite: rootFavorite);
+
+            foreach (var favorite in nestedFavorites[source.Id])
+            {
+                var path = favorite.RelativePath + "/";
+                var title = current.Source == source.Id && current.Folder == path
+                    ? current.Label : SourceRename.SplitPath(favorite.RelativePath).Leaf;
+                yield return new Navigation(title, Source: source.Id, Folder: path, Help: favorite.RelativePath,
+                    Favorite: SidebarFavoriteFor(favorite, title, sidebarFavorites));
+            }
+            if (current.Source == source.Id && current.Folder is { } folder &&
+                AlbumKeyAt(source, folder) is { } album && !favorites.Contains(album))
+                yield return new Navigation(current.Label, Source: source.Id, Folder: folder,
+                    Favorite: SidebarFavoriteFor(album, current.Label, sidebarFavorites));
+        }
     }
 
     private void Navigate(object sender, ItemClickEventArgs args)
@@ -277,8 +330,9 @@ public sealed partial class MainWindow : Window
                 var count = isCreator
                     ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
                     : group.Count();
+                var key = new SourceAlbumKey(source!.Id, albumPath);
                 IReadOnlyList<Media> cover = isCreator ? [group.First()]
-                    : sourceAlbumIndex.Covers(new(source!.Id, albumPath), group);
+                    : sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, group));
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
                     Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}");
             }).ToList();
@@ -479,7 +533,10 @@ public sealed partial class MainWindow : Window
         AddSourceButton.IsEnabled = ImportButton.IsEnabled;
         CreateAlbumButton.IsEnabled = !value && catalog is not null;
         DeleteAlbumButton.IsEnabled = !value && catalog is not null;
-        OrganizeSourceAlbum.IsEnabled = ManageAlbumTags.IsEnabled = !value && catalog is not null;
+        ManageAlbumTags.IsEnabled = !value && catalog is not null;
+        SourceAlbumCoverButton.IsEnabled = SourceAlbumFavorite.IsEnabled = !value;
+        SourceAlbumMetadata.IsHitTestVisible = !value;
+        SourceAlbumZeroRating.IsEnabled = SourceAlbumClearRating.IsEnabled = !value;
         BrowserSortButton.IsEnabled = !value && catalog is not null;
         Rescan.IsEnabled = !value && sources.Count > 0;
     }
@@ -627,32 +684,35 @@ public sealed partial class MainWindow : Window
     }
 
     private static async Task<BitmapImage> DecodeImage(Media media, int width, bool animated,
-                                                       ExceptionRoutedEventHandler? imageFailed = null)
+        ExceptionRoutedEventHandler? imageFailed = null, CancellationToken cancellationToken = default)
     {
-        var file = await OpenMediaFile(media);
-        using var stream = await file.OpenReadAsync();
+        var file = await OpenMediaFile(media, cancellationToken);
+        using var stream = await file.OpenReadAsync().AsTask(cancellationToken);
         var bitmap = new BitmapImage { DecodePixelWidth = width, AutoPlay = animated };
         if (imageFailed is not null)
             bitmap.ImageFailed += imageFailed;
-        await bitmap.SetSourceAsync(stream);
+        await bitmap.SetSourceAsync(stream).AsTask(cancellationToken);
         return bitmap;
     }
 
-    private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media, uint width = 320)
+    private static async Task<BitmapImage?> DecodeVideoThumbnail(Media media, uint width = 320,
+        CancellationToken cancellationToken = default)
     {
-        var file = await OpenMediaFile(media);
-        using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, width, ThumbnailOptions.ResizeThumbnail);
+        var file = await OpenMediaFile(media, cancellationToken);
+        using var stream = await file.GetThumbnailAsync(ThumbnailMode.VideosView, width, ThumbnailOptions.ResizeThumbnail)
+            .AsTask(cancellationToken);
         if (stream is null || stream.Type != ThumbnailType.Image)
             return null;
         var bitmap = new BitmapImage();
-        await bitmap.SetSourceAsync(stream);
+        await bitmap.SetSourceAsync(stream).AsTask(cancellationToken);
         return bitmap;
     }
 
-    private static async Task<StorageFile> OpenMediaFile(Media media)
+    private static async Task<StorageFile> OpenMediaFile(Media media, CancellationToken cancellationToken = default)
     {
-        var path = await Task.Run(() => MediaFiles.OpenPath(media));
-        return await StorageFile.GetFileFromPathAsync(path);
+        var path = await Task.Run(() => MediaFiles.OpenPath(media), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await StorageFile.GetFileFromPathAsync(path).AsTask(cancellationToken);
     }
 
     private static bool MediaFailure(Exception error) =>
@@ -701,21 +761,31 @@ public sealed partial class MainWindow : Window
         OpenPreview(tiles.ToList(), browser.SelectedIndex, new(browseMode, Columns));
     }
 
-    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout)
+    private void OpenPreview(List<Tile> items, int selectedIndex, BrowseLayout layout,
+        BitmapImage? poster = null)
     {
+        var work = BrowsingVideoWork;
         originalPreviewTiles = items;
         previewTiles = items;
         previewSort.Order = default;
         PreviewSortButton.IsEnabled = items.Count > 1;
+        PreviewSortButton.Visibility = IndexLabel.Visibility = work ? Visibility.Collapsed : Visibility.Visible;
+        VideoLock.Visibility = work ? Visibility.Collapsed : Visibility.Visible;
+        var closeName = work ? "返回作品总览" : "退出预览";
+        AutomationProperties.SetName(PreviewCloseAction, closeName);
+        ToolTipService.SetToolTip(PreviewCloseAction, closeName + "（Esc）");
         previewLayout = layout;
-        PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(layout.Mode == BrowseMode.Gallery ? 0 : 36);
-        PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(layout.Mode == BrowseMode.List ? 0 : 44);
+        PreviewOverlay.XYFocusKeyboardNavigation = work
+            ? XYFocusKeyboardNavigationMode.Disabled : XYFocusKeyboardNavigationMode.Auto;
+        PreviewTopRail.Height = PreviewBottomRail.Height = new GridLength(work || layout.Mode == BrowseMode.Gallery ? 0 : 36);
+        PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(work || layout.Mode == BrowseMode.List ? 0 : 44);
         PreviewOverlay.Visibility = Visibility.Visible;
         var thumbnail = ThumbnailOf(items[selectedIndex].Media.Id);
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
-        ShowPreview(selectedIndex, thumbnail?.Image);
-        AnimatePreview(thumbnail, opening: true, complete: null);
+        ShowPreview(selectedIndex, poster ?? thumbnail?.Image);
+        if (!work)
+            AnimatePreview(thumbnail, opening: true, complete: null);
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -753,7 +823,10 @@ public sealed partial class MainWindow : Window
                 browser.UpdateLayout();
             }
         }
-        AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
+        if (BrowsingVideoWork)
+            FinishClosePreview(selectedId);
+        else
+            AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
     }
 
     private void FinishClosePreview(long? selectedId)
@@ -766,12 +839,12 @@ public sealed partial class MainWindow : Window
         PreviewOverlay.Visibility = Visibility.Collapsed;
         if (videoWorkSession is null)
             LibraryHost.IsEnabled = true;
-        if (!RestoreVideoWorkAfterMediaPreview(selectedId) && !RestoreSearchAfterPreview(selectedId))
+        StopVideo();
+        if (!RestoreVideoWorkAfterMediaPreview() && !RestoreSearchAfterPreview(selectedId))
         {
             FocusSelectedMedia();
             LibraryView.IsHitTestVisible = true;
         }
-        StopVideo();
         MainImage.Source = null;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         previewClosing = false;
@@ -823,6 +896,11 @@ public sealed partial class MainWindow : Window
 
     private void PreviewKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (BrowsingVideoWork)
+        {
+            WorkWorkspaceKeyDown(args);
+            return;
+        }
         if (args.Key == VirtualKey.Escape)
         {
             args.Handled = true;
@@ -832,10 +910,10 @@ public sealed partial class MainWindow : Window
         }
         if (previewIndex < 0 || previewClosing)
             return;
+        var focus = FocusManager.GetFocusedElement(Root.XamlRoot);
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
         {
-            var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
-            if (ReferenceEquals(focused, PreviewCloseAction) || ReferenceEquals(focused, PreviewSortButton))
+            if (ReferenceEquals(focus, PreviewCloseAction) || ReferenceEquals(focus, PreviewSortButton))
                 return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
@@ -855,7 +933,7 @@ public sealed partial class MainWindow : Window
                 SeekVideoBy(VideoSeekInterval);
             return;
         }
-        if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), PreviewCanvas))
+        if (!ReferenceEquals(focus, PreviewCanvas))
             return;
         if (args.Key == VirtualKey.Space)
         {
@@ -1037,7 +1115,8 @@ public sealed partial class MainWindow : Window
         PreviewError.Visibility = Visibility.Visible;
         VideoControls.Visibility = Visibility.Collapsed;
         SetPreviewVideoLock(false);
-        PreviewCanvas.Focus(FocusState.Programmatic);
+        if (!BrowsingVideoWork)
+            PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
     private void UpdateTime()
@@ -1109,6 +1188,13 @@ public sealed partial class MainWindow : Window
         if (locked)
         {
             PreviewHint.Text = "← / → 跳转 15 秒    Space 播放或暂停    Enter 解锁    Esc 退出";
+            return;
+        }
+        if (BrowsingVideoWork)
+        {
+            PreviewHint.Text = VideoControls.Visibility == Visibility.Visible
+                ? "← / → 跳转 15 秒    Space 播放或暂停    Esc 返回"
+                : "";
             return;
         }
         var navigation = previewLayout.Mode switch

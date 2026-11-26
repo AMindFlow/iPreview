@@ -1,7 +1,7 @@
 <Window x:Class="IPreview.MainWindow" Title="iPreview"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved"
+    <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved" PreviewKeyDown="VideoWorkRootKeyDown"
           PointerReleased="AlbumAdjustmentPointerReleased" PointerCaptureLost="AlbumAdjustmentPointerInterrupted"
           PointerCanceled="AlbumAdjustmentPointerInterrupted" PointerWheelChanged="AlbumAdjustmentPointerWheelChanged">
         <Grid.Resources>
@@ -37,6 +37,7 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="15" />
                     <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="UseSystemFocusVisuals" Value="True" />
                 </Style>
                 <Style x:Key="SidebarEntryStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                     <Setter Property="MinHeight" Value="34" />
@@ -44,6 +45,37 @@
                     <Setter Property="Margin" Value="0,0,0,2" />
                     <Setter Property="CornerRadius" Value="8" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+                <Style x:Key="AlbumTagSuggestionsPanel" TargetType="Border">
+                    <Setter Property="Background" Value="{ThemeResource ControlSolidFillColorDefaultBrush}" />
+                    <Setter Property="BorderBrush" Value="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="CornerRadius" Value="8" />
+                    <Setter Property="Padding" Value="4" />
+                </Style>
+                <Style x:Key="AlbumTagSuggestionRow" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="MinHeight" Value="32" />
+                    <Setter Property="Padding" Value="8,4" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+                <Style x:Key="AlbumRatingHalfButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                    <Setter Property="Width" Value="12" />
+                    <Setter Property="MinWidth" Value="12" />
+                    <Setter Property="Height" Value="26" />
+                    <Setter Property="MinHeight" Value="26" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="CornerRadius" Value="4" />
+                </Style>
+                <ControlTemplate x:Key="AlbumBookmarkIcon" TargetType="ContentControl">
+                    <Path Data="M1,1 L10,1 L10,14 L5.5,11 L1,14 Z" Stretch="Uniform"
+                          Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.15"
+                          Fill="{TemplateBinding Background}" />
+                </ControlTemplate>
+                <Style x:Key="SourceRowActionButton" TargetType="Button" BasedOn="{StaticResource LibraryIconButton}">
+                    <Setter Property="Height" Value="28" />
+                    <Setter Property="CornerRadius" Value="14" />
+                    <Setter Property="BorderThickness" Value="0" />
                 </Style>
                 <DataTemplate x:Key="AlbumCoverChoiceTemplate">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -53,15 +85,27 @@
                     </StackPanel>
                 </DataTemplate>
                 <DataTemplate x:Key="NavigationEntryTemplate">
-                    <Grid ColumnSpacing="9" ToolTipService.ToolTip="{Binding Help}">
+                    <Grid ColumnSpacing="9" Margin="{Binding SidebarIndent}" ToolTipService.ToolTip="{Binding Help}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="17" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="{Binding Glyph}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" FontSize="13"
                                    TextTrimming="CharacterEllipsis" />
+                        <Button x:Name="SidebarBookmark" Grid.Column="2"
+                                Style="{StaticResource LibraryIconButton}" Visibility="{Binding FavoriteVisibility}"
+                                Click="ToggleSidebarAlbumFavorite" AutomationProperties.Name="{Binding Favorite.ActionLabel}"
+                                ToolTipService.ToolTip="{Binding Favorite.ActionLabel}">
+                            <Grid Width="12" Height="15" AutomationProperties.AccessibilityView="Raw">
+                                <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False" />
+                                <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False"
+                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                Visibility="{Binding Favorite.BookmarkFill}" />
+                            </Grid>
+                        </Button>
                     </Grid>
                 </DataTemplate>
             </Grid.Resources>
@@ -129,21 +173,32 @@
                                   AutomationProperties.Name="源">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Loaded="SourceRowLoaded" Unloaded="SourceRowUnloaded" Background="Transparent"
+                                    <Grid Loaded="SourceRowLoaded" Unloaded="SourceRowUnloaded" DataContextChanged="SourceRowDataChanged"
+                                          Background="Transparent"
                                           PointerWheelChanged="SourceRowWheelChanged" MinHeight="26">
                                         <ContentControl x:Name="SourceDescription" Content="{Binding}"
                                                         ContentTemplate="{StaticResource NavigationEntryTemplate}"
                                                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                                                         IsTabStop="False" />
                                         <StackPanel x:Name="SourceActions" Orientation="Horizontal" HorizontalAlignment="Right"
-                                                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" Visibility="Collapsed">
-                                            <Button Style="{StaticResource LibraryIconButton}" Click="RescanSidebarSource"
+                                                    VerticalAlignment="Center" Spacing="5" Visibility="Collapsed">
+                                            <Button Style="{StaticResource SourceRowActionButton}" Click="RescanSidebarSource"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                     AutomationProperties.Name="重新扫描" ToolTipService.ToolTip="重新扫描">
-                                                <FontIcon Glyph="&#xE72C;" FontSize="13" />
+                                                <Button.Resources>
+                                                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                                </Button.Resources>
+                                                <FontIcon Glyph="&#xE72C;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                             </Button>
-                                            <Button Style="{StaticResource LibraryIconButton}" Click="DeleteSidebarSource"
+                                            <Button Style="{StaticResource SourceRowActionButton}" Click="DeleteSidebarSource"
+                                                    Background="{ThemeResource SystemFillColorCriticalBrush}"
                                                     AutomationProperties.Name="删除媒体源" ToolTipService.ToolTip="删除媒体源">
-                                                <FontIcon Glyph="&#xE74D;" FontSize="13" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                <Button.Resources>
+                                                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SystemFillColorCriticalBrush" />
+                                                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SystemFillColorCriticalBrush" />
+                                                </Button.Resources>
+                                                <FontIcon Glyph="&#xE74D;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -209,29 +264,124 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid VerticalAlignment="Center">
+                    <Grid VerticalAlignment="Center" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button x:Name="BackToSourceFolder" Click="GoBackToSourceFolder" Visibility="Collapsed"
                                 Style="{StaticResource LibraryIconButton}" Margin="0,0,6,0"
                                 AutomationProperties.Name="返回上一层" ToolTipService.ToolTip="返回上一层">
                             <FontIcon Glyph="&#xE76B;" FontSize="14" />
                         </Button>
-                        <Grid Grid.Column="1">
-                            <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="Bold"
-                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
-                            <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
-                                     FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
-                                     PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
-                                     TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
-                        </Grid>
-                        <Border x:Name="SourceAlbumCover" Grid.Column="2" Width="62" Height="42"
-                                Margin="8,0,0,0" CornerRadius="6" Visibility="Collapsed"
-                                Background="{ThemeResource ControlFillColorSecondaryBrush}" />
+                        <Button x:Name="SourceAlbumCoverButton" Grid.Column="1" Padding="0" BorderThickness="0"
+                                Click="EditSourceAlbumCover" Visibility="Collapsed" VerticalAlignment="Top"
+                                AutomationProperties.Name="选择专辑封面" ToolTipService.ToolTip="选择专辑封面">
+                            <Border x:Name="SourceAlbumCover" Width="74" Height="52" CornerRadius="7"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}" />
+                        </Button>
+                        <StackPanel Grid.Column="2" Spacing="3">
+                            <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid>
+                                    <TextBlock x:Name="Heading" Text="媒体库" FontSize="28" FontWeight="Bold"
+                                               TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                               AutomationProperties.HeadingLevel="Level1" DoubleTapped="BeginTitleEdit" />
+                                    <TextBox x:Name="TitleEditor" Visibility="Collapsed" HorizontalAlignment="Stretch"
+                                             FontSize="21" MinWidth="0" MaxWidth="350" MaxLength="255"
+                                             PreviewKeyDown="TitleEditorKeyDown" AutomationProperties.Name="名称"
+                                             TextCompositionStarted="TextCompositionStarted" TextCompositionEnded="TextCompositionEnded" />
+                                </Grid>
+                                <ToggleButton x:Name="SourceAlbumFavorite" Grid.Column="1" Visibility="Collapsed"
+                                              Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="0" CornerRadius="15"
+                                              Click="ToggleSourceAlbumFavorite" AutomationProperties.Name="专辑收藏">
+                                    <Grid Width="15" Height="18" AutomationProperties.AccessibilityView="Raw">
+                                        <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False" />
+                                        <ContentControl x:Name="SourceAlbumFavoriteFill" Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False"
+                                                        Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" />
+                                    </Grid>
+                                </ToggleButton>
+                            </Grid>
+                            <StackPanel x:Name="SourceAlbumMetadata" Visibility="Collapsed" Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="4" AutomationProperties.Name="专辑评分">
+                                    <StackPanel x:Name="SourceAlbumStars" Orientation="Horizontal" />
+                                    <TextBlock x:Name="SourceAlbumRatingValue" VerticalAlignment="Center" FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <Button x:Name="SourceAlbumRatingOptions" Style="{StaticResource LibraryIconButton}"
+                                            Click="OpenSourceAlbumRatingOptions" PointerEntered="PeekSourceAlbumRatingOptions"
+                                            AutomationProperties.Name="评分选项">
+                                        <TextBlock Text="&#x22EE;" FontSize="17" />
+                                        <FlyoutBase.AttachedFlyout>
+                                            <MenuFlyout x:Name="SourceAlbumRatingFlyout" Placement="Right"
+                                                        Opening="PrepareSourceAlbumRatingOptions">
+                                                <MenuFlyout.MenuFlyoutPresenterStyle>
+                                                    <Style TargetType="MenuFlyoutPresenter">
+                                                        <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                                        <Setter Property="BorderThickness" Value="1" />
+                                                        <Setter Property="CornerRadius" Value="10" />
+                                                        <Setter Property="Padding" Value="4" />
+                                                    </Style>
+                                                </MenuFlyout.MenuFlyoutPresenterStyle>
+                                                <ToggleMenuFlyoutItem x:Name="SourceAlbumZeroRating" Text="0 星"
+                                                                      Click="SetSourceAlbumZeroRating" />
+                                                <ToggleMenuFlyoutItem x:Name="SourceAlbumClearRating" Text="清除评分"
+                                                                      Click="ClearSourceAlbumRating" />
+                                            </MenuFlyout>
+                                        </FlyoutBase.AttachedFlyout>
+                                    </Button>
+                                </StackPanel>
+                                <Grid ColumnSpacing="4" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
+                                                  VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                                        <ItemsControl x:Name="SourceAlbumTags">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="4" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Background="Transparent" PointerEntered="TagChipEntered" PointerExited="TagChipExited">
+                                                        <Border Margin="0,3,5,0" Padding="7,3" CornerRadius="10"
+                                                                Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                                            <TextBlock Text="{Binding Name}" FontSize="12" MaxWidth="144"
+                                                                       TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
+                                                        </Border>
+                                                        <Button x:Name="RemoveTagButton" Click="RemoveVisibleAlbumTag" Width="18" MinWidth="18"
+                                                                Height="18" MinHeight="18" Padding="0" CornerRadius="9" BorderThickness="0"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False"
+                                                                Loaded="InitializeTagRemoveButton" GotFocus="FocusTagRemoveButton" LostFocus="BlurTagRemoveButton"
+                                                                Tag="移除专辑标签" ToolTipService.ToolTip="移除专辑标签">
+                                                            <FontIcon Glyph="&#xE8BB;" FontSize="9"
+                                                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                    <Grid Grid.Column="1" Background="Transparent" Padding="3,0"
+                                          PointerEntered="ShowAlbumTagPlus" PointerExited="FadeAlbumTagPlus">
+                                        <Button x:Name="SourceAlbumAddTag" Style="{StaticResource LibraryIconButton}"
+                                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" CornerRadius="13"
+                                                Click="AddVisibleAlbumTag" GotFocus="RevealAlbumTagButton" LostFocus="HideAlbumTagButton"
+                                                AutomationProperties.Name="添加专辑标签" ToolTipService.ToolTip="添加专辑标签">
+                                            <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
                     <Grid Grid.Row="1" ColumnSpacing="10" MinHeight="28">
                         <Grid.ColumnDefinitions>
@@ -250,17 +400,13 @@
                             </StackPanel>
                         </Button>
                         <StackPanel x:Name="BrowseTools" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="OrganizeSourceAlbum" Content="专辑组织" Click="OpenSourceAlbumOrganization"
-                                    Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <Button x:Name="ManageAlbumTags" Content="管理标签" Click="OpenGlobalTagManagement"
                                     Style="{StaticResource LibrarySubtleButton}" Visibility="Collapsed" />
                             <Button x:Name="BrowserSortButton" Style="{StaticResource LibraryIconButton}" Visibility="Collapsed"
-                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
-                                <FontIcon Glyph="&#xE8CB;" FontSize="14" />
-                            </Button>
+                                    AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序" />
                             <Button x:Name="PreviewWorkButton" Click="PreviewCurrentWork" Visibility="Collapsed"
-                                    Style="{StaticResource LibrarySubtleButton}" Content="预览作品"
-                                    MinHeight="26" FontSize="12" Padding="7,0" />
+                                    Style="{StaticResource LibrarySubtleButton}" Content="沉浸模式"
+                                    AutomationProperties.Name="沉浸模式" ToolTipService.ToolTip="沉浸模式" MinHeight="26" FontSize="12" Padding="7,0" />
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -285,27 +431,29 @@
                             <Button x:Name="RemoveAlbumSelectionButton" Click="RemoveFromAlbum" Content="移除引用"
                                     CornerRadius="7" MinHeight="26" FontSize="12" Padding="9,1" IsEnabled="False" />
                         </StackPanel>
-                        <Border Grid.Column="3" CornerRadius="19" Padding="6,3" Height="38" VerticalAlignment="Center"
+                        <Border Grid.Column="3" CornerRadius="19" Padding="5,2" Height="36" VerticalAlignment="Center"
                                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
                                 Visibility="{Binding Visibility, ElementName=ViewModePicker}">
-                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="8"
+                            <StackPanel x:Name="ViewModePicker" Orientation="Horizontal" Spacing="5"
                                         AutomationProperties.Name="浏览视图">
                                 <StackPanel.Resources>
                                     <ResourceDictionary>
                                         <ResourceDictionary.ThemeDictionaries>
                                             <ResourceDictionary x:Key="Default">
-                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#1FFFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#38FFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#48FFFFFF" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#29FFFFFF" />
                                                 <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
                                             </ResourceDictionary>
                                             <ResourceDictionary x:Key="Light">
-                                                <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="ControlAltFillColorQuarternaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="ControlAltFillColorTertiaryBrush" />
-                                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#10000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#24000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#30000000" />
+                                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#1D000000" />
                                                 <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
                                                 <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
@@ -430,6 +578,38 @@
                                   DoubleTapped="PreviewDoubleTapped" PreviewKeyDown="GalleryKeyDown"
                                   SelectionChanged="SelectionChanged" AutomationProperties.Name="媒体列表"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
+                            <ListView.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.ThemeDictionaries>
+                                        <ResourceDictionary x:Key="Default">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="Light">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                                            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="HighContrast">
+                                            <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SystemColorHighlightColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                            <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="SystemColorHighlightTextColorBrush" />
+                                        </ResourceDictionary>
+                                    </ResourceDictionary.ThemeDictionaries>
+                                </ResourceDictionary>
+                            </ListView.Resources>
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                     <Setter Property="Padding" Value="0" />
@@ -463,11 +643,11 @@
                                             <TextBlock Grid.Column="1" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                        FontSize="12" VerticalAlignment="Center" />
                                         </Grid>
-                                        <TextBlock Grid.Column="1" Text="{Binding Details.Modified}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="1" Text="{Binding Details.Modified}"
                                                    FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Details.Size}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="2" Text="{Binding Details.Size}"
                                                    FontSize="12" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="3" Text="{Binding Kind}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        <TextBlock Grid.Column="3" Text="{Binding Kind}"
                                                    FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                         <ContentControl Grid.Column="4" Content="{Binding}" ContentTemplate="{StaticResource AlbumSelectionMark}"
                                                         Visibility="{Binding AlbumRemovalTickVisibility}" IsHitTestVisible="False"
@@ -655,8 +835,81 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.LiveSetting="Polite" />
                         </Border>
-                        <Button x:Name="SearchTagFilter" Grid.Column="3" CornerRadius="12"
-                                AutomationProperties.Name="标签筛选" ToolTipService.ToolTip="标签筛选。输入 # 查询标签。" />
+                        <Button x:Name="SearchTagStack" Grid.Column="3" CornerRadius="9" Padding="0"
+                                Background="Transparent" BorderThickness="0"
+                                Visibility="Collapsed" VerticalAlignment="Center" Click="OpenSearchTags" PointerEntered="PeekSearchTags">
+                            <Grid x:Name="SearchTagArtwork">
+                                <Border x:Name="SearchTagRearCard" CornerRadius="7" Margin="10,8,0,0"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1"
+                                        Visibility="Collapsed" IsHitTestVisible="False" />
+                                <Border x:Name="SearchTagMiddleCard" CornerRadius="7" Margin="5,4,0,0"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1"
+                                        Visibility="Collapsed" IsHitTestVisible="False" />
+                                <Border x:Name="SearchTagFrontCard" CornerRadius="7" Padding="7,3"
+                                        Background="{ThemeResource ControlSolidFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource TextFillColorTertiaryBrush}" BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" />
+                                        <TextBlock x:Name="SearchTagName" MaxWidth="76" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <FlyoutBase.AttachedFlyout>
+                                <Flyout x:Name="SearchTagsFlyout" Placement="BottomEdgeAlignedRight"
+                                        AreOpenCloseAnimationsEnabled="False" Opened="SearchTagsOpened" Closed="SearchTagsClosed">
+                                    <Flyout.FlyoutPresenterStyle>
+                                        <Style TargetType="FlyoutPresenter">
+                                            <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                                            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                            <Setter Property="BorderThickness" Value="1" />
+                                            <Setter Property="CornerRadius" Value="12" />
+                                            <Setter Property="Padding" Value="6" />
+                                        </Style>
+                                    </Flyout.FlyoutPresenterStyle>
+                                    <ScrollViewer x:Name="SearchTagsScroll" MaxHeight="220" MinWidth="160"
+                                                  PreviewKeyDown="SearchTagsKeyDown">
+                                        <ItemsControl x:Name="SearchActiveTags">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Spacing="5" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid ColumnSpacing="8" MinHeight="30" MaxWidth="240" Background="Transparent"
+                                                          PointerEntered="TagChipEntered" PointerExited="TagChipExited">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.ColumnSpan="3" CornerRadius="7" BorderThickness="1"
+                                                                BorderBrush="{ThemeResource TextFillColorTertiaryBrush}"
+                                                                Background="{ThemeResource ControlSolidFillColorDefaultBrush}"
+                                                                IsHitTestVisible="False" />
+                                                        <FontIcon Glyph="&#xE8EC;" FontSize="13" Margin="8,0,0,0" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <Button x:Name="RemoveTagButton" Grid.Column="2" Click="RemoveSearchTag"
+                                                                Width="18" MinWidth="18" Height="18" MinHeight="18" Padding="0"
+                                                                CornerRadius="9" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,2,2,0"
+                                                                Opacity="0" IsHitTestVisible="False" Loaded="InitializeTagRemoveButton"
+                                                                GotFocus="FocusTagRemoveButton" LostFocus="BlurTagRemoveButton"
+                                                                Tag="移除标签筛选" ToolTipService.ToolTip="移除标签筛选">
+                                                            <FontIcon Glyph="&#xE8BB;" FontSize="10"
+                                                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </FlyoutBase.AttachedFlyout>
+                        </Button>
                         <Button Grid.Column="4" Click="CloseSearchButton" ToolTipService.ToolTip="关闭搜索（Esc）"
                                 VerticalAlignment="Center" Width="32" Height="32" Padding="0" CornerRadius="12"
                                 Background="Transparent" BorderThickness="0"
@@ -756,8 +1009,9 @@
         </Grid>
 
         <Grid x:Name="VideoWorkOverlay" Visibility="Collapsed"
-              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="24"
-              PreviewKeyDown="VideoWorkKeyDown" TabFocusNavigation="Cycle" RowSpacing="16">
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Padding="24,18"
+              PreviewKeyDown="VideoWorkKeyDown" XYFocusKeyboardNavigation="Disabled"
+              TabFocusNavigation="Cycle" RowSpacing="20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -766,51 +1020,342 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Button x:Name="VideoWorkBack" Click="BackFromVideoWork" Style="{StaticResource LibraryIconButton}">
-                    <FontIcon x:Name="VideoWorkBackIcon" FontSize="14" />
+                <Button Click="BackFromVideoWork" Style="{StaticResource LibraryIconButton}"
+                        AutomationProperties.Name="退出沉浸模式" ToolTipService.ToolTip="退出沉浸模式（Esc）">
+                    <FontIcon Glyph="&#xE711;" FontSize="14" />
                 </Button>
                 <TextBlock x:Name="VideoWorkTitle" Grid.Column="1" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
-                <Button x:Name="VideoWorkSortButton" Grid.Column="2" Visibility="Collapsed"
-                        Style="{StaticResource LibraryIconButton}" AutomationProperties.Name="文件排序"
-                        ToolTipService.ToolTip="文件排序">
-                    <FontIcon Glyph="&#xE8CB;" FontSize="14" />
-                </Button>
             </Grid>
-            <GridView x:Name="VideoWorkItems" Grid.Row="1" SelectionMode="Single" IsMultiSelectCheckBoxEnabled="False"
-                      IsItemClickEnabled="True" ItemClick="VideoWorkItemClicked" AutomationProperties.Name="作品内容"
-                      ItemContainerStyle="{StaticResource LibraryCardStyle}">
-                <GridView.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <ItemsWrapGrid Orientation="Horizontal" ItemWidth="194" ItemHeight="146" />
-                    </ItemsPanelTemplate>
-                </GridView.ItemsPanel>
-                <GridView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Width="172" Spacing="7">
-                            <Border Height="102" CornerRadius="10" Background="{ThemeResource ControlFillColorSecondaryBrush}">
-                                <Image DataContext="{Binding Cover}" Stretch="UniformToFill"
-                                       Loaded="LoadThumbnail" DataContextChanged="UpdateThumbnail" />
-                            </Border>
-                            <Grid ColumnSpacing="7">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="{Binding Glyph}" FontSize="14" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+            <Grid x:Name="VideoWorkShowcase" Grid.Row="1" ColumnSpacing="16" SizeChanged="VideoWorkShowcaseSizeChanged">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="VideoWorkTape" Click="VideoWorkTapeClicked" Padding="0"
+                        Style="{StaticResource LibrarySubtleButton}" CornerRadius="10"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        AutomationProperties.HelpText="打开沉浸浏览并播放">
+                    <Button.RenderTransform>
+                        <TranslateTransform x:Name="VideoWorkTapeInward" />
+                    </Button.RenderTransform>
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="28" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="28" />
+                        </Grid.RowDefinitions>
+                        <Viewbox x:Name="VideoWorkTapeArtwork" Grid.Row="1" Width="196" Height="332"
+                                 Stretch="Uniform" AutomationProperties.AccessibilityView="Raw">
+                            <Grid Width="196" Height="332">
+                                <Path Data="M16,315.5 Q30,324.5 46,323 L184,311 L188,308.5 L31,321 L17,313.5 Z"
+                                      IsHitTestVisible="False">
+                                    <Path.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="#34000000" />
+                                            <GradientStop Offset="1" Color="#00000000" />
+                                        </LinearGradientBrush>
+                                    </Path.Fill>
+                                </Path>
+                                <Path Data="M22,320.2 Q31,324.5 52,321.8 L34,321.2 Z" IsHitTestVisible="False">
+                                    <Path.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#00FFEEDC" />
+                                            <GradientStop Offset=".5" Color="#26E8ECFF" />
+                                            <GradientStop Offset="1" Color="#00FFEEDC" />
+                                        </LinearGradientBrush>
+                                    </Path.Fill>
+                                </Path>
+                                <Path Data="M12.74,25.5 Q12.74,19.92 17.5,18.57 L27.5,15.75 Q30.38,14.94 39.45,15.64 L182.42,26.63 Q190.12,27.22 190.12,35.45 L190.12,300.53 Q190.12,308.76 182.42,309.38 L39.45,320.97 Q30.38,321.71 27.5,320.46 L17.5,316.13 Q12.74,314.07 12.74,308.5 Z"
+                                      StrokeThickness="0.9" IsHitTestVisible="False">
+                                    <Path.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#0A0E1826" />
+                                            <GradientStop Offset="1" Color="#0808101C" />
+                                        </LinearGradientBrush>
+                                    </Path.Fill>
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#D4FFF7ED" />
+                                            <GradientStop Offset=".25" Color="#48BFD0EC" />
+                                            <GradientStop Offset=".72" Color="#3C8CA4C4" />
+                                            <GradientStop Offset="1" Color="#BCE0E8FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Grid x:Name="VideoWorkTapeSpine" Width="22" Height="308"
+                                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                                      Loaded="VideoWorkTapeSpineLoaded">
+                                    <Border CornerRadius="4.5,2.5,2.5,4.5" BorderThickness="1">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Offset="0" Color="#E6FFF6EA" />
+                                                <GradientStop Offset=".35" Color="#56B8CCE8" />
+                                                <GradientStop Offset=".68" Color="#407892B4" />
+                                                <GradientStop Offset="1" Color="#D8DCE4FF" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
+                                        <Grid>
+                                            <Border Margin="1" CornerRadius="3.5,1.8,1.8,3.5" BorderThickness="1"
+                                                    BorderBrush="#A4060C14" IsHitTestVisible="False" />
+                                            <Border Margin="2" CornerRadius="2.8,1.2,1.2,2.8" BorderThickness="0.8"
+                                                    IsHitTestVisible="False">
+                                                <Border.BorderBrush>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Offset="0" Color="#CCE8EEFF" />
+                                                        <GradientStop Offset=".18" Color="#46A0B8D8" />
+                                                        <GradientStop Offset=".82" Color="#408CA6C8" />
+                                                        <GradientStop Offset="1" Color="#D8FFF6EC" />
+                                                    </LinearGradientBrush>
+                                                </Border.BorderBrush>
+                                            </Border>
+                                            <Border Margin="3.2,4.5,3.2,4.5" CornerRadius="2" Background="#E4121C28"
+                                                    BorderBrush="#72060C14" BorderThickness="0.7">
+                                                <Grid>
+                                                    <Rectangle RadiusX="1.6" RadiusY="1.6">
+                                                        <Rectangle.Fill>
+                                                            <ImageBrush x:Name="VideoWorkTapeSpineCover" Stretch="UniformToFill" />
+                                                        </Rectangle.Fill>
+                                                    </Rectangle>
+                                                    <Border CornerRadius="1.6" IsHitTestVisible="False">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                <GradientStop Offset="0" Color="#5C050B14" />
+                                                                <GradientStop Offset=".38" Color="#1008101C" />
+                                                                <GradientStop Offset=".62" Color="#00000000" />
+                                                                <GradientStop Offset="1" Color="#52050B14" />
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                <Path Data="M29.4,17.2 L29.4,319.4" Stroke="#98050B12" StrokeThickness="1.1"
+                                      IsHitTestVisible="False" />
+                                <Path Data="M30.38,16.8 L30.38,319.8" StrokeThickness="1.0" IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="#ECFFF7EE" />
+                                            <GradientStop Offset=".18" Color="#78CCD8F4" />
+                                            <GradientStop Offset=".55" Color="#3A7E96B6" />
+                                            <GradientStop Offset=".86" Color="#7CD4E0FA" />
+                                            <GradientStop Offset="1" Color="#E6FFF5E8" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Grid x:Name="VideoWorkTapeFront" Width="172" Height="308"
+                                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                                      Loaded="VideoWorkTapeFrontLoaded">
+                                    <Border Margin="7,9,7,9" CornerRadius="5" Background="#CE121A26"
+                                            BorderBrush="#4296B8DC" BorderThickness="0.9" IsHitTestVisible="False">
+                                        <Grid>
+                                            <Border Height="28" VerticalAlignment="Top" Margin="4,4,4,0" CornerRadius="3"
+                                                    Background="#4E1F2D40" BorderBrush="#34B8D8F8" BorderThickness="0,0,0,0.8" />
+                                            <Border Margin="18,48,18,0" Height="72" VerticalAlignment="Top" CornerRadius="4"
+                                                    Background="#1E8CB0D4" BorderBrush="#2CAED0F0" BorderThickness="0.8" />
+                                            <Border Margin="14,0,14,32" Height="50" VerticalAlignment="Bottom" CornerRadius="7"
+                                                    Background="#680D131C" BorderBrush="#409EC0E0" BorderThickness="0.9">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" Spacing="18">
+                                                    <Grid>
+                                                        <Ellipse Width="30" Height="30" Stroke="#54AECFE8" StrokeThickness="1"
+                                                                 Fill="#3C162030" />
+                                                        <Ellipse Width="10" Height="10" Stroke="#6CC8E2FA" StrokeThickness="0.9" />
+                                                    </Grid>
+                                                    <Grid>
+                                                        <Ellipse Width="30" Height="30" Stroke="#54AECFE8" StrokeThickness="1"
+                                                                 Fill="#3C162030" />
+                                                        <Ellipse Width="10" Height="10" Stroke="#6CC8E2FA" StrokeThickness="0.9" />
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="VideoWorkTapeLid" Width="172" Height="308"
+                                            CornerRadius="9" BorderThickness="1.05" Background="Transparent">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Offset="0" Color="#F0FFF8EE" />
+                                                <GradientStop Offset=".16" Color="#B6D6E0FA" />
+                                                <GradientStop Offset=".48" Color="#3C8CA6C6" />
+                                                <GradientStop Offset=".78" Color="#4892ACC8" />
+                                                <GradientStop Offset="1" Color="#E2FFF6EB" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
+                                        <Grid>
+                                            <Border Margin="1.1" CornerRadius="8.1" BorderThickness="1.1"
+                                                    BorderBrush="#A6060C14" IsHitTestVisible="False" />
+                                            <Border Margin="2.3" CornerRadius="7" BorderThickness="0.9"
+                                                    IsHitTestVisible="False">
+                                                <Border.BorderBrush>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Offset="0" Color="#DEEAEFFF" />
+                                                        <GradientStop Offset=".22" Color="#58A8C0DC" />
+                                                        <GradientStop Offset=".62" Color="#30607A98" />
+                                                        <GradientStop Offset=".86" Color="#A6DCE4FA" />
+                                                        <GradientStop Offset="1" Color="#E8FFF8EE" />
+                                                    </LinearGradientBrush>
+                                                </Border.BorderBrush>
+                                            </Border>
+                                            <Border Margin="4.5,5,4.5,5" CornerRadius="4.5" Background="#E0141F2D"
+                                                    BorderBrush="#76060C14" BorderThickness="0.7">
+                                                <Grid>
+                                                    <FontIcon Glyph="&#xE714;" FontSize="26"
+                                                              Foreground="#9EE0ECFA" />
+                                                    <Rectangle RadiusX="4" RadiusY="4">
+                                                        <Rectangle.Fill>
+                                                            <ImageBrush x:Name="VideoWorkTapeCover" Stretch="UniformToFill" />
+                                                        </Rectangle.Fill>
+                                                    </Rectangle>
+                                                </Grid>
+                                            </Border>
+                                            <Path Data="M1.2,17 Q1.2,1.2 17,1.2 L38,1.2" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".42" Color="#F4FFF7EC" />
+                                                        <GradientStop Offset=".78" Color="#9CD6E2FC" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M150,1.2 L155,1.2 Q170.8,1.2 170.8,17" StrokeThickness="1.3"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".5" Color="#D8E0EAFF" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M170.8,291 Q170.8,306.8 155,306.8 L138,306.8" StrokeThickness="1.3"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".48" Color="#D6FFF6EC" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M38,306.8 L17,306.8 Q1.2,306.8 1.2,291" StrokeThickness="1.45"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".35" Color="#B6D8E2FA" />
+                                                        <GradientStop Offset=".68" Color="#EEFFF7EE" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                <Path Data="M13.1,25 Q13.1,20.2 17.8,18.8 L30.4,15.1 Q34.5,15.1 39.2,15.7"
+                                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".55" Color="#F0FFF7EC" />
+                                            <GradientStop Offset=".85" Color="#B0DCE4FF" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M15.4,24.8 Q15.7,21.8 19.0,20.8 L29.8,17.7"
+                                      StrokeThickness="0.9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".5" Color="#9CD8E2FC" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M13.1,308.8 Q13.1,313.8 17.8,315.8 L30.4,321.5 Q34.5,321.3 39.2,320.9"
+                                      StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".52" Color="#ECFFF6EB" />
+                                            <GradientStop Offset=".85" Color="#ACDCE4FF" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M15.4,308.8 Q15.7,311.8 19.0,313.2 L29.8,318.0"
+                                      StrokeThickness="0.9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".5" Color="#9CD8E2FC" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
                             </Grid>
-                        </StackPanel>
-                    </DataTemplate>
-                </GridView.ItemTemplate>
-            </GridView>
+                        </Viewbox>
+                        <TextBlock x:Name="VideoWorkTapeCaption" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   FontWeight="SemiBold" MaxWidth="{Binding Width, ElementName=VideoWorkTapeArtwork}"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" AutomationProperties.AccessibilityView="Raw" />
+                    </Grid>
+                </Button>
+                <Grid Grid.Column="1" RowSpacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="VideoWorkPileInward" />
+                    </Grid.RenderTransform>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="28" />
+                    </Grid.RowDefinitions>
+                    <Button x:Name="VideoWorkPhotoPile" Grid.Row="1" Style="{StaticResource LibrarySubtleButton}"
+                            Padding="0" CornerRadius="10" HorizontalAlignment="Center"
+                            Click="VideoWorkPileClicked" PointerWheelChanged="VideoWorkPileWheelChanged"
+                            PointerExited="VideoWorkPilePointerExited" AutomationProperties.Name="作品照片"
+                            AutomationProperties.HelpText="使用左右方向键翻动照片，按空格打开">
+                        <Viewbox x:Name="VideoWorkPileArtwork" Stretch="Uniform" AutomationProperties.AccessibilityView="Raw">
+                            <Grid x:Name="VideoWorkPrints" Width="224" Height="252" IsHitTestVisible="False" />
+                        </Viewbox>
+                    </Button>
+                    <TextBlock x:Name="VideoWorkSingleGroup" Grid.Row="2" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               MaxWidth="172" />
+                    <ComboBox x:Name="VideoWorkOverviewGroups" Grid.Row="2" HorizontalAlignment="Center"
+                              VerticalAlignment="Center" MinHeight="28" MaxWidth="172"
+                              SelectionChanged="VideoWorkOverviewGroupChanged"
+                              AutomationProperties.Name="作品图册" />
+                </Grid>
+            </Grid>
         </Grid>
 
         <Grid x:Name="PreviewOverlay" Visibility="Collapsed" Background="Transparent"
               PreviewKeyDown="PreviewKeyDown" TabFocusNavigation="Cycle">
             <Grid.Resources>
+                <LinearGradientBrush x:Key="WorkAuraBrush" StartPoint="0,0" EndPoint="1,1">
+                    <LinearGradientBrush.RelativeTransform>
+                        <RotateTransform CenterX=".5" CenterY=".5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <GradientStop Offset="0" Color="#FF52BEF5" />
+                    <GradientStop Offset=".28" Color="#FF57E5C6" />
+                    <GradientStop Offset=".56" Color="#FFF0C886" />
+                    <GradientStop Offset=".82" Color="#FFC178EF" />
+                    <GradientStop Offset="1" Color="#FF60AFE3" />
+                </LinearGradientBrush>
                 <Style x:Key="PreviewFlatButton" TargetType="Button">
                     <Setter Property="Background" Value="Transparent" />
                     <Setter Property="BorderThickness" Value="0" />
@@ -825,7 +1370,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid MinHeight="40">
                     <Button x:Name="PreviewCloseAction" Click="ClosePreviewButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Left"
@@ -833,9 +1377,7 @@
                         <FontIcon Glyph="&#xE72B;" FontSize="15" />
                     </Button>
                     <Button x:Name="PreviewSortButton" Style="{StaticResource PreviewFlatButton}" HorizontalAlignment="Right"
-                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序">
-                        <FontIcon Glyph="&#xE8CB;" FontSize="15" />
-                    </Button>
+                            AutomationProperties.Name="文件排序" ToolTipService.ToolTip="文件排序" />
                     <Grid x:Name="PreviewFilename" HorizontalAlignment="Center" VerticalAlignment="Center"
                           DoubleTapped="CopyPreviewFilename" ToolTipService.ToolTip="双击复制文件名">
                         <TextBlock x:Name="PreviewTitle" TextTrimming="CharacterEllipsis" TextAlignment="Center"
@@ -847,96 +1389,173 @@
                     </Grid>
                 </Grid>
 
-                <ContentControl x:Name="PreviewCanvas" Grid.Row="1" IsTabStop="True"
-                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                AutomationProperties.Name="预览画布">
-                    <Grid>
+                <Grid x:Name="PreviewWorkspace" Grid.Row="1" SizeChanged="PreviewWorkspaceSizeChanged"
+                      GotFocus="WorkPaneGotFocus">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition x:Name="WorkPhotoColumn" Width="0*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid x:Name="WorkVideoPane" RowSpacing="4">
                         <Grid.RowDefinitions>
-                            <RowDefinition x:Name="PreviewTopRail" Height="36" />
                             <RowDefinition Height="*" />
-                            <RowDefinition x:Name="PreviewBottomRail" Height="36" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="PreviewLeftRail" Width="44" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition x:Name="PreviewRightRail" Width="44" />
-                        </Grid.ColumnDefinitions>
-                        <Image x:Name="NeighborTop" Grid.Column="1" Width="72" Height="28" Opacity=".20" Stretch="UniformToFill" />
-                        <Image x:Name="NeighborLeft" Grid.Row="1" Width="32" Height="72" Opacity=".20" Stretch="UniformToFill" />
-                        <Image x:Name="NeighborRight" Grid.Row="1" Grid.Column="2" Width="32" Height="72"
-                               Opacity=".20" Stretch="UniformToFill" />
-                        <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Width="72" Height="28"
-                               Opacity=".20" Stretch="UniformToFill" />
-                        <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
+                        <ContentControl x:Name="PreviewCanvas" IsTabStop="True" PointerPressed="FocusWorkVideo"
+                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                        AutomationProperties.Name="预览画布">
                             <Grid>
-                                <Image x:Name="MainImage" Stretch="Uniform" />
-                                <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
-                                                    IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
-                                <TextBlock x:Name="PreviewError" Visibility="Collapsed"
-                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                           TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Margin="22" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition x:Name="PreviewTopRail" Height="36" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition x:Name="PreviewBottomRail" Height="36" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="PreviewLeftRail" Width="44" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition x:Name="PreviewRightRail" Width="44" />
+                                </Grid.ColumnDefinitions>
+                                <Image x:Name="NeighborTop" Grid.Column="1" Width="72" Height="28" Opacity=".20" Stretch="UniformToFill" />
+                                <Image x:Name="NeighborLeft" Grid.Row="1" Width="32" Height="72" Opacity=".20" Stretch="UniformToFill" />
+                                <Image x:Name="NeighborRight" Grid.Row="1" Grid.Column="2" Width="32" Height="72"
+                                       Opacity=".20" Stretch="UniformToFill" />
+                                <Image x:Name="NeighborBottom" Grid.Row="2" Grid.Column="1" Width="72" Height="28"
+                                       Opacity=".20" Stretch="UniformToFill" />
+                                <Border x:Name="PreviewStage" Grid.Row="1" Grid.Column="1"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
+                                    <Grid>
+                                        <Image x:Name="MainImage" Stretch="Uniform" />
+                                        <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
+                                                            IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
+                                        <TextBlock x:Name="PreviewError" Visibility="Collapsed"
+                                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                   TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Margin="22" />
+                                    </Grid>
+                                </Border>
+                                <Button x:Name="PreviewUp" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Click="MovePreviewUp" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向上切换媒体">
+                                    <FontIcon Glyph="&#xE70E;" FontSize="18" />
+                                </Button>
+                                <Button x:Name="PreviewLeft" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Click="MovePreviewLeft" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向左切换媒体">
+                                    <FontIcon Glyph="&#xE76B;" FontSize="18" />
+                                </Button>
+                                <Button x:Name="PreviewRight" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Click="MovePreviewRight" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向右切换媒体">
+                                    <FontIcon Glyph="&#xE76C;" FontSize="18" />
+                                </Button>
+                                <Button x:Name="PreviewDown" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Click="MovePreviewDown" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向下切换媒体">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="18" />
+                                </Button>
                             </Grid>
-                        </Border>
-                        <Button x:Name="PreviewUp" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Click="MovePreviewUp" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向上切换媒体">
-                            <FontIcon Glyph="&#xE70E;" FontSize="18" />
-                        </Button>
-                        <Button x:Name="PreviewLeft" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Click="MovePreviewLeft" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向左切换媒体">
-                            <FontIcon Glyph="&#xE76B;" FontSize="18" />
-                        </Button>
-                        <Button x:Name="PreviewRight" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Click="MovePreviewRight" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向右切换媒体">
-                            <FontIcon Glyph="&#xE76C;" FontSize="18" />
-                        </Button>
-                        <Button x:Name="PreviewDown" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                Click="MovePreviewDown" Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="向下切换媒体">
-                            <FontIcon Glyph="&#xE70D;" FontSize="18" />
-                        </Button>
-                    </Grid>
-                </ContentControl>
+                        </ContentControl>
 
-                <StackPanel Grid.Row="2" Spacing="3">
-                    <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
-                                    HorizontalContentAlignment="Stretch" MaxWidth="680">
-                        <Grid Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                              CornerRadius="20" Padding="10,3" ColumnSpacing="7">
+                        <StackPanel Grid.Row="1" Spacing="3">
+                            <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
+                                            HorizontalContentAlignment="Stretch" MaxWidth="680">
+                                <Grid x:Name="VideoControlBar" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                      CornerRadius="20" Padding="10,3" ColumnSpacing="7">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="VideoBack" Content="−15 秒" Click="SeekVideoBack" Style="{StaticResource PreviewFlatButton}"
+                                            AutomationProperties.Name="后退 15 秒" />
+                                    <Button x:Name="PlayPause" Grid.Column="1" Content="播放" Click="TogglePlayback"
+                                            Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="播放或暂停" />
+                                    <Button x:Name="VideoForward" Grid.Column="2" Content="+15 秒" Click="SeekVideoForward"
+                                            Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="前进 15 秒" />
+                                    <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
+                                            VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
+                                    <StackPanel x:Name="VideoEndControls" Grid.Column="5" Orientation="Horizontal" Spacing="7">
+                                        <TextBlock x:Name="DurationLabel" VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <ToggleButton x:Name="VideoLock" Click="ToggleVideoLock"
+                                                      Content="未锁定" AutomationProperties.Name="锁定视频预览"
+                                                      ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
+                                    </StackPanel>
+                                </Grid>
+                            </ContentControl>
+                            <Grid>
+                                <TextBlock x:Name="PreviewHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Margin="65,0" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
+                                <TextBlock x:Name="IndexLabel" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                            </Grid>
+                        </StackPanel>
+                        <Border x:Name="WorkVideoAura" Grid.RowSpan="2" CornerRadius="12" BorderThickness="2"
+                                Visibility="Collapsed" IsHitTestVisible="False"
+                                BorderBrush="{StaticResource WorkAuraBrush}" />
+                    </Grid>
+                    <Grid x:Name="WorkPhotoPane" Grid.Column="1" Visibility="Collapsed" Padding="7"
+                          CornerRadius="12" RowSpacing="6" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid ColumnSpacing="6">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="WorkPhotoGroupPicker" HorizontalAlignment="Stretch" MinWidth="0"
+                                      SelectionChanged="WorkPhotoGroupChanged" AutomationProperties.Name="图片分组" />
+                            <Button x:Name="WorkPhotoSortButton" Grid.Column="1" Style="{StaticResource PreviewFlatButton}"
+                                    AutomationProperties.Name="图片排序" ToolTipService.ToolTip="图片排序" />
+                        </Grid>
+                        <ContentControl x:Name="WorkPhotoCanvas" Grid.Row="1" IsTabStop="True" UseSystemFocusVisuals="True"
+                                        PointerPressed="FocusWorkPhoto" HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch" AutomationProperties.Name="照片画布"
+                                        AutomationProperties.HelpText="左右方向键翻页，上键聚焦分组，下键聚焦排序">
+                            <Border Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
+                                <Grid>
+                                    <Image x:Name="WorkPhotoImage" Stretch="Uniform" />
+                                    <TextBlock x:Name="WorkPhotoError" Visibility="Collapsed" TextWrapping="Wrap" Margin="16"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"
+                                               Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                </Grid>
+                            </Border>
+                        </ContentControl>
+                        <Grid Grid.Row="2" ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="VideoBack" Content="−15 秒" Click="SeekVideoBack" Style="{StaticResource PreviewFlatButton}"
-                                    AutomationProperties.Name="后退 15 秒" />
-                            <Button x:Name="PlayPause" Grid.Column="1" Content="播放" Click="TogglePlayback"
-                                    Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="播放或暂停" />
-                            <Button x:Name="VideoForward" Grid.Column="2" Content="+15 秒" Click="SeekVideoForward"
-                                    Style="{StaticResource PreviewFlatButton}" AutomationProperties.Name="前进 15 秒" />
-                            <TextBlock x:Name="TimeLabel" Grid.Column="3" VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
-                                    VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
-                            <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <ToggleButton x:Name="VideoLock" Grid.Column="6" Click="ToggleVideoLock"
-                                          Content="未锁定" AutomationProperties.Name="锁定视频预览"
-                                          ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
+                            <Button x:Name="WorkPhotoPrevious" Click="WorkPhotoPreviousClicked" Style="{StaticResource PreviewFlatButton}"
+                                    AutomationProperties.Name="上一张照片" ToolTipService.ToolTip="上一张照片">
+                                <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                            </Button>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock x:Name="WorkPhotoName" FontSize="12" TextAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           AutomationProperties.LiveSetting="Polite" />
+                                <TextBlock x:Name="WorkPhotoCount" FontSize="12" TextAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button x:Name="WorkPhotoNext" Grid.Column="2" Click="WorkPhotoNextClicked"
+                                    Style="{StaticResource PreviewFlatButton}"
+                                    AutomationProperties.Name="下一张照片" ToolTipService.ToolTip="下一张照片">
+                                <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                            </Button>
                         </Grid>
-                    </ContentControl>
-                    <Grid>
-                        <TextBlock x:Name="PreviewHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Margin="65,0" VerticalAlignment="Center"
-                                   TextAlignment="Center" TextWrapping="Wrap" FontSize="12" />
-                        <TextBlock x:Name="IndexLabel" Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                        <Border x:Name="WorkPhotoAura" Grid.RowSpan="3" Margin="-7" CornerRadius="12" BorderThickness="2"
+                                Visibility="Collapsed" IsHitTestVisible="False"
+                                BorderBrush="{StaticResource WorkAuraBrush}" />
                     </Grid>
-                </StackPanel>
+                </Grid>
             </Grid>
             <Canvas x:Name="PreviewMotionLayer" Visibility="Collapsed" IsHitTestVisible="False"
                     AutomationProperties.AccessibilityView="Raw">

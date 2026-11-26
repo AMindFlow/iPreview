@@ -6,19 +6,26 @@ struct MediaSortMenu: View {
 
     var body: some View {
         Menu {
-            Picker("排序方式", selection: $sort.field) {
-                ForEach(MediaSort.Field.allCases, id: \.self) { field in
-                    Text(field.title).tag(field)
+            Section("排序方式") {
+                Picker("排序方式", selection: field) {
+                    ForEach(MediaSort.Field.allCases, id: \.self) { field in
+                        Text(field.title).tag(field)
+                    }
                 }
+                .pickerStyle(.inline)
+                .labelsHidden()
             }
-            Divider()
-            Picker("排列顺序", selection: $sort.descending) {
-                Text("升序").tag(false)
-                Text("降序").tag(true)
+            Section("排列顺序") {
+                Picker("排列顺序", selection: $sort.descending) {
+                    Text("升序").tag(false)
+                    Text("降序").tag(true)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                .disabled(sort.field == .original)
             }
-            .disabled(sort.field == .original)
         } label: {
-            Image(systemName: "arrow.up.arrow.down")
+            Image(systemName: "slider.horizontal.3")
                 .frame(width: 25, height: 25)
                 .contentShape(Rectangle())
         }
@@ -28,6 +35,16 @@ struct MediaSortMenu: View {
         .accessibilityLabel("文件排序")
         .accessibilityIdentifier("media-sort")
         .help("文件排序")
+    }
+
+    private var field: Binding<MediaSort.Field> {
+        Binding(get: { sort.field }, set: { field in
+            if field == .original {
+                sort = MediaSort()
+            } else {
+                sort.field = field
+            }
+        })
     }
 }
 

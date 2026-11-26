@@ -59,8 +59,9 @@ struct LibrarySearchPanel: View {
     @ViewState private var selection: GlobalSearchResult?
     @ViewState private var matches: (request: Request, results: [GlobalSearchResult])?
     @ViewState private var scope = Scope.all
-    @ViewState private var selectedTag: SourceAlbumTag?
+    @ViewState private var selectedTagIDs: [Int64] = []
     @ViewState private var selectedSuggestion: Int?
+    @ViewState private var tagStackPresentation = SearchTagStackPresentation.closed
 
     private enum Scope: Sendable { case all, files, directories }
 
@@ -76,19 +77,35 @@ struct LibrarySearchPanel: View {
     }
 
     private var request: Request {
-        Request(query: query.trimmingCharacters(in: .whitespacesAndNewlines), mode: mode, scope: scope,
-                domain: domain, page: page, albumMembers: albumMembers, revision: revision,
-                taggedAlbums: selectedTag.map { sourceAlbums.taggedAlbums[$0.id, default: []] })
+        let text = tagTrigger.map { query[..<$0] } ?? query[...]
+        return Request(query: text.trimmingCharacters(in: .whitespacesAndNewlines), mode: mode, scope: scope,
+                       domain: domain, page: page, albumMembers: albumMembers, revision: revision,
+                       taggedAlbums: sourceAlbums.albums(matchingAnyTagIDs: Set(selectedTagIDs)))
+    }
+
+    private var tagTrigger: String.Index? {
+        query.indices.reversed().first { index in
+            let symbol = query[index]
+            return (symbol == "#" || symbol == "＃")
+                && (index == query.startIndex || query[query.index(before: index)].isWhitespace)
+        }
     }
 
     private var tagPrefix: String? {
-        let text = query.drop(while: \.isWhitespace)
-        guard text.first == "#" || text.first == "＃" else { return nil }
-        return String(text.dropFirst())
+        tagTrigger.map { String(query[query.index(after: $0)...]) }
+    }
+
+    private var selectedTags: [SourceAlbumTag] {
+        let tagsByID = Dictionary(uniqueKeysWithValues: sourceAlbums.tags.map { ($0.id, $0) })
+        return selectedTagIDs.compactMap { tagsByID[$0] }
+    }
+
+    private var availableTags: [SourceAlbumTag] {
+        sourceAlbums.tags.filter { !selectedTagIDs.contains($0.id) }
     }
 
     private var suggestions: [SourceAlbumTag] {
-        tagPrefix.map { SourceAlbumTag.suggestions(matching: $0, from: sourceAlbums.tags) } ?? []
+        tagPrefix.map { SourceAlbumTag.suggestions(matching: $0, from: availableTags) } ?? []
     }
 
     private var groups: [(category: SearchResultCategory, items: [GlobalSearchResult])] {
@@ -120,6 +137,10 @@ struct LibrarySearchPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("library-search-panel")
+        .onExitCommand(perform: cancelSearchStep)
+        .onChange(of: selectedTags.isEmpty) { _, empty in
+            if empty { tagStackPresentation = .closed }
+        }
         .task {
             await Task.yield()
             if !Task.isCancelled { focus.wrappedValue = .searchQuery }
@@ -134,7 +155,7 @@ struct LibrarySearchPanel: View {
         }
         .task(id: request) {
             selection = nil
-            guard tagPrefix == nil, !request.query.isEmpty || request.taggedAlbums != nil else {
+            guard !request.query.isEmpty || request.taggedAlbums != nil else {
                 matches = nil
                 return
             }
@@ -175,11 +196,12 @@ struct LibrarySearchPanel: View {
             queryField
                 .padding(.horizontal, 19)
                 .padding(.vertical, 16)
+                .zIndex(1)
             Divider().padding(.horizontal, 14)
             if tagPrefix != nil {
                 suggestionList
                 Divider().padding(.horizontal, 14)
-            } else if !request.query.isEmpty || selectedTag != nil {
+            } else if !request.query.isEmpty || !selectedTagIDs.isEmpty {
                 if !results.isEmpty {
                     resultsList
                     Divider().padding(.horizontal, 14)
@@ -242,30 +264,15 @@ struct LibrarySearchPanel: View {
         }
     }
 
+    @ViewBuilder
     private var tagFilter: some View {
-        Menu {
-            if selectedTag != nil {
-                Button("清除标签筛选") {
-                    selectedTag = nil
-                    focus.wrappedValue = .searchQuery
-                }
+        if !selectedTags.isEmpty {
+            SearchTagStack(tags: selectedTags, presentation: $tagStackPresentation, dismiss: dismissTagStack) { tag in
+                selectedTagIDs.removeAll { $0 == tag.id }
+                focus.wrappedValue = .searchQuery
             }
-            ForEach(sourceAlbums.tags) { tag in
-                Button(tag.name) { applyTag(tag) }
-            }
-        } label: {
-            if let selectedTag {
-                Label(selectedTag.name, systemImage: "tag.fill")
-                    .lineLimit(1)
-            } else {
-                Image(systemName: "tag")
-            }
+            .disabled(isPreviewing)
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel("标签筛选")
-        .help("标签筛选。输入 # 查询标签。")
-        .disabled(sourceAlbums.tags.isEmpty || isPreviewing)
     }
 
     private var suggestionList: some View {
@@ -299,8 +306,8 @@ struct LibrarySearchPanel: View {
     }
 
     private func applyTag(_ tag: SourceAlbumTag) {
-        if tagPrefix != nil { query = "" }
-        selectedTag = tag
+        if let tagTrigger { query.removeSubrange(tagTrigger...) }
+        if !selectedTagIDs.contains(tag.id) { selectedTagIDs.append(tag.id) }
         focus.wrappedValue = .searchQuery
     }
 
@@ -436,18 +443,28 @@ struct LibrarySearchPanel: View {
             && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
     }
 
+    private func dismissTagStack() {
+        tagStackPresentation = .dismissed
+        focus.wrappedValue = .searchQuery
+    }
+
+    private func cancelSearchStep() {
+        guard !isPreviewing && !isComposingQuery else { return }
+        if tagStackPresentation.isExpanded {
+            dismissTagStack()
+        } else if mode == .exact {
+            mode = .fuzzy
+            focus.wrappedValue = .searchQuery
+        } else {
+            dismiss()
+        }
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         if isComposingQuery { return .ignored }
         switch press.key {
         case .escape:
-            if press.phase == .down {
-                if mode == .exact {
-                    mode = .fuzzy
-                    focus.wrappedValue = .searchQuery
-                } else {
-                    dismiss()
-                }
-            }
+            if press.phase == .down { cancelSearchStep() }
         case .upArrow, .downArrow:
             if tagPrefix != nil {
                 let options = suggestions
@@ -469,6 +486,7 @@ struct LibrarySearchPanel: View {
                 if results.indices.contains(next) { selection = results[next] }
             }
         case .return:
+            guard !press.modifiers.contains(.command) else { return .ignored }
             if press.phase == .down { confirmResult() }
         case .space:
             if press.phase == .down, case .file(let item) = highlighted {

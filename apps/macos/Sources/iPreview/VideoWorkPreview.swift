@@ -1,186 +1,327 @@
+import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import iPreviewCore
 
 @Observable
 final class VideoWorkPreviewSession {
-    struct Group {
-        let name: String
-        let symbol: String
-        let cover: Media
-        let items: [Media]
+    enum Collectible: Hashable {
+        case tape, photos
+    }
+
+    struct Album {
+        let title: String
+        let photos: [Media]
     }
 
     let work: IndexedVideoWork
-    let groups: [Group]
-    var groupIndex = 0
-    var insideGroup = false
-    var selectedMediaID: Int64?
+    let albums: [Album]
+    let coverCandidates: [Media]
+    private(set) var selection = Collectible.tape
+    private(set) var selectedAlbum = 0
+    private var photoPositions: [Int]
+    var workspaceID: UUID?
+    var browsing: Bool { workspaceID != nil }
+    var album: Album { albums[selectedAlbum] }
+    var photoPosition: Int { photoPositions[selectedAlbum] }
+    var currentPhoto: Media { album.photos[photoPosition] }
 
-    init(work: IndexedVideoWork) {
+    init(work: IndexedVideoWork, coverCandidates: [Media]) {
         self.work = work
-        groups = [Group(name: "影碟", symbol: "opticaldisc", cover: work.video, items: [work.video])]
-            + [Group(name: "官方样张", symbol: "photo.on.rectangle", cover: work.samples[0], items: work.samples)]
-            + work.photoSets.map {
-                Group(name: $0.title, symbol: "book.closed", cover: $0.cover ?? $0.photos[0], items: $0.photos)
-            }
+        self.coverCandidates = coverCandidates
+        var albums: [Album] = []
+        if !work.samples.isEmpty {
+            albums.append(Album(title: "官方样张", photos: work.samples))
+        }
+        albums += work.photoSets.map {
+            Album(title: $0.title, photos: $0.photos)
+        }
+        self.albums = albums
+        photoPositions = Array(repeating: 0, count: albums.count)
     }
 
-    var group: Group { groups[groupIndex] }
+    func select(_ collectible: Collectible) {
+        selection = collectible
+    }
 
-    func enterGroup(at index: Int) {
-        groupIndex = index
-        selectedMediaID = nil
-        insideGroup = true
+    func selectAlbum(_ index: Int) {
+        selectedAlbum = index
+        select(.photos)
+    }
+
+    func stepPhoto(_ direction: Int) {
+        let count = album.photos.count
+        photoPositions[selectedAlbum] = (photoPosition + direction + count) % count
     }
 }
 
 struct VideoWorkPreview: View {
     let session: VideoWorkPreviewSession
     let revision: Int
-    let mediaPreviewShown: Bool
-    let open: (Media, [Media]) -> Void
     let close: () -> Void
-    @FocusState private var focused: Bool
-    @ViewState private var sort = MediaSort()
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewState private var video = VideoPlayback()
+    @ViewState private var overviewVisible = true
+    @ViewState private var tapeCover: CGImage?
 
     var body: some View {
-        SortedMedia(request: MediaSortRequest(items: session.insideGroup ? session.group.items : [],
-                                             sort: sort, revision: revision)) { files in
-            stage(files: files)
-        }
-    }
-
-    private func stage(files: [Media]) -> some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 14) {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button(action: back) {
-                    Image(systemName: session.insideGroup ? "chevron.left" : "xmark")
+                    Image(systemName: session.browsing ? "chevron.left" : "xmark")
+                        .frame(width: 28, height: 28)
+                        .contentShape(Circle())
                 }
-                .accessibilityLabel(session.insideGroup ? "返回作品" : "退出作品预览")
-                .help(session.insideGroup ? "返回作品（Esc）" : "退出作品预览（Esc）")
-                Text(session.insideGroup ? session.group.name : session.work.title)
+                .buttonStyle(.plain)
+                .previewGlass(in: Circle(), interactive: true)
+                .accessibilityLabel(session.browsing ? "返回作品总览" : "退出沉浸模式")
+                .help(session.browsing ? "返回作品总览（Esc）" : "退出沉浸模式（Esc）")
+                Text(session.work.title)
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if session.insideGroup {
-                    MediaSortMenu(sort: Binding(get: { sort }, set: { value in
-                        if session.selectedMediaID == nil { session.selectedMediaID = files.first?.id }
-                        sort = value
-                    }))
-                }
             }
-            .padding(.horizontal, 24)
-            ScrollViewReader { reader in
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 14) {
-                        if session.insideGroup {
-                            ForEach(files) { item in
-                                card(title: item.name, cover: item, symbol: item.kind == .video ? "play.circle" : "photo",
-                                     selected: item.id == (session.selectedMediaID ?? files.first?.id)) {
-                                    session.selectedMediaID = item.id
-                                    open(item, files)
-                                }
-                                .id(item.id)
-                            }
-                        } else {
-                            ForEach(session.groups.indices, id: \.self) { index in
-                                let group = session.groups[index]
-                                card(title: group.name, cover: group.cover, symbol: group.symbol,
-                                     selected: index == session.groupIndex) { session.enterGroup(at: index) }
-                                .id(index)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+            ZStack {
+                if let workspaceID = session.workspaceID {
+                    VideoWorkWorkspace(work: session.work, video: video, albums: session.albums,
+                                       initialAlbum: session.selectedAlbum, initialPhotoID: session.currentPhoto.id,
+                                       revision: revision)
+                        .id(workspaceID)
+                        .transition(.opacity)
                 }
-                .focusable()
-                .focusEffectDisabled()
-                .focused($focused)
-                .onKeyPress(keys: [.escape, .space, .leftArrow, .rightArrow, .upArrow, .downArrow],
-                            phases: [.down, .repeat]) { press in
-                    switch press.key {
-                    case .escape:
-                        if press.phase == .down { back() }
-                    case .space:
-                        if press.phase == .down { enter(files: files) }
-                    default:
-                        let offset = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
-                        move(by: offset, files: files, reader: reader)
-                    }
-                    return .handled
-                }
-                .task(id: mediaPreviewShown) {
-                    guard !mediaPreviewShown else { return }
-                    await Task.yield()
-                    if let selected = session.selectedMediaID { reader.scrollTo(selected) }
-                    focused = true
-                }
-                .onChange(of: files.map(\.id)) {
-                    if let selected = session.selectedMediaID { reader.scrollTo(selected) }
-                }
-                .onChange(of: session.insideGroup) {
-                    if session.insideGroup {
-                        if let first = files.first { reader.scrollTo(first.id) }
-                    } else {
-                        reader.scrollTo(session.groupIndex)
-                    }
-                    focused = true
+                if overviewVisible {
+                    VideoWorkOverview(session: session, revision: revision, tapeCover: tapeCover, open: open)
+                        .allowsHitTesting(!session.browsing)
+                        .accessibilityHidden(session.browsing)
                 }
             }
         }
-        .padding(.vertical, 18)
+        .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
+        .background {
+            VideoWorkEvents(handleKey: handleOverlayKey)
+                .allowsHitTesting(false)
+        }
+        .task(id: TapeCoverRequest(workID: session.work.id, revision: revision)) {
+            tapeCover = nil
+            let video = session.work.video
+            let candidates = session.coverCandidates
+            let load = Task.detached(priority: .userInitiated) {
+                await MediaImages.cassetteCover(for: video, candidates: candidates)
+            }
+            let image = await withTaskCancellationHandler {
+                await load.value
+            } onCancel: {
+                load.cancel()
+            }
+            if !Task.isCancelled { tapeCover = image }
+        }
+        .onDisappear { video.stop() }
+        .accessibilityIdentifier("video-work-preview")
     }
 
-    private func card(title: String, cover: Media, symbol: String, selected: Bool,
-                      action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                MediaThumbnail(media: cover, revision: revision)
-                    .frame(width: 170, height: 112)
-                    .clipShape(.rect(cornerRadius: 10))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2)
-                    }
-                Label(title, systemImage: symbol)
-                    .lineLimit(1)
-                    .font(.callout)
+    private struct TapeCoverRequest: Equatable {
+        let workID: Int64
+        let revision: Int
+    }
+
+    private func open() {
+        guard !session.browsing else { return }
+        let workspaceID = UUID()
+        video.start(session.work.video)
+        if reduceMotion {
+            overviewVisible = false
+            session.workspaceID = workspaceID
+        } else {
+            withAnimation(.easeInOut(duration: 0.38), completionCriteria: .logicallyComplete) {
+                session.workspaceID = workspaceID
+            } completion: {
+                if session.workspaceID == workspaceID { overviewVisible = false }
             }
-            .frame(width: 170, alignment: .leading)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func back() {
-        if session.insideGroup { session.insideGroup = false } else { close() }
-    }
-
-    private func enter(files: [Media]) {
-        if session.insideGroup {
-            guard let item = files.first(where: { $0.id == session.selectedMediaID }) ?? files.first else { return }
-            session.selectedMediaID = item.id
-            open(item, files)
+        if session.browsing {
+            video.stop()
+            overviewVisible = true
+            session.workspaceID = nil
         } else {
-            session.enterGroup(at: session.groupIndex)
+            close()
         }
     }
 
-    private func move(by offset: Int, files: [Media], reader: ScrollViewProxy) {
-        if session.insideGroup {
-            guard !files.isEmpty else { return }
-            let current = files.firstIndex { $0.id == session.selectedMediaID } ?? 0
-            let next = min(max(current + offset, 0), files.count - 1)
-            session.selectedMediaID = files[next].id
-            reader.scrollTo(files[next].id)
-        } else {
-            session.groupIndex = min(max(session.groupIndex + offset, 0), session.groups.count - 1)
-            reader.scrollTo(session.groupIndex)
+    private func handleOverlayKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let key = Int(event.keyCode)
+        if key == kVK_Escape, modifiers.isEmpty {
+            if !event.isARepeat { back() }
+            return true
         }
+        if !session.browsing, key == kVK_Tab, modifiers.isEmpty || modifiers == .shift {
+            if !event.isARepeat {
+                session.select(session.selection == .tape ? .photos : .tape)
+            }
+            return true
+        }
+        return false
+    }
+}
+
+struct VideoWorkColumns<Left: View, Right: View>: View {
+    @ViewBuilder let left: () -> Left
+    @ViewBuilder let right: () -> Right
+
+    var body: some View {
+        GeometryReader { geometry in
+            let half = geometry.size.width / 2
+            HStack(spacing: 0) {
+                left().frame(width: half, height: geometry.size.height)
+                right().frame(width: half, height: geometry.size.height)
+            }
+        }
+    }
+}
+
+private struct VideoWorkOverview: View {
+    let session: VideoWorkPreviewSession
+    let revision: Int
+    let tapeCover: CGImage?
+    let open: () -> Void
+
+    @FocusState private var focused: VideoWorkPreviewSession.Collectible?
+
+    var body: some View {
+        let fileName = session.work.video.name
+        VideoWorkColumns {
+            GeometryReader { geometry in
+                let half = geometry.size
+                let height = tapeHeight(in: half)
+                let tapeWidth = height * 9 / 16
+                VStack(spacing: 15) {
+                    Button {
+                        session.select(.tape)
+                        open()
+                    } label: {
+                        TapeCase(cover: tapeCover, height: height, opening: session.browsing)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($focused, equals: .tape)
+                    .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow],
+                                phases: [.down, .repeat]) { _ in .handled }
+                    .onKeyPress(.space) {
+                        open()
+                        return .handled
+                    }
+                    .accessibilityLabel(fileName)
+                    .accessibilityHint("打开沉浸浏览并播放")
+                    caption(fileName, selected: focused == .tape)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: tapeWidth)
+                        .help(fileName)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .offset(x: inward(half.width, artworkWidth: tapeWidth))
+            }
+        } right: {
+            GeometryReader { geometry in
+                let half = geometry.size
+                let width = pileWidth(in: half)
+                VStack(spacing: 15) {
+                    VideoWorkPhotoPile(session: session, revision: revision, width: width,
+                                       open: {
+                                           session.select(.photos)
+                                           open()
+                                       })
+                        .focused($focused, equals: .photos)
+                        .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                            let next = session.selectedAlbum + (press.key == .upArrow ? -1 : 1)
+                            if session.albums.indices.contains(next) { session.selectAlbum(next) }
+                            return .handled
+                        }
+                    albumSelector(width: width)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .offset(x: -inward(half.width, artworkWidth: width))
+            }
+        }
+        .accessibilityIdentifier("video-work-overview")
+        .task(id: session.browsing) {
+            guard !session.browsing else { return }
+            await Task.yield()
+            if !Task.isCancelled { focused = session.selection }
+        }
+        .onChange(of: focused) { _, selection in
+            if let selection, !session.browsing { session.select(selection) }
+        }
+        .onChange(of: session.selection) { _, selection in
+            if !session.browsing { focused = selection }
+        }
+    }
+
+    @ViewBuilder
+    private func albumSelector(width: CGFloat) -> some View {
+        let labelWidth = max(1, min(width, 230))
+        if session.albums.count == 1 {
+            caption(session.album.title, selected: focused == .photos)
+                .frame(maxWidth: labelWidth)
+        } else {
+            Menu {
+                ForEach(session.albums.indices, id: \.self) { index in
+                    Button {
+                        session.selectAlbum(index)
+                        focused = .photos
+                    } label: {
+                        if index == session.selectedAlbum {
+                            Label(session.albums[index].title, systemImage: "checkmark")
+                        } else {
+                            Text(session.albums[index].title)
+                        }
+                    }
+                }
+            } label: {
+                Text(session.album.title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: labelWidth)
+            .help(session.album.title)
+            .accessibilityLabel("图册")
+            .accessibilityValue(session.album.title)
+            .opacity(session.browsing ? 0 : 1)
+        }
+    }
+
+    private func caption(_ title: String, selected: Bool) -> some View {
+        Text(title)
+            .font(.callout.weight(.medium))
+            .lineLimit(1)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 4)
+            .background(selected ? Color.accentColor.opacity(0.18) : .clear, in: Capsule())
+            .opacity(session.browsing ? 0 : 1)
+            .accessibilityHidden(true)
+    }
+
+    private func tapeHeight(in half: CGSize) -> CGFloat {
+        let aspect: CGFloat = 9 / 16
+        return min(sqrt(half.width * half.height * 0.4 / aspect), max(1, half.height - 60),
+                   max(1, half.width - 54) / aspect)
+    }
+
+    private func pileWidth(in half: CGSize) -> CGFloat {
+        let aspect: CGFloat = 1.23
+        return min(sqrt(half.width * half.height * 0.39 / aspect), max(1, half.height - 68) / aspect,
+                   max(1, half.width - 54))
+    }
+
+    private func inward(_ halfWidth: CGFloat, artworkWidth: CGFloat) -> CGFloat {
+        min(halfWidth * 0.075, max(0, (halfWidth - artworkWidth) / 2 - 24))
     }
 }

@@ -8,6 +8,7 @@ final class LibraryModel {
     private var catalog: Catalog?
     private(set) var isWorking = false
     private(set) var snapshot = LibrarySnapshot.empty
+    private(set) var sourceAlbumKeys: Set<SourceAlbumKey> = []
     private(set) var sourceAlbumIndex = SourceAlbumIndex.empty
     private(set) var searchIndex = SearchIndex(media: [])
     private(set) var revision = 0
@@ -230,6 +231,7 @@ final class LibraryModel {
         }
         cachedScope = nil
         snapshot = loaded
+        sourceAlbumKeys = Set(loaded.media.lazy.filter(\.existsInSource).map(SourceAlbumKey.init(media:)))
         sourceAlbumIndex = albumIndex
     }
 }

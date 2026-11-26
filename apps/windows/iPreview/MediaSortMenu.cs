@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace IPreview;
 
@@ -6,6 +7,7 @@ internal static class MediaSortMenu
 {
     public static void Attach(Button button, Func<MediaSort> current, Action<MediaSort> choose)
     {
+        button.Content = SliderIcon();
         var menu = new MenuFlyout();
         var fields = new[]
         {
@@ -16,15 +18,15 @@ internal static class MediaSortMenu
         }.Select(entry =>
         {
             var (field, title) = entry;
-            var item = new RadioMenuFlyoutItem { Text = title, GroupName = "MediaSortField" };
+            var item = new ToggleMenuFlyoutItem { Text = title };
             item.Click += (_, _) => choose(current() with { Field = field });
             menu.Items.Add(item);
             return (field, item);
         }).ToArray();
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var ascending = new RadioMenuFlyoutItem { Text = "升序", GroupName = "MediaSortDirection" };
-        var descending = new RadioMenuFlyoutItem { Text = "降序", GroupName = "MediaSortDirection" };
+        var ascending = new ToggleMenuFlyoutItem { Text = "升序" };
+        var descending = new ToggleMenuFlyoutItem { Text = "降序" };
         ascending.Click += (_, _) => choose(current() with { Descending = false });
         descending.Click += (_, _) => choose(current() with { Descending = true });
         menu.Items.Add(ascending);
@@ -39,6 +41,21 @@ internal static class MediaSortMenu
             ascending.IsEnabled = descending.IsEnabled = sort.Field != MediaSortField.Original;
         };
         button.Flyout = menu;
+    }
+
+    private static PathIcon SliderIcon()
+    {
+        var tracks = new GeometryGroup();
+        int[] positions = [10, 5, 12];
+        for (var row = 0; row < positions.Length; row++)
+        {
+            var x = positions[row];
+            var y = 2 + row * 5;
+            tracks.Children.Add(new RectangleGeometry { Rect = new(0, y - 0.55, x - 2, 1.1) });
+            tracks.Children.Add(new RectangleGeometry { Rect = new(x + 2, y - 0.55, 14 - x, 1.1) });
+            tracks.Children.Add(new EllipseGeometry { Center = new(x, y), RadiusX = 1.65, RadiusY = 1.65 });
+        }
+        return new PathIcon { Width = 16, Height = 14, Data = tracks };
     }
 }
 

@@ -43,15 +43,25 @@ private struct LibraryBrowseModeKey: FocusedValueKey {
     typealias Value = Binding<MediaBrowseMode>
 }
 
+private struct LibraryImmersiveActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
 extension FocusedValues {
     var libraryBrowseMode: Binding<MediaBrowseMode>? {
         get { self[LibraryBrowseModeKey.self] }
         set { self[LibraryBrowseModeKey.self] = newValue }
     }
+
+    var libraryImmersiveAction: (@MainActor () -> Void)? {
+        get { self[LibraryImmersiveActionKey.self] }
+        set { self[LibraryImmersiveActionKey.self] = newValue }
+    }
 }
 
 struct LibraryBrowseCommands: Commands {
     @FocusedValue(\.libraryBrowseMode) private var mode
+    @FocusedValue(\.libraryImmersiveAction) private var openImmersive
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
@@ -60,6 +70,10 @@ struct LibraryBrowseCommands: Commands {
                     .keyboardShortcut(destination.shortcut, modifiers: .command)
                     .disabled(mode == nil)
             }
+            Divider()
+            Button("沉浸模式") { openImmersive?() }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(openImmersive == nil)
         }
     }
 }
@@ -87,6 +101,7 @@ struct MediaListRow: View {
     let selected: Bool
     let shaded: Bool
     let checked: Bool
+    @Environment(\.appearsActive) private var appearsActive
     @ViewState private var facts: MediaFileFacts?
 
     var body: some View {
@@ -96,23 +111,23 @@ struct MediaListRow: View {
                     .frame(width: 25, height: 20)
                     .clipShape(.rect(cornerRadius: 3))
                 Text(media.name)
-                    .fontWeight(selected ? .semibold : .regular)
             }
         } modified: {
             Text(facts?.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(detailColor)
         } size: {
             Text(facts?.size?.formatted(.byteCount(style: .file)) ?? "—")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(detailColor)
         } kind: {
             Text(kind)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(detailColor)
         }
+        .foregroundStyle(selected ? selectedTextColor : .primary)
         .font(.system(size: 12))
         .lineLimit(1)
         .frame(height: 29)
-        .background(selected ? Color.ipreviewAccent.opacity(0.16) : shaded ? Color.libraryInk.opacity(0.045) : .clear,
-                    in: RoundedRectangle(cornerRadius: 6))
+        .background(selected ? selectedBackground
+                    : shaded ? Color.libraryInk.opacity(0.045) : .clear, in: .rect(cornerRadius: 6))
         .overlay(alignment: .bottomTrailing) {
             if checked {
                 MediaSelectionMark()
@@ -128,6 +143,18 @@ struct MediaListRow: View {
                 if !Task.isCancelled { facts = result }
             }
         }
+    }
+
+    private var selectedBackground: Color {
+        Color(nsColor: appearsActive ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
+    }
+
+    private var selectedTextColor: Color {
+        Color(nsColor: appearsActive ? .alternateSelectedControlTextColor : .unemphasizedSelectedTextColor)
+    }
+
+    private var detailColor: Color {
+        selected ? selectedTextColor.opacity(0.9) : .secondary
     }
 
     private var kind: String {

@@ -29,10 +29,10 @@ def still(output, pattern):
     )
 
 
-def video(output, rate, frequency):
+def video(output, rate, frequency, duration=6):
     ffmpeg(
-        "-f", "lavfi", "-i", f"testsrc2=size=384x240:rate={rate}:duration=6",
-        "-f", "lavfi", "-i", f"sine=frequency={frequency}:sample_rate=44100:duration=6",
+        "-f", "lavfi", "-i", f"testsrc2=size=384x240:rate={rate}:duration={duration}",
+        "-f", "lavfi", "-i", f"sine=frequency={frequency}:sample_rate=44100:duration={duration}",
         "-c:v", "libx264", "-profile:v", "baseline", "-pix_fmt", "yuv420p",
         "-g", str(rate), "-threads", "1",
         "-af", "volume=0.25", "-c:a", "aac", "-b:a", "96k",
@@ -49,6 +49,7 @@ def generate_media(work, library):
     heic = work / "dusk.heic"
     mp4 = work / "sunset.mp4"
     mov = work / "sea.mov"
+    long_video = work / "long.mp4"
 
     still(harbor, "testsrc2")
     still(dusk, "smptehdbars")
@@ -65,6 +66,7 @@ def generate_media(work, library):
     )
     video(mp4, rate=24, frequency=440)
     video(mov, rate=30, frequency=554)
+    video(long_video, rate=24, frequency=440, duration=32)
 
     samples = {
         "沿海创作者/旅行摄影/01-港湾.jpg": skyline,
@@ -93,13 +95,29 @@ def generate_media(work, library):
         "视频作品/简化结构/官方样张.jpg": skyline,
         "视频作品/简化结构/附加写真集/图片 2.png": harbor,
         "视频作品/简化结构/附加写真集/图片 10.png": dusk,
+        "视频作品/album/video.mp4": mp4,
+        "视频作品/album/pictures/1.png": harbor,
+        "视频作品/album/pictures/2.png": dusk,
+        "视频作品/album-with-sample/main.mp4": mp4,
+        "视频作品/album-with-sample/frame.jpg": skyline,
+        "视频作品/album-with-sample/gallery/1.png": dusk,
+        "视频作品/full-no-stills/movie/main.mp4": mp4,
+        "视频作品/full-no-stills/books/Set 2/1.png": harbor,
+        "视频作品/full-no-stills/books/Set 10/1.png": dusk,
+        "视频作品/full-with-stills/movie/main.mp4": long_video,
+        "视频作品/full-with-stills/stills/frame.jpg": skyline,
+        "视频作品/full-with-stills/books/Set 2/1.png": harbor,
+        "视频作品/album-17/video.mp4": long_video,
     }
+    for number in range(1, 18):
+        samples[f"视频作品/album-17/pictures/{number}.png"] = harbor if number % 2 else dusk
     for relative_path, sample in samples.items():
         destination = library / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(sample, destination)
 
     (library / "沿海创作者/旅行摄影/22-坏图.jpg").write_bytes(b"iPreview invalid JPEG fixture\n")
+    (library / "视频作品/full-with-stills/books/Set 2/2-broken.jpg").write_bytes(b"iPreview invalid JPEG fixture\n")
     (library / "沿海创作者/旅行摄影/忽略.txt").write_text("非媒体文件\n", encoding="utf-8")
 
 

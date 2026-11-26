@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace IPreview;
 
@@ -8,9 +9,23 @@ public sealed partial class MainWindow
 {
     private Grid? revealedSourceRow;
 
-    private void SourceRowLoaded(object sender, RoutedEventArgs args)
+    private void SourceRowLoaded(object sender, RoutedEventArgs args) => UpdateSourceRowMenu((Grid)sender);
+
+    private void SourceRowDataChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
-        var row = (Grid)sender;
+        if (sender.IsLoaded)
+            UpdateSourceRowMenu((Grid)sender);
+    }
+
+    private void UpdateSourceRowMenu(Grid row)
+    {
+        if (ReferenceEquals(revealedSourceRow, row))
+            RevealSourceActions(null);
+        if (row.DataContext is not Navigation { Source: not null, Folder: null })
+        {
+            row.ContextFlyout = null;
+            return;
+        }
         var menu = new MenuFlyout();
         var scan = new MenuFlyoutItem { Text = "重新扫描" };
         var delete = new MenuFlyoutItem { Text = "删除媒体源" };
@@ -32,13 +47,27 @@ public sealed partial class MainWindow
     {
         var row = (Grid)sender;
         var pointer = args.GetCurrentPoint(row).Properties;
-        if (!pointer.IsHorizontalMouseWheel || pointer.MouseWheelDelta == 0 || busy)
+        if (!pointer.IsHorizontalMouseWheel || pointer.MouseWheelDelta == 0 || busy ||
+            row.DataContext is not Navigation { Source: not null, Folder: null })
             return;
         if (pointer.MouseWheelDelta > 0)
             RevealSourceActions(row);
         else if (revealedSourceRow == row)
             RevealSourceActions(null);
         args.Handled = true;
+    }
+
+    private void DismissSourceActionsOnOutsideClick(object sender, PointerRoutedEventArgs args)
+    {
+        if (revealedSourceRow is not { } row)
+            return;
+        for (var target = args.OriginalSource as DependencyObject; target is not null;
+             target = VisualTreeHelper.GetParent(target))
+        {
+            if (ReferenceEquals(target, row))
+                return;
+        }
+        RevealSourceActions(null);
     }
 
     private void RevealSourceActions(Grid? row)
@@ -55,7 +84,7 @@ public sealed partial class MainWindow
     private static void SetSourceActionsVisible(Grid row, bool visible)
     {
         ((FrameworkElement)row.FindName("SourceActions")).Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        ((FrameworkElement)row.FindName("SourceDescription")).Margin = visible ? new Thickness(0, 0, 56, 0) : new Thickness();
+        ((FrameworkElement)row.FindName("SourceDescription")).Margin = visible ? new Thickness(0, 0, 66, 0) : new Thickness();
     }
 
     private async void RescanSidebarSource(object sender, RoutedEventArgs args) =>
@@ -63,7 +92,7 @@ public sealed partial class MainWindow
 
     private async Task RescanSidebarSourceAsync(FrameworkElement row)
     {
-        if (busy || row.DataContext is not Navigation { Source: long id } || !sources.TryGetValue(id, out var source))
+        if (busy || row.DataContext is not Navigation { Source: long id, Folder: null } || !sources.TryGetValue(id, out var source))
             return;
         RevealSourceActions(null);
         await RescanSourcesAsync([source]);
@@ -74,7 +103,7 @@ public sealed partial class MainWindow
 
     private async Task DeleteSidebarSourceAsync(FrameworkElement row)
     {
-        if (busy || row.DataContext is not Navigation { Source: long id } || !sources.TryGetValue(id, out var source))
+        if (busy || row.DataContext is not Navigation { Source: long id, Folder: null } || !sources.TryGetValue(id, out var source))
             return;
         RevealSourceActions(null);
         var version = libraryDataVersion;

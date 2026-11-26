@@ -95,8 +95,23 @@ public struct SourceAlbumIndex: Sendable {
     public let tags: [SourceAlbumTag]
     public let taggedAlbums: [Int64: Set<SourceAlbumKey>]
     public let configuredCovers: [SourceAlbumKey: [Int64]]
+    public let favoriteAlbums: Set<SourceAlbumKey>
+    public let ratingsHalf: [SourceAlbumKey: Int]
 
-    public static let empty = Self(tags: [], taggedAlbums: [:], configuredCovers: [:])
+    public static let empty = Self(tags: [], taggedAlbums: [:], configuredCovers: [:], favoriteAlbums: [], ratingsHalf: [:])
+
+    public func albums(matchingAnyTagIDs tagIDs: Set<Int64>) -> Set<SourceAlbumKey>? {
+        guard !tagIDs.isEmpty else { return nil }
+        var matches: Set<SourceAlbumKey> = []
+        for id in tagIDs {
+            if let albums = taggedAlbums[id] { matches.formUnion(albums) }
+        }
+        return matches
+    }
+
+    public func tags(for album: SourceAlbumKey) -> [SourceAlbumTag] {
+        tags.filter { taggedAlbums[$0.id]?.contains(album) == true }
+    }
 
     public func covers(for album: SourceAlbumKey, members: [Media]) -> [Media] {
         let available = members.filter { $0.isAvailable && $0.kind == .image }

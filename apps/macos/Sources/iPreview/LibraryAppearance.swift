@@ -69,7 +69,7 @@ extension LibraryPage {
     }
 }
 
-struct RenameClickBoundary: NSViewRepresentable {
+struct OutsideClickBoundary: NSViewRepresentable {
     let onOutsideClick: () -> Void
 
     func makeNSView(context: Context) -> BoundaryView {
@@ -94,8 +94,8 @@ struct RenameClickBoundary: NSViewRepresentable {
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]) { [weak self] event in
                 if let self, let onOutsideClick, event.window == window,
-                   !bounds.contains(convert(event.locationInWindow, from: nil)) {
-                    // Let the clicked control finish handling its mouse event before publishing the rename.
+                   !visibleRect.contains(convert(event.locationInWindow, from: nil)) {
+                    // Keep the click available to the control that received it.
                     DispatchQueue.main.async { onOutsideClick() }
                 }
                 return event
@@ -391,11 +391,12 @@ struct EmptyAlbumAddButtonStyle: ButtonStyle {
 
 struct LibraryBrowseModePicker: View {
     @Binding var selection: MediaBrowseMode
+    @FocusState private var keyboardFocus: MediaBrowseMode?
 
     var body: some View {
         Group {
             if #available(macOS 26, *) {
-                buttons.glassEffect(.regular, in: .capsule)
+                buttons.glassEffect(.clear, in: .capsule)
             } else {
                 buttons
                     .background(.regularMaterial, in: Capsule())
@@ -417,7 +418,8 @@ struct LibraryBrowseModePicker: View {
                         .font(.system(size: 14, weight: .medium))
                         .frame(width: 30, height: 30)
                 }
-                .buttonStyle(LibraryBrowseModeButtonStyle(selected: mode == selection))
+                .buttonStyle(LibraryBrowseModeButtonStyle(selected: mode == selection, focused: mode == keyboardFocus))
+                .focused($keyboardFocus, equals: mode)
                 .accessibilityLabel(mode.title)
                 .accessibilityIdentifier(mode.symbol)
                 .accessibilityAddTraits(mode == selection ? .isSelected : [])
@@ -430,17 +432,27 @@ struct LibraryBrowseModePicker: View {
 
 private struct LibraryBrowseModeButtonStyle: ButtonStyle {
     let selected: Bool
+    let focused: Bool
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     func makeBody(configuration: Configuration) -> some View {
+        let highlight = colorScheme == .dark ? Color.white : Color.black
+        let tint = configuration.isPressed ? 0.26 : selected ? 0.20 : 0.10
         configuration.label
             .foregroundStyle(.primary)
             .background {
                 Circle()
-                    .fill(.primary.opacity(selected ? 0.14 : 0.07))
+                    .fill(highlight.opacity(tint))
                     .opacity(selected || isHovered || configuration.isPressed ? 1 : 0)
+            }
+            .overlay {
+                if focused {
+                    Circle().strokeBorder(Color.accentColor, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
             }
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(Circle())

@@ -20,8 +20,8 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-04 | 常见音频格式 | 待设计、审阅与实施：[LIB-007](../specs/spike/library.md#lib-007-音频组织)。 |
 | ORIG-05 | creator → album 自动识别 | 已交付：[LIB-001](../specs/official/library.md#lib-001-目录导入与扫描)。 |
 | ORIG-06 | multi-creators → creator → album 自动识别 | 已交付，先选择创作者、再进入其专辑：[LIB-009、010](../specs/official/library.md)。 |
-| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 双端识别并索引本地完整作品。外部样张来源待确认，见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)。 |
-| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)双端识别并索引简化结构。 |
+| ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 双端按层级识别本地完整作品，样张和专用封面可省略。外部样张来源待确认，见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)。 |
+| ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)双端识别根目录一个视频及任意命名的直属图片目录，样张可省略。 |
 | ORIG-09 | 音频管理体系由代理设计，用户审阅后做 | 已登记，后置且保留审阅条件：[LIB-007](../specs/spike/library.md#lib-007-音频组织)、[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择并改善列表滚动，完整长按验收见 [PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。 |
 | ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |
@@ -30,7 +30,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
 | ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
 | ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
-| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 双端实现见 [PRE-004](../specs/official/preview.md#pre-004-视频作品的影碟与图册预览)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
+| ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 双端用玻璃录像带与层叠图册展示专辑，按 Space 进入双区，Tab 在播放和翻图间切换。详见 [PRE-004](../specs/official/preview.md#pre-004-视频作品的沉浸模式)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
 | ORIG-18 | 音频封面与 CD 机模拟，其他由代理设计 | 待审阅与实施：[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-19 | 多工作区，分别保存文件夹与专辑管理数据 | 待实施：[LIB-004](../specs/spike/library.md#lib-004-多工作区)。一期只有默认本地库，测试用数据目录不算工作区产品功能。 |
 | ORIG-20 | 跨 macOS／Windows 原生可用并实机测试 | 实机证据按 [0.1.0](releases/0.1.0.md)、[0.2.0](releases/0.2.0.md) 与 [0.3.0](releases/0.3.0.md) 登记。构建包含 macOS 15 启动 CI。正式双端验收结果随本版归档。 |

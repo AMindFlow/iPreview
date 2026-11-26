@@ -144,6 +144,9 @@ jobs:
           python scripts/libvlc-runtime.py check (Join-Path $expanded 'LibVLC') --platform windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-FileHash -Algorithm SHA256 $zip
+      - name: Launch packaged application and check catalog
+        shell: pwsh
+        run: ./scripts/check-windows-launch.ps1 -Application (Join-Path $env:RUNNER_TEMP 'iPreview-expanded\iPreview.exe')
       - name: Build and verify per-user installer
         shell: pwsh
         run: |

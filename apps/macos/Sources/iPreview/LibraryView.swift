@@ -30,6 +30,7 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewSession?
     @ViewState private var videoWorkPreview: VideoWorkPreviewSession?
     @FocusState private var focus: Focus?
+    @FocusState private var focusedSidebarFavorite: SourceAlbumKey?
 
     enum Focus: Hashable { case browser, searchQuery, searchResults, title }
 
@@ -148,8 +149,9 @@ struct LibraryView: View {
         let scope = model.contentScope(for: page)
 
         return NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            sidebar
+            sidebar(scope)
                 .accessibilityHidden(libraryOverlayShown)
+                .disabled(videoWorkPreview != nil)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 260)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar(removing: .sidebarToggle)
@@ -160,10 +162,12 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .accessibilityHidden(libraryOverlayShown)
+            .disabled(videoWorkPreview != nil)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(\.libraryBrowseMode, canChangeBrowseMode ? $browseMode : nil)
+        .focusedSceneValue(\.libraryImmersiveAction, immersiveAction(in: scope))
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
@@ -175,6 +179,11 @@ struct LibraryView: View {
                 PreviewWindowChrome(session: preview)
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
+            }
+        }
+        .overlay {
+            if organizationTarget != nil {
+                Color.black.opacity(0.20).allowsHitTesting(false).accessibilityHidden(true)
             }
         }
         .overlay {
@@ -194,34 +203,32 @@ struct LibraryView: View {
         }
         .overlay {
             if let videoWorkPreview {
-                VideoWorkPreview(session: videoWorkPreview, revision: model.revision,
-                                 mediaPreviewShown: preview != nil) { item, items in
-                    preview = PreviewSession(items: items, selection: item.id, layout: .gallery)
-                } close: {
+                VideoWorkPreview(session: videoWorkPreview, revision: model.revision) {
                     self.videoWorkPreview = nil
                     focusBrowser()
                 }
-                .allowsHitTesting(preview == nil)
-                .accessibilityHidden(preview != nil)
             }
+        }
+        .onChange(of: model.snapshot.videoWorks) { _, works in
+            guard let videoWorkPreview, !works.contains(videoWorkPreview.work) else { return }
+            self.videoWorkPreview = nil
+            focusBrowser()
         }
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 GeometryReader { geometry in
                     let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil, videoWorkPreview == nil else { return nil }
+                        guard searchDomain == nil else { return nil }
                         return origins.thumbnail(for: id, in: geometry)
                     }
                     MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
-                        if let videoWorkPreview {
-                            videoWorkPreview.selectedMediaID = selection
-                        } else if searchDomain == nil {
+                        if searchDomain == nil {
                             selected = selection
                             if !hasThumbnail { mediaToReveal = selection }
                         }
                     } close: {
                         self.preview = nil
-                        if videoWorkPreview == nil { focus = searchDomain == nil ? .browser : .searchResults }
+                        focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
                 }
@@ -279,8 +286,17 @@ struct LibraryView: View {
         .disabled(libraryOverlayShown)
     }
 
-    private var sidebar: some View {
-        ScrollView {
+    private func sidebar(_ scope: ContentScope) -> some View {
+        let currentAlbum = visibleAlbum(in: scope)
+        let nestedAlbum = currentAlbum.flatMap { $0.relativePath.isEmpty ? nil : $0 }
+        let favorites = model.sourceAlbumIndex.favoriteAlbums.intersection(model.sourceAlbumKeys)
+        let rootFavorites = Set(favorites.filter { $0.relativePath.isEmpty }.map(\.sourceID))
+        let favoriteChildren = Dictionary(grouping: favorites.filter { !$0.relativePath.isEmpty }, by: \.sourceID)
+        let sources = model.snapshot.sources
+        let orderedSources = sources.filter { rootFavorites.contains($0.id) }
+            + sources.filter { !rootFavorites.contains($0.id) }
+        let workAlbums = Set(model.snapshot.videoWorks.map { SourceAlbumKey(media: $0.video) })
+        return ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 3) {
                     sidebarRow("媒体库", icon: "photo.on.rectangle.angled", active: page == .library) {
@@ -309,18 +325,41 @@ struct LibraryView: View {
                     .frame(height: 32)
                     .foregroundStyle(.secondary)
 
-                    ForEach(model.snapshot.sources) { source in
+                    ForEach(orderedSources) { source in
+                        let root = SourceAlbumKey(sourceID: source.id, relativePath: "")
+                        let child = nestedAlbum.flatMap { $0.sourceID == source.id ? $0 : nil }
+                        let pinned = favoriteChildren[source.id, default: []].sorted {
+                            compareNaturally($0.relativePath, $1.relativePath) == .orderedAscending
+                        }
+                        let rows = pinned + (child.map { favorites.contains($0) ? [] : [$0] } ?? [])
                         SourceSwipeRow(isRevealed: revealedSource == source.id, enabled: canChooseFolder,
-                                       setRevealed: { revealedSource = $0 ? source.id : nil },
+                                       setRevealed: { open in
+                                           if open { revealedSource = source.id }
+                                           else if revealedSource == source.id { revealedSource = nil }
+                                       },
                                        rescan: { rescanSource(source) }, delete: { confirmSourceDeletion(source) }) {
                             sidebarRow(source.name, icon: source.layout.sidebarSymbol,
-                                       active: page.sourceID == source.id,
+                                       active: page.sourceID == source.id && child == nil,
                                        status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
-                                       offline: !source.isAvailable) {
+                                       offline: !source.isAvailable,
+                                       album: model.sourceAlbumKeys.contains(root) ? root : nil) {
                                 revealedSource = nil
                                 navigate(.source(source.id))
                             }
                             .help(source.path)
+                        }
+                        ForEach(rows, id: \.self) { album in
+                            let active = album == child
+                            let title = String(album.relativePath.split(separator: "/").last!)
+                            sidebarRow(title, icon: workAlbums.contains(album) ? "film" : "photo.on.rectangle",
+                                       active: active, album: album) {
+                                if !active {
+                                    revealedSource = nil
+                                    navigate(.folder(source.id, album.relativePath))
+                                }
+                            }
+                            .padding(.leading, 16)
+                            .accessibilityIdentifier(active ? "current-source-album" : "source-album-\(album.sourceID)-\(album.relativePath)")
                         }
                     }
                 }
@@ -373,67 +412,154 @@ struct LibraryView: View {
     }
 
     private func sidebarRow(_ name: String, icon: String, active: Bool, status: String = "", offline: Bool = false,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .frame(width: 17)
-                    .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
-                Text(name)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if offline {
-                    Image(systemName: "bolt.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
+                            album: SourceAlbumKey? = nil, action: (() -> Void)? = nil) -> some View {
+        let label = HStack(spacing: 9) {
+            Image(systemName: icon)
+                .frame(width: 17)
+                .foregroundStyle(active ? Color.ipreviewAccent : Color.libraryInk.opacity(0.68))
+            Text(name)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if offline {
+                Image(systemName: "bolt.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
-            .fontWeight(active ? .semibold : .medium)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            .background(active ? Color.ipreviewAccent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 9))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(status)
-        .accessibilityAddTraits(active ? .isSelected : [])
+        .fontWeight(active ? .semibold : .medium)
+        .foregroundStyle(.primary)
+        .padding(.leading, 10)
+        .frame(height: 34)
+        .contentShape(Rectangle())
+
+        return HStack(spacing: 3) {
+            if let action {
+                Button(action: action) { label }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(status)
+                    .accessibilityAddTraits(active ? .isSelected : [])
+            } else {
+                label.accessibilityAddTraits(.isSelected)
+            }
+            if let album {
+                albumFavorite(album, size: 12, sidebar: true)
+                    .focused($focusedSidebarFavorite, equals: album)
+                    .accessibilityIdentifier("sidebar-album-favorite-\(album.sourceID)-\(album.relativePath)")
+                    .padding(.trailing, 4)
+            } else {
+                Spacer(minLength: 7).frame(width: 7)
+            }
+        }
+        .background(active ? Color.ipreviewAccent.opacity(0.12) : Color.clear, in: .rect(cornerRadius: 9))
+    }
+
+    private func visibleAlbum(in scope: ContentScope) -> SourceAlbumKey? {
+        if let work = scope.videoWork {
+            return SourceAlbumKey(media: work.video)
+        }
+        guard let album = page.sourceAlbum(in: scope.source),
+              scope.items.contains(where: { SourceAlbumKey(media: $0) == album }) else { return nil }
+        return album
+    }
+
+    private func albumFavorite(_ album: SourceAlbumKey, size: CGFloat = 18, sidebar: Bool = false) -> some View {
+        let favorite = model.sourceAlbumIndex.favoriteAlbums.contains(album)
+        return AlbumFavoriteButton(favorite: favorite, size: size) {
+            let restoreFocus = sidebar && focusedSidebarFavorite == album
+            updateAlbum(onSuccess: {
+                guard restoreFocus else { return }
+                let isCurrent = page == .folder(album.sourceID, album.relativePath)
+                if favorite && !album.relativePath.isEmpty && !isCurrent {
+                    focusBrowser()
+                } else {
+                    Task { @MainActor in
+                        await Task.yield()
+                        focusedSidebarFavorite = album
+                    }
+                }
+            }) { try await $0.setFavorite(!favorite, for: album) }
+        }
+        .disabled(model.isWorking || titleEdit != nil)
+    }
+
+    private func updateAlbum(onSuccess: @escaping () -> Void = {}, _ action: @escaping (Catalog) async throws -> Void) {
+        Task {
+            guard !model.isWorking else { return }
+            do {
+                try await model.organize(action)
+                onSuccess()
+            } catch {
+                model.error = error.localizedDescription
+            }
+        }
     }
 
     private func header(_ scope: ContentScope) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 10) {
+        let album = visibleAlbum(in: scope)
+        return VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top, spacing: 10) {
                 if let parent = page.parent(in: scope.source?.layout) {
                     Button { navigate(parent.page, selecting: page) } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(.borderless)
+                    .frame(height: 37)
                     .accessibilityLabel(parent.label)
                     .help(parent.label)
                 }
-                browserTitle(scope)
-                if let source = scope.source, !source.isAvailable {
-                    Label("离线", systemImage: "externaldrive.badge.xmark")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
-                   !scope.items.isEmpty {
-                    AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: scope.items),
-                                      revision: model.revision)
-                        .frame(width: 62, height: 42)
-                        .clipShape(.rect(cornerRadius: 6))
-                }
-                if page == .library {
+                if let album {
+                    let media = scope.items.filter { SourceAlbumKey(media: $0) == album }
                     Button {
-                        organizationTarget = .tags
+                        organizationTarget = .cover(name: scope.title, key: album, media: media)
                     } label: {
-                        Label("管理标签", systemImage: "tag")
+                        AlbumCoverArtwork(media: model.sourceAlbumIndex.covers(for: album, members: media),
+                                          revision: model.revision)
+                            .frame(width: 76, height: 55)
+                            .clipShape(.rect(cornerRadius: 7))
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(model.isWorking)
+                    .buttonStyle(.plain)
+                    .disabled(model.isWorking || titleEdit != nil)
+                    .accessibilityLabel("设置专辑封面")
+                    .accessibilityIdentifier("album-cover")
+                    .help("设置专辑封面")
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        browserTitle(scope)
+                        if let album {
+                            albumFavorite(album)
+                                .accessibilityIdentifier("album-favorite")
+                        }
+                        if let source = scope.source, !source.isAvailable {
+                            Label("离线", systemImage: "externaldrive.badge.xmark")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        if page == .library {
+                            Button {
+                                organizationTarget = .tags
+                            } label: {
+                                Label("管理标签", systemImage: "tag")
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(model.isWorking)
+                        }
+                    }
+                    if let album {
+                        AlbumHeaderRating(ratingHalf: model.sourceAlbumIndex.ratingsHalf[album]) { rating in
+                            updateAlbum { try await $0.setRatingHalf(rating, for: album) }
+                        }
+                        .disabled(model.isWorking || titleEdit != nil)
+                        AlbumHeaderTags(tags: model.sourceAlbumIndex.tags(for: album)) {
+                            organizationTarget = .addTag(album)
+                        } remove: { tag in
+                            updateAlbum { try await $0.removeTag(tag.id, from: album) }
+                        }
+                        .disabled(model.isWorking || titleEdit != nil)
+                    }
                 }
             }
 
@@ -455,19 +581,17 @@ struct LibraryView: View {
                         .disabled(model.isWorking)
                     }
                     if let work = scope.videoWork {
-                        Button("预览作品", systemImage: "play.rectangle") { openVideoWork(work) }
-                            .buttonStyle(.borderless)
-                            .disabled(model.isWorking)
-                    }
-                    if let album = page.sourceAlbum(in: scope.source, workAlbumPath: scope.items.first?.workAlbumPath),
-                       !scope.items.isEmpty {
-                        Button {
-                            organizationTarget = .album(name: scope.title, key: album, media: scope.items)
-                        } label: {
-                            Label("专辑组织", systemImage: "slider.horizontal.3")
+                        Button("沉浸模式", systemImage: "play.rectangle") {
+                            openVideoWork(work)
                         }
                         .buttonStyle(.borderless)
+                        .help("沉浸模式（⌘↩）")
                         .disabled(model.isWorking)
+                        .focusable()
+                        .onKeyPress(keys: [.return, .space]) { _ in
+                            openVideoWork(work)
+                            return .handled
+                        }
                     }
                     if let album = scope.virtualAlbum {
                         virtualAlbumActions(album, hasItems: !scope.items.isEmpty)
@@ -497,7 +621,7 @@ struct LibraryView: View {
                     .frame(minWidth: 105, idealWidth: 210, maxWidth: 320)
                     .accessibilityIdentifier(edit.controlID + "-name")
                     .background {
-                        RenameClickBoundary { finishTitleEdit(edit) }
+                        OutsideClickBoundary { finishTitleEdit(edit) }
                             .allowsHitTesting(false)
                     }
                     .task {
@@ -680,13 +804,14 @@ struct LibraryView: View {
                     if press.key == .space {
                         if press.phase == .down {
                             let destination = folders[index].page
-                            if let work = model.contentScope(for: destination).videoWork {
+                            if let work = destination.videoWork(in: model.snapshot.videoWorks) {
                                 openVideoWork(work)
                             } else {
                                 navigate(destination)
                             }
                         }
                     } else if press.key == .return {
+                        guard !press.modifiers.contains(.command) else { return .ignored }
                         if press.phase == .down { beginRename(SourceNameEdit(folder: folders[index])) }
                     } else if let destination = layout.neighbor(of: index, toward: press.key, count: folders.count) {
                         let folder = folders[destination].page
@@ -767,6 +892,7 @@ struct LibraryView: View {
                                 }
                             }
                         } else if press.key == .return {
+                            guard !press.modifiers.contains(.command) else { return .ignored }
                             if press.phase == .down, removalSelection == nil, selected == items[index].id {
                                 beginRename(SourceNameEdit(media: items[index]))
                             }
@@ -1103,7 +1229,21 @@ struct LibraryView: View {
 
     private func openVideoWork(_ work: IndexedVideoWork) {
         guard !model.isWorking else { return }
-        videoWorkPreview = VideoWorkPreviewSession(work: work)
+        let video = work.video
+        let parent = (video.relativePath as NSString).deletingLastPathComponent
+        let candidates = model.snapshot.media.filter { image in
+            image.kind == .image && image.isAvailable && image.source.id == video.source.id
+                && (image.relativePath as NSString).deletingLastPathComponent.utf8.elementsEqual(parent.utf8)
+        }
+        focus = nil
+        videoWorkPreview = VideoWorkPreviewSession(work: work, coverCandidates: candidates)
+    }
+
+    private func immersiveAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
+        guard canChooseFolder, titleEdit == nil, removalSelection == nil else { return nil }
+        let folder = scope.folders.first { $0.page == selectedFolder }
+        guard let work = scope.videoWork ?? folder?.page.videoWork(in: model.snapshot.videoWorks) else { return nil }
+        return { openVideoWork(work) }
     }
 
     private func focusBrowser() {
@@ -1142,6 +1282,17 @@ enum LibraryPage: Hashable, Sendable {
         case .creator(let id, let name): item.source.id == id && item.creator == name
         case .folder(let id, let key): item.source.id == id && item.relativePath.hasPrefix(key + "/")
         case .virtual: virtualMembers.contains(item.id)
+        }
+    }
+
+    func videoWork(in works: [IndexedVideoWork]) -> IndexedVideoWork? {
+        switch self {
+        case .source(let id):
+            works.first { $0.video.source.id == id && $0.relativePath.isEmpty }
+        case .folder(let id, let path):
+            works.first { $0.video.source.id == id && $0.relativePath == path }
+        default:
+            nil
         }
     }
 
@@ -1205,14 +1356,7 @@ struct ContentScope {
         let active = snapshot.media.filter(\.existsInSource)
         let source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
         self.source = source
-        let workPath: String? = switch page {
-        case .source: ""
-        case .folder(_, let path): path
-        default: nil
-        }
-        videoWork = workPath.flatMap { path in
-            snapshot.videoWorks.first { $0.video.source.id == source?.id && $0.relativePath == path }
-        }
+        videoWork = source == nil ? nil : page.videoWork(in: snapshot.videoWorks)
         switch page {
         case .library:
             title = "媒体库"

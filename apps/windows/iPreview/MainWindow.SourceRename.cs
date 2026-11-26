@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 
@@ -13,6 +14,8 @@ public sealed partial class MainWindow
             return;
         if (args.Key == VirtualKey.Space)
         {
+            if (args.OriginalSource is ButtonBase)
+                return;
             args.Handled = true;
             if (!args.KeyStatus.WasKeyDown)
                 NavigateFromContent(target);

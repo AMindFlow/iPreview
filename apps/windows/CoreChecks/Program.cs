@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using IPreview;
 
 var list = new BrowseLayout(BrowseMode.List, 1);
@@ -202,8 +204,12 @@ try
     CheckSourceAlbumOrganization(work);
     CheckSourceDeletion(work);
     CheckVideoWorks(work);
+    CheckStructuralVideoWorks(work);
+    if (OperatingSystem.IsWindows())
+        CheckUnreadableWorkLookahead(work);
     CheckVideoWorkIndex(work);
     CheckLegacyVideoWorkRescan(work);
+    CheckLegacyWorkRolesWithExtraPictures(work);
     CheckLegacyWorkAlbumOrganization(work);
     CheckSourceRename(work);
     Console.WriteLine("Windows catalog, search, preview navigation and source rename checks passed.");
@@ -409,6 +415,11 @@ static void CheckSourceAlbumOrganization(string work)
     Check(library.AlbumMembers[20].Select(media => media.Id).SequenceEqual([11L, 8L]), "v2 references and order preserved");
     var organizationIndex = reopened.ReadSourceAlbumIndex();
     Check(organizationIndex.ConfiguredCovers[album].SequenceEqual([9L, 8L]), "card cover order matches stored selection");
+    Check(organizationIndex.FavoriteAlbums.SetEquals([album]) && organizationIndex.RatingsHalf.Count == 2 &&
+        organizationIndex.RatingsHalf[album] == 0 && organizationIndex.RatingsHalf[sibling] == 7,
+        "organization index preserves favorites and zero and half-star ratings");
+    Check(organizationIndex.TagsFor(album).SequenceEqual(persisted.Tags) &&
+        organizationIndex.TagsFor(sibling).SequenceEqual(persistedSibling.Tags), "organization index projects tags in display order");
     Check(SourceAlbumTag.Suggestions("旅", organizationIndex.Tags).Select(tag => tag.Id).SequenceEqual([trip.Id]),
         "tag suggestion uses the current display name");
     var filtered = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.All,
@@ -419,6 +430,34 @@ static void CheckSourceAlbumOrganization(string work)
         taggedAlbums: organizationIndex.TaggedAlbums[scenic.Id]);
     Check(filteredFiles.Count == 2 && filteredFiles.All(hit => hit.SourceAlbum == album),
         "filename search remains confined to tagged media");
+
+    var other = reopened.AddAlbumTag("Other", sibling);
+    var tagIndex = reopened.ReadSourceAlbumIndex();
+    Check(tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { scenic.Id, other.Id })?.SetEquals([album, sibling]) == true,
+        "distinct tag memberships combine as a union");
+    var overlapping = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { scenic.Id, other.Id, trip.Id });
+    var unionAlbums = MediaSearch.Find(library.Sources.Values, library.Media, new("", false), GlobalSearchScope.Directories,
+        taggedAlbums: overlapping);
+    Check(unionAlbums.Count == 2 && unionAlbums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([album, sibling]),
+        "a tag-only search returns each matching source album once");
+    var unionHits = MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: overlapping);
+    Check(unionHits.Count == 3 && unionHits.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([album, sibling]),
+        "overlapping tags do not duplicate fuzzy file hits");
+    var exact = MediaSearch.Find(library.Sources.Values, library.Media, new("Image.png", true), GlobalSearchScope.Files,
+        taggedAlbums: overlapping);
+    Check(exact.Count == 1 && exact[0].SourceAlbum == sibling, "tag union intersects exact filename and suffix");
+    var unfiltered = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long>());
+    var stale = tagIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { long.MaxValue });
+    Check(unfiltered is null && stale is { Count: 0 }, "empty selection and selection with no albums are distinct");
+    Check(MediaSearch.Find(library.Sources.Values, library.Media, new("Image", false), GlobalSearchScope.Files,
+        taggedAlbums: unfiltered).Count == 3 && MediaSearch.Find(library.Sources.Values, library.Media,
+        new("Image", false), GlobalSearchScope.Files, taggedAlbums: stale).Count == 0, "stale tag selection does not expose unfiltered results");
+    reopened.RemoveAlbumTag(other.Id, sibling);
+    var unlinked = reopened.ReadSourceAlbumIndex();
+    Check(unlinked.Tags.Contains(other) && unlinked.AlbumsMatchingAnyTagIds(new HashSet<long> { other.Id }) is { Count: 0 },
+        "an existing tag without links filters out all albums");
+    reopened.DeleteTag(other.Id);
 
     var coverPath = Path.Combine(sourcePath, "Maker/Album/Image 10.jpg");
     var outside = Path.Combine(work, "out-of-source.jpg");
@@ -447,6 +486,10 @@ static void CheckSourceAlbumOrganization(string work)
     Check(reopened.ReadAlbumTags().SequenceEqual([scenic]) && reopened.ReadSourceAlbumsForTag(trip.Id).Count == 0, "global delete removes links");
     var cleared = reopened.ReadSourceAlbumOrganization(album);
     Check(cleared.Favorite && cleared.RatingHalf is null, "clearing rating preserves favorite");
+    var clearedIndex = reopened.ReadSourceAlbumIndex();
+    Check(clearedIndex.FavoriteAlbums.SetEquals([album]) && clearedIndex.RatingsHalf.Count == 1 && clearedIndex.RatingsHalf[sibling] == 7,
+        "organization index omits a removed rating and preserves favorites");
+    Check(clearedIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { trip.Id }) is { Count: 0 }, "deleted tags do not match albums");
 }
 
 static void CheckVideoWorks(string root)
@@ -486,10 +529,121 @@ static void CheckVideoWorks(string root)
     var ordinary = Path.Combine(root, "Ordinary");
     Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Unrecognized &&
         MediaFiles.Probe(ordinary).Options.Keys.Single() == Layout.Flat, "ordinary videos remain in the generic album");
+    AddFile(compactRoot, "Other/Album/second.mp4");
+    Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous nested video");
     AddFile(compactRoot, "第二个影片.mp4");
     Check(MediaFiles.ProbeVideoWork(compactRoot) is VideoWorkRecognition.Ambiguous, "ambiguous main video");
     AddFile(completeRoot, "附加写真集/写真集 2/封面.png");
     Check(MediaFiles.ProbeVideoWork(completeRoot) is VideoWorkRecognition.Ambiguous, "ambiguous photo set cover");
+}
+
+static void CheckStructuralVideoWorks(string root)
+{
+    var parent = Path.Combine(root, "Structural works");
+    foreach (var file in new[]
+    {
+        "album/video.mp4", "album/pictures/1.png", "album/pictures/2.png",
+        "seventeen/movie.MKV", "seventeen/Photos/.hidden.jpg",
+        "boxed/Screen/main.mp4", "boxed/Screen/behind-the-scenes.png",
+        "boxed/Extras/Book 2/p1.png", "boxed/Extras/Book 10/p2.jpg",
+        "boxed/Sample cards/promo.png", "boxed/ordinary.jpg",
+        "books/Disc/main.mov", "books/Pages/Set A/front.jpg",
+        "Ordinary album/frame.png"
+    })
+        AddFile(parent, file);
+    foreach (var number in Enumerable.Range(1, 17).Reverse())
+        AddFile(parent, $"seventeen/Photos/{number}.png");
+
+    var exact = MediaFiles.Probe(Path.Combine(parent, "album")).Options[Layout.Flat];
+    Check(exact.Count == 3 && exact.Count(file => file.VideoWork is VideoWorkMembership.Video) == 1,
+        "the minimal arbitrary-name compact work imports three files at the root album level");
+
+    var summary = MediaFiles.Probe(parent);
+    Check(summary.Options.Keys.Single() == Layout.Creator, "sibling works and an ordinary album share the parent layout");
+    var data = Path.Combine(root, "structural-works-index");
+    long source;
+    using (var catalog = new Catalog(data))
+        source = catalog.Import(summary.Path, Layout.Creator, summary.Options[Layout.Creator]);
+
+    using var reopened = new Catalog(data);
+    var snapshot = reopened.Read();
+    Check(snapshot.VideoWorks.Select(work => work.RelativePath).ToHashSet().SetEquals(["album", "seventeen", "boxed", "books"]),
+        "arbitrary-name works are persisted individually");
+    var minimal = snapshot.VideoWorks.Single(work => work.RelativePath == "album");
+    Check(minimal.Structure == VideoWorkStructure.Compact && minimal.Samples.Count == 0 &&
+        minimal.PhotoSets.Single().Title == "pictures" && minimal.PhotoSets.Single().Photos
+            .Select(photo => photo.FileName).SequenceEqual(["1.png", "2.png"]),
+        "a work without samples retains the disk and the named picture group");
+    var many = snapshot.VideoWorks.Single(work => work.RelativePath == "seventeen");
+    Check(many.Samples.Count == 0 &&
+        many.PhotoSets.Single().Photos.Select(photo => photo.FileName).SequenceEqual(
+            Enumerable.Range(1, 17).Select(number => $"{number}.png")), "a sample-free work with 17 photos in natural order");
+    var complete = snapshot.VideoWorks.Single(work => work.RelativePath == "boxed");
+    Check(complete.Structure == VideoWorkStructure.Complete && complete.Samples.Single().FileName == "promo.png" &&
+        complete.PhotoSets.Select(book => book.Title).SequenceEqual(["Book 2", "Book 10"]) &&
+        complete.PhotoSets.All(book => book.Cover is null), "complete work recognizes arbitrary directory names and optional covers");
+    var noSamples = snapshot.VideoWorks.Single(work => work.RelativePath == "books");
+    Check(noSamples.Samples.Count == 0 && noSamples.PhotoSets.Single().Photos.Single().FileName == "front.jpg",
+        "complete work accepts a book without a dedicated cover or samples");
+    Check(snapshot.Media.Count(item => item.RelativePath is "boxed/ordinary.jpg" or "boxed/Screen/behind-the-scenes.png") == 2 &&
+        snapshot.Media.Single(item => item.RelativePath == "Ordinary album/frame.png").WorkAlbumPath is null,
+        "work import retains non-group media and an ordinary album remains independent");
+
+    AddFile(parent, "album/pictures/10.png");
+    AddFile(parent, "seventeen/alphabetical.jpg");
+    reopened.Rescan(source, MediaFiles.Scan(parent, Layout.Creator));
+    var rescanned = reopened.Read();
+    var updated = rescanned.VideoWorks.Single(work => work.RelativePath == "album");
+    Check(updated.Video.Id == minimal.Video.Id && updated.Samples.Count == 0 &&
+        updated.PhotoSets.Single().Photos.Select(photo => photo.FileName).SequenceEqual(["1.png", "2.png", "10.png"]),
+        "rescan keeps a sample-free work and refreshes its picture group");
+    Check(rescanned.VideoWorks.Single(work => work.Video.Id == many.Video.Id)
+        .Samples.Single().FileName == "alphabetical.jpg", "rescan adds a single optional root sample");
+    var available = rescanned.Media.Where(item => item.Present).ToDictionary(item => item.RelativePath, item => item.Id);
+    Check(snapshot.Media.All(item => available.TryGetValue(item.RelativePath, out var id) && id == item.Id),
+        "rescan preserves work, ordinary media and their identities");
+
+    var ordinary = Path.Combine(root, "Ordinary creators");
+    AddFile(ordinary, "Photos A/1.png");
+    AddFile(ordinary, "Photos B/2.png");
+    var ordinaryFiles = MediaFiles.Probe(ordinary).Options[Layout.Creator];
+    Check(ordinaryFiles.Count == 2 && ordinaryFiles.All(file => file.VideoWork is null),
+        "an ordinary picture collection keeps its independent albums");
+    var split = Path.Combine(root, "Separate albums");
+    AddFile(split, "Video album/movie.mp4");
+    AddFile(split, "Picture album/1.png");
+    var splitFiles = MediaFiles.Probe(split).Options[Layout.Creator];
+    Check(splitFiles.Count == 2 && splitFiles.All(file => file.VideoWork is null),
+        "adjacent video and picture albums without nested books are independent");
+    AddFile(ordinary, "movie.mp4");
+    Check(MediaFiles.ProbeVideoWork(ordinary) is VideoWorkRecognition.Ambiguous,
+        "a root video with competing photo folders is ambiguous");
+}
+
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static void CheckUnreadableWorkLookahead(string root)
+{
+    var source = Path.Combine(root, "Unreadable work lookahead");
+    AddFile(source, "Maker/Album/keep.jpg");
+    var locked = Directory.CreateDirectory(Path.Combine(source, "Maker", "Album", "locked"));
+    using var identity = WindowsIdentity.GetCurrent();
+    var restricted = locked.GetAccessControl();
+    var denyListing = new FileSystemAccessRule(
+        identity.User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+    restricted.AddAccessRule(denyListing);
+    locked.SetAccessControl(restricted);
+    try
+    {
+        var inspection = MediaFiles.Probe(source);
+        Check(inspection.Options.Keys.Single() == Layout.MultiCreator &&
+            inspection.Options[Layout.MultiCreator].Select(item => item.RelativePath)
+                .SequenceEqual(["Maker/Album/keep.jpg"]), "an unreadable extra directory keeps its ordinary album");
+    }
+    finally
+    {
+        restricted.RemoveAccessRuleSpecific(denyListing);
+        locked.SetAccessControl(restricted);
+    }
 }
 
 static void CheckLegacyVideoWorkRescan(string root)
@@ -498,12 +652,11 @@ static void CheckLegacyVideoWorkRescan(string root)
     (string Directory, Layout Layout, string Work, string[] Previous, string Added)[] cases =
     [
         ("Legacy Multi", Layout.MultiCreator, "Work",
-            ["Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg",
-             "Work/附加写真集/写真集/图片.png", "Maker/Album/keep.png"],
-            "Work/附加写真集/写真集/封面.png"),
+            ["Work/视频/movie.mp4", "Work/视频/幕后.jpg", "Work/官方样张/sample.jpg", "Maker/Album/keep.png"],
+            "Work/附加写真集/写真集/图片.png"),
         ("Legacy Creator", Layout.Creator, "",
-            ["视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg", "附加写真集/写真集/图片.png"],
-            "附加写真集/写真集/封面.png"),
+            ["视频/movie.mp4", "视频/幕后.jpg", "官方样张/sample.jpg"],
+            "附加写真集/写真集/图片.png"),
         ("Legacy Flat", Layout.Flat, "",
             ["movie.mp4", "官方样张.jpg", "keep.png"], "附加写真集/图片.png")
     ];
@@ -530,6 +683,41 @@ static void CheckLegacyVideoWorkRescan(string root)
             .ToDictionary(item => item.RelativePath, item => item.Id);
         Check(original.All(item => available.TryGetValue(item.RelativePath, out var id) && id == item.Id),
             "rescan preserves legacy depth and media identities");
+    }
+}
+
+static void CheckLegacyWorkRolesWithExtraPictures(string root)
+{
+    using var catalog = new Catalog(Path.Combine(root, "legacy-roles-index"));
+    (string Name, string[] Files)[] cases =
+    [
+        ("Full", ["视频/main.mp4", "官方样张/sample.jpg", "附加写真集/册/封面.png", "附加写真集/册/1.png"]),
+        ("Compact", ["main.mp4", "官方样张.jpg", "附加写真集/1.png"])
+    ];
+    foreach (var (name, files) in cases)
+    {
+        var path = Path.Combine(root, "Legacy roles", name);
+        foreach (var file in files)
+            AddFile(path, file);
+        var original = MediaFiles.Probe(path);
+        var source = catalog.Import(original.Path, Layout.Flat, original.Options[Layout.Flat]);
+        var before = catalog.Read();
+        var work = before.VideoWorks.Single(item => item.Video.Source.Id == source);
+        var previouslyAvailable = before.Media.Where(item => item.Source.Id == source).ToArray();
+
+        AddFile(path, "Other pictures/1.png");
+        AddFile(path, "Other books/Other set/1.png");
+        var reopened = MediaFiles.Probe(path);
+        Check(reopened.Options.Keys.Single() == Layout.Flat &&
+            reopened.Options[Layout.Flat].Select(item => item.RelativePath).ToHashSet().SetEquals(files),
+            "explicit legacy roles preserve the original groups alongside unrelated folders");
+        catalog.Rescan(source, MediaFiles.Scan(path, Layout.Flat));
+        var after = catalog.Read();
+        var updated = after.VideoWorks.Single(item => item.Video.Source.Id == source);
+        Check(updated.Video.Id == work.Video.Id && updated.Samples.SequenceEqual(work.Samples) &&
+            updated.PhotoSets.Single().Photos.SequenceEqual(work.PhotoSets.Single().Photos) &&
+            after.Media.Where(item => item.Source.Id == source).SequenceEqual(previouslyAvailable),
+            "a legacy work retains all indexed members after rescan");
     }
 }
 
@@ -630,7 +818,8 @@ static void CheckLegacyWorkAlbumOrganization(string work)
 
     using var reopened = new Catalog(data);
     var loaded = reopened.Read();
-    var tagged = reopened.ReadSourceAlbumIndex().TaggedAlbums[tag.Id];
+    var albumIndex = reopened.ReadSourceAlbumIndex();
+    var tagged = albumIndex.TaggedAlbums[tag.Id];
     var albums = MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("", false), GlobalSearchScope.Directories,
         taggedAlbums: tagged);
     Check(albums.Count == 2 && albums.Select(hit => hit.SourceAlbum).ToHashSet().SetEquals([completeKey, compactKey]),
@@ -639,8 +828,11 @@ static void CheckLegacyWorkAlbumOrganization(string work)
     Check(group.Category == SearchResultCategory.Directory && group.SourceAlbum is null,
         "work subdirectories retain their directory classification");
 
+    var selectedAlbums = albumIndex.AlbumsMatchingAnyTagIds(new HashSet<long> { tag.Id, long.MaxValue });
+    Check(MediaSearch.Find(loaded.Sources.Values, loaded.Media, new("官方样张", true), GlobalSearchScope.Directories,
+        taggedAlbums: selectedAlbums).Count == 0, "tag selection does not expose internal work directories");
     var collectionHits = MediaSearch.Find(loaded.Sources.Values, loaded.AlbumMembers[collectionId],
-        new("照片", false), GlobalSearchScope.Files, taggedAlbums: tagged);
+        new("照片", false), GlobalSearchScope.Files, taggedAlbums: selectedAlbums);
     Check(collectionHits.Single() is { Media: { } selectedMedia } &&
         selectedMedia.Id == compactPhoto.Id && collectionHits[0].SourceAlbum == compactKey,
         "collection search preserves the selected shallow work photo and its tag scope");
