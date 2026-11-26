@@ -31,6 +31,7 @@ struct SourceAlbumOrganizationSheet: View {
     @ViewState private var error: String?
     @ViewState private var tagDraft = ""
     @ViewState private var selectedTagSuggestion: Int64?
+    @ViewState private var hoveredTagSuggestion: Int64?
     @ViewState private var renamingTag: SourceAlbumTag?
     @ViewState private var deletingTag: SourceAlbumTag?
     @ViewState private var coverDraft: [Int64]?
@@ -104,12 +105,11 @@ struct SourceAlbumOrganizationSheet: View {
         let attached = Set(model.sourceAlbumIndex.tags(for: key).map(\.id))
         let suggestions = query.isEmpty ? [] : SourceAlbumTag.suggestions(matching: query, from:
             model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) && $0.normalizedName.hasPrefix(query) })
-        let choice = suggestions.first { $0.id == selectedTagSuggestion }
         return VStack(alignment: .leading, spacing: 5) {
             HStack {
                 TextField("标签名称", text: $tagDraft)
                     .focused($tagInputFocused)
-                    .onSubmit { addTag(key, suggestion: choice) }
+                    .onSubmit { addTag(key) }
                     .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                         guard !isComposingTag, !suggestions.isEmpty else { return .ignored }
                         let forward = press.key == .downArrow
@@ -119,41 +119,73 @@ struct SourceAlbumOrganizationSheet: View {
                         selectedTagSuggestion = suggestions[next].id
                         return .handled
                     }
-                Button("添加") { addTag(key, suggestion: choice) }
+                Button("添加") { addTag(key) }
                     .disabled(working || query.isEmpty)
                 doneButton
             }
             if !suggestions.isEmpty {
+                let rowHeight: CGFloat = 32
+                let inset: CGFloat = 4
                 ScrollViewReader { reader in
                     ScrollView {
-                        VStack(spacing: 0) {
+                        VStack(spacing: 2) {
                             ForEach(suggestions) { tag in
+                                let selected = selectedTagSuggestion == tag.id
+                                let hovered = hoveredTagSuggestion == tag.id
                                 Button {
                                     addTag(key, suggestion: tag)
                                 } label: {
                                     Text(tag.name)
-                                        .frame(maxWidth: .infinity, minHeight: 27, alignment: .leading)
+                                        .lineLimit(1)
+                                        .foregroundStyle(.primary)
                                         .padding(.horizontal, 8)
+                                        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                                        .background {
+                                            if selected {
+                                                RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.26))
+                                            } else if hovered {
+                                                RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.12))
+                                            }
+                                        }
+                                        .overlay {
+                                            if selected {
+                                                RoundedRectangle(cornerRadius: 5)
+                                                    .strokeBorder(Color.accentColor.opacity(0.85))
+                                                    .allowsHitTesting(false)
+                                            }
+                                        }
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .background(selectedTagSuggestion == tag.id ? Color.accentColor.opacity(0.16) : .clear,
-                                            in: .rect(cornerRadius: 4))
-                                .accessibilityAddTraits(selectedTagSuggestion == tag.id ? .isSelected : [])
+                                .onHover { inside in
+                                    if inside { hoveredTagSuggestion = tag.id }
+                                    else if hoveredTagSuggestion == tag.id { hoveredTagSuggestion = nil }
+                                }
+                                .accessibilityAddTraits(selected ? .isSelected : [])
                                 .id(tag.id)
                             }
                         }
+                        .padding(inset)
                     }
-                    .frame(height: CGFloat(min(5, suggestions.count)) * 27)
+                    .frame(height: CGFloat(min(5, suggestions.count)) * (rowHeight + 2) + inset * 2 - 2)
                     .onChange(of: selectedTagSuggestion) { _, id in
                         if let id { reader.scrollTo(id) }
                     }
+                }
+                .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.primary.opacity(0.35))
+                        .allowsHitTesting(false)
                 }
                 .disabled(working)
                 .accessibilityLabel("相关已有标签")
             }
         }
-        .onChange(of: tagDraft) { _, _ in selectedTagSuggestion = nil }
+        .onChange(of: tagDraft) { _, _ in
+            selectedTagSuggestion = nil
+            hoveredTagSuggestion = nil
+        }
         .task {
             await Task.yield()
             if !Task.isCancelled { tagInputFocused = true }
@@ -270,12 +302,16 @@ struct SourceAlbumOrganizationSheet: View {
         .disabled(position == nil && selection.count >= 4)
     }
 
-    private func addTag(_ key: SourceAlbumKey, suggestion: SourceAlbumTag?) {
+    private func addTag(_ key: SourceAlbumKey, suggestion: SourceAlbumTag? = nil) {
         let name = tagDraft
-        guard !isComposingTag, !SourceAlbumTag.names(from: name).normalized.isEmpty else { return }
+        let prefix = SourceAlbumTag.names(from: name).normalized
+        guard !isComposingTag, !prefix.isEmpty else { return }
+        let tag = suggestion ?? model.sourceAlbumIndex.tags.first {
+            $0.id == selectedTagSuggestion && $0.normalizedName.hasPrefix(prefix)
+        }
         apply({ catalog in
-            if let suggestion {
-                try await catalog.addTag(suggestion.id, to: key)
+            if let tag {
+                try await catalog.addTag(tag.id, to: key)
             } else {
                 _ = try await catalog.addTag(named: name, to: key)
             }

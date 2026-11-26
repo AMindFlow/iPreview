@@ -413,15 +413,21 @@ public sealed partial class MainWindow
         var suggestions = new ListView
         {
             DisplayMemberPath = nameof(SourceAlbumTag.Name),
+            ItemContainerStyle = (Style)LibraryView.Resources["AlbumTagSuggestionRow"],
             SelectionMode = ListViewSelectionMode.Single,
             IsItemClickEnabled = true,
-            MaxHeight = 150,
+            MaxHeight = 160
+        };
+        var suggestionPanel = new Border
+        {
+            Style = (Style)LibraryView.Resources["AlbumTagSuggestionsPanel"],
+            Child = suggestions,
             Visibility = Visibility.Collapsed
         };
         AutomationProperties.SetName(suggestions, "已有标签建议");
         var status = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
         panel.Children.Add(row);
-        panel.Children.Add(suggestions);
+        panel.Children.Add(suggestionPanel);
         panel.Children.Add(status);
         var dialog = OrganizationDialog("添加专辑标签", panel);
         dialog.CloseButtonText = "";
@@ -497,7 +503,7 @@ public sealed partial class MainWindow
             if (!add.IsEnabled)
             {
                 suggestions.ItemsSource = null;
-                suggestions.Visibility = Visibility.Collapsed;
+                suggestionPanel.Visibility = Visibility.Collapsed;
                 return;
             }
 
@@ -505,7 +511,7 @@ public sealed partial class MainWindow
                 && (!sourceAlbumIndex.TaggedAlbums.TryGetValue(tag.Id, out var albums) || !albums.Contains(key))).ToArray();
             suggestions.ItemsSource = matches;
             suggestions.SelectedIndex = -1;
-            suggestions.Visibility = matches.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            suggestionPanel.Visibility = matches.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 
