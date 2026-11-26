@@ -262,21 +262,7 @@ public sealed partial class MainWindow
             {
                 try
                 {
-                    var file = await OpenMediaFile(candidate, cancellation);
-                    using var stream = await file.OpenReadAsync().AsTask(cancellation);
-                    var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellation);
-                    // WinRT scales in the source coordinates before applying EXIF orientation.
-                    var scale = Math.Min(1, 900d / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
-                    var transform = new BitmapTransform
-                    {
-                        ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * scale)),
-                        ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * scale))
-                    };
-                    using var pixels = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8,
-                        BitmapAlphaMode.Premultiplied, transform, ExifOrientationMode.RespectExifOrientation,
-                        ColorManagementMode.ColorManageToSRgb).AsTask(cancellation);
-                    var cover = new SoftwareBitmapSource();
-                    await cover.SetBitmapAsync(pixels).AsTask(cancellation);
+                    var cover = await DecodeImage(candidate, 540, false, cancellationToken: cancellation);
                     if (ReferenceEquals(videoWorkSession, session) && !cancellation.IsCancellationRequested)
                         SetWorkTapeCover(cover);
                     break;
