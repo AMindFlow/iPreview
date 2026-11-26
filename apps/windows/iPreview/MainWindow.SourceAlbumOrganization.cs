@@ -430,6 +430,14 @@ public sealed partial class MainWindow
         var composing = false;
         input.TextCompositionStarted += (_, _) => composing = true;
         input.TextCompositionEnded += (_, _) => composing = false;
+        dialog.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key != VirtualKey.Escape || composing)
+                return;
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+                dialog.Hide();
+        };
         input.TextChanged += (_, _) => UpdateSuggestions();
         input.PreviewKeyDown += (_, args) =>
         {
