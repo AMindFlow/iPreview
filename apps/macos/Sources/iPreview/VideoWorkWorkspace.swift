@@ -11,7 +11,6 @@ struct VideoWorkWorkspace: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var pane = Pane.video
-    @ViewState private var locked = false
     @ViewState private var selectedAlbum: Int
     @ViewState private var selectedPhoto: Int64?
     @ViewState private var sort = MediaSort()
@@ -58,9 +57,6 @@ struct VideoWorkWorkspace: View {
         .task {
             await Task.yield()
             if !Task.isCancelled { focus = .video }
-        }
-        .onChange(of: video.message) { _, message in
-            if message != nil { locked = false }
         }
         .accessibilityIdentifier("video-work-workspace")
     }
@@ -135,19 +131,14 @@ struct VideoWorkWorkspace: View {
 
     private var videoButtons: some View {
         HStack(spacing: 17) {
-            iconButton("后退 15 秒", symbol: "gobackward.15", disabled: video.duration <= 0) {
+            iconButton("后退 15 秒", symbol: "gobackward.15", disabled: !canSeek) {
                 video.seek(video.elapsed - 15)
             }
             iconButton(video.isPlaying ? "暂停视频" : "播放视频", symbol: video.isPlaying ? "pause.fill" : "play.fill",
                        disabled: video.message != nil, action: video.toggle)
-            iconButton("前进 15 秒", symbol: "goforward.15", disabled: video.duration <= 0) {
+            iconButton("前进 15 秒", symbol: "goforward.15", disabled: !canSeek) {
                 video.seek(video.elapsed + 15)
             }
-            iconButton(locked ? "解除视频锁定" : "锁定视频", symbol: locked ? "lock.fill" : "lock.open",
-                       disabled: video.message != nil) {
-                locked.toggle()
-            }
-            .accessibilityValue(locked ? "已锁定" : "未锁定")
         }
     }
 
@@ -252,15 +243,13 @@ struct VideoWorkWorkspace: View {
             switch key {
             case kVK_Space:
                 if !event.isARepeat { video.toggle() }
-            case kVK_Return, kVK_ANSI_KeypadEnter:
-                if !event.isARepeat && video.message == nil { locked.toggle() }
             case kVK_DownArrow:
                 if focus == .video && canSeek { focus = .timeline }
             case kVK_UpArrow:
                 if focus == .timeline { focus = .video }
             case kVK_LeftArrow, kVK_RightArrow:
-                if locked || focus == .timeline {
-                    let step = locked ? 15.0 : 0.25
+                if canSeek {
+                    let step = focus == .timeline ? 0.25 : 15.0
                     video.seek(video.elapsed + (key == kVK_LeftArrow ? -step : step))
                 }
             default: return false
