@@ -10,9 +10,78 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
+    private static readonly Matrix4x4 WorkTapeFrontPerspective = CreateWorkTapeFrontPerspective();
+    private static readonly Matrix4x4 WorkTapeSpinePerspective = CreateWorkTapeSpinePerspective();
     private readonly UISettings workMotionSettings = new();
     private List<Visual>? workOpeningVisuals;
     private Storyboard? workAuraAnimation;
+
+    private static Matrix4x4 CreateWorkTapeFrontPerspective()
+    {
+        const float viewWidth = (float)WorkTapeWidth;
+        const float viewHeight = (float)WorkTapeHeight;
+        const float frontWidth = 172f;
+        const float frontHeight = 308f;
+
+        const float x0 = 0.155f * viewWidth;
+        const float y0 = 0.045f * viewHeight;
+        const float x1 = 0.970f * viewWidth;
+        const float y1 = 0.082f * viewHeight;
+        const float x2 = 0.970f * viewWidth;
+        const float y2 = 0.930f * viewHeight;
+        const float x3 = 0.155f * viewWidth;
+        const float y3 = 0.969f * viewHeight;
+
+        const float leftHeight = y3 - y0;
+        const float rightHeight = y2 - y1;
+        const float p = leftHeight / rightHeight - 1f;
+        const float leftScale = leftHeight / frontHeight;
+
+        const float yaw = 24f * (MathF.PI / 180f);
+        const float m14 = p / frontWidth;
+        float m34 = -m14 / MathF.Tan(yaw);
+        const float vx = viewWidth * 0.5f;
+        const float vy = viewHeight * 0.5f;
+
+        return new Matrix4x4(
+            ((1f + p) * x1 - x0) / frontWidth, ((1f + p) * y1 - y0) / frontWidth, 0f, m14,
+            (x3 - x0) / frontHeight, leftScale, 0f, 0f,
+            leftScale * MathF.Sin(yaw) + vx * m34, vy * m34, 1f, m34,
+            x0, y0, 0f, 1f);
+    }
+
+    private static Matrix4x4 CreateWorkTapeSpinePerspective()
+    {
+        const float viewWidth = (float)WorkTapeWidth;
+        const float viewHeight = (float)WorkTapeHeight;
+        const float spineWidth = 22f;
+        const float spineHeight = 308f;
+
+        const float ex = 0.065f * viewWidth;
+        const float ey = 0.060f * viewHeight;
+        const float ax = 0.155f * viewWidth;
+        const float ay = 0.045f * viewHeight;
+        const float dx = 0.155f * viewWidth;
+        const float dy = 0.969f * viewHeight;
+        const float fx = 0.065f * viewWidth;
+        const float fy = 0.946f * viewHeight;
+
+        const float backHeight = fy - ey;
+        const float frontHeight = dy - ay;
+        const float p = backHeight / frontHeight - 1f;
+
+        return new Matrix4x4(
+            ((1f + p) * ax - ex) / spineWidth, ((1f + p) * ay - ey) / spineWidth, 0f, p / spineWidth,
+            (fx - ex) / spineHeight, backHeight / spineHeight, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            ex, ey, 0f, 1f);
+    }
+
+    private void VideoWorkTapeFrontLoaded(object sender, RoutedEventArgs args) =>
+        VideoWorkTapeFront.TransformMatrix = WorkTapeFrontPerspective;
+
+    private void VideoWorkTapeSpineLoaded(object sender, RoutedEventArgs args) =>
+        VideoWorkTapeSpine.TransformMatrix = WorkTapeSpinePerspective;
 
     private void AnimateWorkOpening(VideoWorkSession session, Action open)
     {
@@ -33,7 +102,7 @@ public sealed partial class MainWindow
         var hinge = compositor.CreateScalarKeyFrameAnimation();
         hinge.Duration = duration;
         hinge.InsertKeyFrame(0, 0);
-        hinge.InsertKeyFrame(1, -83, easing);
+        hinge.InsertKeyFrame(1, 65, easing);
         lid.StartAnimation("RotationAngleInDegrees", hinge);
         AnimateWorkOpacity(lid, 1, .36f, duration);
 

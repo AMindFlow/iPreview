@@ -1058,99 +1058,264 @@
                         <Viewbox x:Name="VideoWorkTapeArtwork" Grid.Row="1" Width="196" Height="332"
                                  Stretch="Uniform" AutomationProperties.AccessibilityView="Raw">
                             <Grid Width="196" Height="332">
-                                <Border Margin="5,14,0,0" CornerRadius="13" Background="#24000000" />
-                                <Path Data="M2,9 L9,4 L18,12 L18,329 L3,319 Q1,317 1,312 Z"
-                                      Stroke="#60DDEFFF">
-                                    <Path.Fill>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                            <GradientStop Offset="0" Color="#988BABC9" />
-                                            <GradientStop Offset=".31" Color="#96506478" />
-                                            <GradientStop Offset=".78" Color="#B0253548" />
-                                            <GradientStop Offset="1" Color="#B1E5F3FF" />
-                                        </LinearGradientBrush>
-                                    </Path.Fill>
-                                </Path>
-                                <Path Data="M9,4 Q12,1 21,1 L173,1 Q186,3 195,14 L19,13 Z" Stroke="#AAD5EFFF">
+                                <Path Data="M16,315.5 Q30,324.5 46,323 L184,311 L188,308.5 L31,321 L17,313.5 Z"
+                                      IsHitTestVisible="False">
                                     <Path.Fill>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Offset="0" Color="#A7DAEDFF" />
-                                            <GradientStop Offset=".31" Color="#46ADC6E0" />
-                                            <GradientStop Offset="1" Color="#6850607B" />
+                                            <GradientStop Offset="0" Color="#34000000" />
+                                            <GradientStop Offset="1" Color="#00000000" />
                                         </LinearGradientBrush>
                                     </Path.Fill>
                                 </Path>
-                                <Path Data="M5,13 L5,313 M12,18 L12,322" Stroke="#70DDEFFF" />
-                                <Border Margin="16,12,0,0" CornerRadius="10"
-                                        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
-                                    <Grid Margin="11">
-                                        <Border Margin="0,6,0,4" CornerRadius="8"
-                                                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1" />
-                                        <Border Width="106" Height="8" Margin="0,32,0,0" CornerRadius="4"
-                                                HorizontalAlignment="Center" VerticalAlignment="Top"
-                                                Background="{ThemeResource ControlFillColorSecondaryBrush}" />
-                                        <Border Margin="16,0,16,28" Height="44" VerticalAlignment="Bottom" CornerRadius="8"
-                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                                        VerticalAlignment="Center" Spacing="16">
-                                                <Grid>
-                                                    <Ellipse Width="27" Height="27" Stroke="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                    <Ellipse Width="9" Height="9" Stroke="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                </Grid>
-                                                <Grid>
-                                                    <Ellipse Width="27" Height="27" Stroke="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                    <Ellipse Width="9" Height="9" Stroke="{ThemeResource TextFillColorSecondaryBrush}" />
-                                                </Grid>
-                                            </StackPanel>
-                                        </Border>
-                                    </Grid>
-                                </Border>
-                                <Border x:Name="VideoWorkTapeLid" Margin="16,12,0,0" CornerRadius="11" BorderThickness="1.5">
-                                    <Border.Background>
+                                <Path Data="M22,320.2 Q31,324.5 52,321.8 L34,321.2 Z" IsHitTestVisible="False">
+                                    <Path.Fill>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Offset="0" Color="#7EDBEFFF" />
-                                            <GradientStop Offset=".34" Color="#372E4770" />
-                                            <GradientStop Offset=".8" Color="#254F6A87" />
-                                            <GradientStop Offset="1" Color="#B8D9EBFF" />
+                                            <GradientStop Offset="0" Color="#00FFEEDC" />
+                                            <GradientStop Offset=".5" Color="#26E8ECFF" />
+                                            <GradientStop Offset="1" Color="#00FFEEDC" />
                                         </LinearGradientBrush>
-                                    </Border.Background>
-                                    <Border.BorderBrush>
+                                    </Path.Fill>
+                                </Path>
+                                <Path Data="M12.74,25.5 Q12.74,19.92 17.5,18.57 L27.5,15.75 Q30.38,14.94 39.45,15.64 L182.42,26.63 Q190.12,27.22 190.12,35.45 L190.12,300.53 Q190.12,308.76 182.42,309.38 L39.45,320.97 Q30.38,321.71 27.5,320.46 L17.5,316.13 Q12.74,314.07 12.74,308.5 Z"
+                                      StrokeThickness="0.9" IsHitTestVisible="False">
+                                    <Path.Fill>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Offset="0" Color="#F2FFFFFF" />
-                                            <GradientStop Offset=".4" Color="#82C5E6FF" />
-                                            <GradientStop Offset=".62" Color="#50E2EEFC" />
-                                            <GradientStop Offset="1" Color="#D8FFFFFF" />
+                                            <GradientStop Offset="0" Color="#0A0E1826" />
+                                            <GradientStop Offset="1" Color="#0808101C" />
                                         </LinearGradientBrush>
-                                    </Border.BorderBrush>
-                                    <Grid>
-                                        <Border Margin="6" CornerRadius="6" Background="#E7233548"
-                                                BorderBrush="#8058697A" BorderThickness="1">
-                                            <Grid>
-                                                <FontIcon Glyph="&#xE714;" FontSize="24"
-                                                          Foreground="#B3EAF3FF" />
-                                                <Rectangle RadiusX="5" RadiusY="5">
-                                                    <Rectangle.Fill>
-                                                        <ImageBrush x:Name="VideoWorkTapeCover" Stretch="UniformToFill" />
-                                                    </Rectangle.Fill>
-                                                </Rectangle>
-                                            </Grid>
-                                        </Border>
-                                        <Border Margin="3" CornerRadius="8" BorderThickness="1">
-                                            <Border.BorderBrush>
-                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                    <GradientStop Offset="0" Color="#A6FFFFFF" />
-                                                    <GradientStop Offset=".25" Color="#14FFFFFF" />
-                                                    <GradientStop Offset=".84" Color="#0AFFFFFF" />
-                                                    <GradientStop Offset="1" Color="#6FFFFFFF" />
-                                                </LinearGradientBrush>
-                                            </Border.BorderBrush>
-                                        </Border>
-                                        <Border Height="1" VerticalAlignment="Top" Margin="16,3,12,0" Background="#BFFFFFFF" />
-                                        <Border Height="1" VerticalAlignment="Bottom" Margin="12,0,15,3" Background="#8FDFEDFF" />
-                                    </Grid>
-                                </Border>
+                                    </Path.Fill>
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#D4FFF7ED" />
+                                            <GradientStop Offset=".25" Color="#48BFD0EC" />
+                                            <GradientStop Offset=".72" Color="#3C8CA4C4" />
+                                            <GradientStop Offset="1" Color="#BCE0E8FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Grid x:Name="VideoWorkTapeSpine" Width="22" Height="308"
+                                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                                      Loaded="VideoWorkTapeSpineLoaded">
+                                    <Border CornerRadius="4.5,2.5,2.5,4.5" BorderThickness="1">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Offset="0" Color="#E6FFF6EA" />
+                                                <GradientStop Offset=".35" Color="#56B8CCE8" />
+                                                <GradientStop Offset=".68" Color="#407892B4" />
+                                                <GradientStop Offset="1" Color="#D8DCE4FF" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
+                                        <Grid>
+                                            <Border Margin="1" CornerRadius="3.5,1.8,1.8,3.5" BorderThickness="1"
+                                                    BorderBrush="#A4060C14" IsHitTestVisible="False" />
+                                            <Border Margin="2" CornerRadius="2.8,1.2,1.2,2.8" BorderThickness="0.8"
+                                                    IsHitTestVisible="False">
+                                                <Border.BorderBrush>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Offset="0" Color="#CCE8EEFF" />
+                                                        <GradientStop Offset=".18" Color="#46A0B8D8" />
+                                                        <GradientStop Offset=".82" Color="#408CA6C8" />
+                                                        <GradientStop Offset="1" Color="#D8FFF6EC" />
+                                                    </LinearGradientBrush>
+                                                </Border.BorderBrush>
+                                            </Border>
+                                            <Border Margin="3.2,4.5,3.2,4.5" CornerRadius="2" Background="#E4121C28"
+                                                    BorderBrush="#72060C14" BorderThickness="0.7">
+                                                <Grid>
+                                                    <Rectangle RadiusX="1.6" RadiusY="1.6">
+                                                        <Rectangle.Fill>
+                                                            <ImageBrush x:Name="VideoWorkTapeSpineCover" Stretch="UniformToFill" />
+                                                        </Rectangle.Fill>
+                                                    </Rectangle>
+                                                    <Border CornerRadius="1.6" IsHitTestVisible="False">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                <GradientStop Offset="0" Color="#5C050B14" />
+                                                                <GradientStop Offset=".38" Color="#1008101C" />
+                                                                <GradientStop Offset=".62" Color="#00000000" />
+                                                                <GradientStop Offset="1" Color="#52050B14" />
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                <Path Data="M29.4,17.2 L29.4,319.4" Stroke="#98050B12" StrokeThickness="1.1"
+                                      IsHitTestVisible="False" />
+                                <Path Data="M30.38,16.8 L30.38,319.8" StrokeThickness="1.0" IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="#ECFFF7EE" />
+                                            <GradientStop Offset=".18" Color="#78CCD8F4" />
+                                            <GradientStop Offset=".55" Color="#3A7E96B6" />
+                                            <GradientStop Offset=".86" Color="#7CD4E0FA" />
+                                            <GradientStop Offset="1" Color="#E6FFF5E8" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Grid x:Name="VideoWorkTapeFront" Width="172" Height="308"
+                                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                                      Loaded="VideoWorkTapeFrontLoaded">
+                                    <Border Margin="7,9,7,9" CornerRadius="5" Background="#CE121A26"
+                                            BorderBrush="#4296B8DC" BorderThickness="0.9" IsHitTestVisible="False">
+                                        <Grid>
+                                            <Border Height="28" VerticalAlignment="Top" Margin="4,4,4,0" CornerRadius="3"
+                                                    Background="#4E1F2D40" BorderBrush="#34B8D8F8" BorderThickness="0,0,0,0.8" />
+                                            <Border Margin="18,48,18,0" Height="72" VerticalAlignment="Top" CornerRadius="4"
+                                                    Background="#1E8CB0D4" BorderBrush="#2CAED0F0" BorderThickness="0.8" />
+                                            <Border Margin="14,0,14,32" Height="50" VerticalAlignment="Bottom" CornerRadius="7"
+                                                    Background="#680D131C" BorderBrush="#409EC0E0" BorderThickness="0.9">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" Spacing="18">
+                                                    <Grid>
+                                                        <Ellipse Width="30" Height="30" Stroke="#54AECFE8" StrokeThickness="1"
+                                                                 Fill="#3C162030" />
+                                                        <Ellipse Width="10" Height="10" Stroke="#6CC8E2FA" StrokeThickness="0.9" />
+                                                    </Grid>
+                                                    <Grid>
+                                                        <Ellipse Width="30" Height="30" Stroke="#54AECFE8" StrokeThickness="1"
+                                                                 Fill="#3C162030" />
+                                                        <Ellipse Width="10" Height="10" Stroke="#6CC8E2FA" StrokeThickness="0.9" />
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="VideoWorkTapeLid" Width="172" Height="308"
+                                            CornerRadius="9" BorderThickness="1.05" Background="Transparent">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Offset="0" Color="#F0FFF8EE" />
+                                                <GradientStop Offset=".16" Color="#B6D6E0FA" />
+                                                <GradientStop Offset=".48" Color="#3C8CA6C6" />
+                                                <GradientStop Offset=".78" Color="#4892ACC8" />
+                                                <GradientStop Offset="1" Color="#E2FFF6EB" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
+                                        <Grid>
+                                            <Border Margin="1.1" CornerRadius="8.1" BorderThickness="1.1"
+                                                    BorderBrush="#A6060C14" IsHitTestVisible="False" />
+                                            <Border Margin="2.3" CornerRadius="7" BorderThickness="0.9"
+                                                    IsHitTestVisible="False">
+                                                <Border.BorderBrush>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Offset="0" Color="#DEEAEFFF" />
+                                                        <GradientStop Offset=".22" Color="#58A8C0DC" />
+                                                        <GradientStop Offset=".62" Color="#30607A98" />
+                                                        <GradientStop Offset=".86" Color="#A6DCE4FA" />
+                                                        <GradientStop Offset="1" Color="#E8FFF8EE" />
+                                                    </LinearGradientBrush>
+                                                </Border.BorderBrush>
+                                            </Border>
+                                            <Border Margin="4.5,5,4.5,5" CornerRadius="4.5" Background="#E0141F2D"
+                                                    BorderBrush="#76060C14" BorderThickness="0.7">
+                                                <Grid>
+                                                    <FontIcon Glyph="&#xE714;" FontSize="26"
+                                                              Foreground="#9EE0ECFA" />
+                                                    <Rectangle RadiusX="4" RadiusY="4">
+                                                        <Rectangle.Fill>
+                                                            <ImageBrush x:Name="VideoWorkTapeCover" Stretch="UniformToFill" />
+                                                        </Rectangle.Fill>
+                                                    </Rectangle>
+                                                </Grid>
+                                            </Border>
+                                            <Path Data="M1.2,17 Q1.2,1.2 17,1.2 L38,1.2" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".42" Color="#F4FFF7EC" />
+                                                        <GradientStop Offset=".78" Color="#9CD6E2FC" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M150,1.2 L155,1.2 Q170.8,1.2 170.8,17" StrokeThickness="1.3"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".5" Color="#D8E0EAFF" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M170.8,291 Q170.8,306.8 155,306.8 L138,306.8" StrokeThickness="1.3"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".48" Color="#D6FFF6EC" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                            <Path Data="M38,306.8 L17,306.8 Q1.2,306.8 1.2,291" StrokeThickness="1.45"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  IsHitTestVisible="False">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
+                                                        <GradientStop Offset="0" Color="#00DCE6FF" />
+                                                        <GradientStop Offset=".35" Color="#B6D8E2FA" />
+                                                        <GradientStop Offset=".68" Color="#EEFFF7EE" />
+                                                        <GradientStop Offset="1" Color="#00DCE6FF" />
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                <Path Data="M13.1,25 Q13.1,20.2 17.8,18.8 L30.4,15.1 Q34.5,15.1 39.2,15.7"
+                                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".55" Color="#F0FFF7EC" />
+                                            <GradientStop Offset=".85" Color="#B0DCE4FF" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M15.4,24.8 Q15.7,21.8 19.0,20.8 L29.8,17.7"
+                                      StrokeThickness="0.9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".5" Color="#9CD8E2FC" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M13.1,308.8 Q13.1,313.8 17.8,315.8 L30.4,321.5 Q34.5,321.3 39.2,320.9"
+                                      StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".52" Color="#ECFFF6EB" />
+                                            <GradientStop Offset=".85" Color="#ACDCE4FF" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
+                                <Path Data="M15.4,308.8 Q15.7,311.8 19.0,313.2 L29.8,318.0"
+                                      StrokeThickness="0.9" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False">
+                                    <Path.Stroke>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#00DCE6FF" />
+                                            <GradientStop Offset=".5" Color="#9CD8E2FC" />
+                                            <GradientStop Offset="1" Color="#00DCE6FF" />
+                                        </LinearGradientBrush>
+                                    </Path.Stroke>
+                                </Path>
                             </Grid>
                         </Viewbox>
                         <TextBlock Grid.Row="2" Text="录像带" HorizontalAlignment="Center" VerticalAlignment="Center"

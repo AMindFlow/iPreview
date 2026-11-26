@@ -161,7 +161,7 @@ public sealed partial class MainWindow
         ResetWorkPileWheel();
         VideoWorkOverlay.Visibility = Visibility.Collapsed;
         workTapeCoverRequest?.Cancel();
-        VideoWorkTapeCover.ImageSource = null;
+        SetWorkTapeCover(null);
         VideoWorkOverviewGroups.ItemsSource = null;
         workPhotoCards.Clear();
         VideoWorkPrints.Children.Clear();
@@ -226,6 +226,9 @@ public sealed partial class MainWindow
             .ThenBy(image => image.Media.Id)
             .Select(image => image.Media);
 
+    private void SetWorkTapeCover(ImageSource? source) =>
+        VideoWorkTapeCover.ImageSource = VideoWorkTapeSpineCover.ImageSource = source;
+
     private async Task LoadWorkTapeCover(VideoWorkSession session)
     {
         workTapeCoverRequest?.Cancel();
@@ -234,7 +237,7 @@ public sealed partial class MainWindow
         var cancellation = request.Token;
         var video = session.Work.Video;
         session.VideoPoster = ThumbnailOf(video.Id)?.Image;
-        VideoWorkTapeCover.ImageSource = session.VideoPoster;
+        SetWorkTapeCover(session.VideoPoster);
         var posterTask = LoadWorkTapePoster(session, cancellation);
         try
         {
@@ -270,7 +273,7 @@ public sealed partial class MainWindow
                     var cover = new SoftwareBitmapSource();
                     await cover.SetBitmapAsync(pixels).AsTask(cancellation);
                     if (ReferenceEquals(videoWorkSession, session) && !cancellation.IsCancellationRequested)
-                        VideoWorkTapeCover.ImageSource = cover;
+                        SetWorkTapeCover(cover);
                     break;
                 }
                 catch (Exception error) when (MediaFailure(error)) { }
@@ -295,7 +298,8 @@ public sealed partial class MainWindow
             if (!ReferenceEquals(videoWorkSession, session) || cancellation.IsCancellationRequested)
                 return;
             session.VideoPoster = poster;
-            VideoWorkTapeCover.ImageSource ??= poster;
+            if (VideoWorkTapeCover.ImageSource is null)
+                SetWorkTapeCover(poster);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (MediaFailure(error)) { }
