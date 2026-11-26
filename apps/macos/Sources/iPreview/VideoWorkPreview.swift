@@ -195,10 +195,12 @@ private struct VideoWorkOverview: View {
     @FocusState private var focused: VideoWorkPreviewSession.Collectible?
 
     var body: some View {
+        let fileName = session.work.video.name
         VideoWorkColumns {
             GeometryReader { geometry in
                 let half = geometry.size
                 let height = tapeHeight(in: half)
+                let tapeWidth = height * 9 / 16
                 VStack(spacing: 15) {
                     Button {
                         session.select(.tape)
@@ -217,12 +219,15 @@ private struct VideoWorkOverview: View {
                         open()
                         return .handled
                     }
-                    .accessibilityLabel("录像带")
+                    .accessibilityLabel(fileName)
                     .accessibilityHint("打开沉浸浏览并播放")
-                    caption("录像带", selected: focused == .tape)
+                    caption(fileName, selected: focused == .tape)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: tapeWidth)
+                        .help(fileName)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .offset(x: inward(half.width, artworkWidth: height * 9 / 16))
+                .offset(x: inward(half.width, artworkWidth: tapeWidth))
             }
         } right: {
             GeometryReader { geometry in

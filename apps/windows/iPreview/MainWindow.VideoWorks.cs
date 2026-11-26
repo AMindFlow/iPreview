@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -73,6 +74,10 @@ public sealed partial class MainWindow
         var session = new VideoWorkSession(work, groups);
         videoWorkSession = session;
         VideoWorkTitle.Text = work.Title;
+        var fileName = work.Video.FileName;
+        VideoWorkTapeCaption.Text = fileName;
+        ToolTipService.SetToolTip(VideoWorkTapeCaption, fileName);
+        AutomationProperties.SetName(VideoWorkTape, fileName);
         _ = LoadWorkTapeCover(session);
         VideoWorkSingleGroup.Visibility = groups.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
         VideoWorkSingleGroup.Text = groups[0].Title;
