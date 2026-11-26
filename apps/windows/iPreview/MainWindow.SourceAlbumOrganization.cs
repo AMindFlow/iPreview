@@ -395,56 +395,76 @@ public sealed partial class MainWindow
         if (catalog is null || busy || VisibleAlbumKey is not { } key)
             return;
 
-        var panel = new StackPanel { Spacing = 8 };
-        var input = new TextBox { Header = "新标签", PlaceholderText = "标签名称" };
-        var picker = TagSelector(AvailableTags());
-        picker.Header = "已有标签";
-        picker.PlaceholderText = "选择标签";
-        picker.Visibility = picker.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var panel = new StackPanel { Spacing = 6 };
+        var input = new TextBox { PlaceholderText = "标签名称", MinWidth = 140 };
+        AutomationProperties.SetName(input, "标签名称");
+        var add = new Button { Content = "添加", IsEnabled = false };
+        var done = new Button { Content = "完成" };
+        var row = new Grid { ColumnSpacing = 6 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(add, 1);
+        Grid.SetColumn(done, 2);
+        row.Children.Add(input);
+        row.Children.Add(add);
+        row.Children.Add(done);
+
+        var suggestions = new ListView
+        {
+            DisplayMemberPath = nameof(SourceAlbumTag.Name),
+            SelectionMode = ListViewSelectionMode.Single,
+            IsItemClickEnabled = true,
+            MaxHeight = 150,
+            Visibility = Visibility.Collapsed
+        };
+        AutomationProperties.SetName(suggestions, "已有标签建议");
         var status = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
-        panel.Children.Add(input);
-        panel.Children.Add(picker);
+        panel.Children.Add(row);
+        panel.Children.Add(suggestions);
         panel.Children.Add(status);
         var dialog = OrganizationDialog("添加专辑标签", panel);
-        dialog.PrimaryButtonText = "添加";
-        dialog.IsPrimaryButtonEnabled = false;
+        dialog.CloseButtonText = "";
         dialog.DefaultButton = ContentDialogButton.None;
         dialog.Opened += (_, _) => input.Focus(FocusState.Programmatic);
         var composing = false;
         input.TextCompositionStarted += (_, _) => composing = true;
         input.TextCompositionEnded += (_, _) => composing = false;
+        input.TextChanged += (_, _) => UpdateSuggestions();
         input.PreviewKeyDown += (_, args) =>
         {
-            if (args.Key != VirtualKey.Enter || composing)
+            if (composing)
+                return;
+
+            if (args.Key == VirtualKey.Enter)
+            {
+                args.Handled = true;
+                if (!args.KeyStatus.WasKeyDown && add.IsEnabled)
+                    AddTag(suggestions.SelectedItem as SourceAlbumTag);
+                return;
+            }
+            if (args.Key is not (VirtualKey.Up or VirtualKey.Down) || suggestions.Items.Count == 0)
                 return;
             args.Handled = true;
-            if (!args.KeyStatus.WasKeyDown && dialog.IsPrimaryButtonEnabled)
-                AddTag();
+            var index = suggestions.SelectedIndex;
+            var last = suggestions.Items.Count - 1;
+            suggestions.SelectedIndex = args.Key == VirtualKey.Up
+                ? (index < 0 ? last : Math.Max(0, index - 1))
+                : Math.Min(last, index + 1);
+            suggestions.ScrollIntoView(suggestions.SelectedItem);
         };
-        input.TextChanged += (_, _) =>
-        {
-            if (!string.IsNullOrWhiteSpace(input.Text))
-                picker.SelectedIndex = -1;
-            UpdateButton();
-        };
-        picker.SelectionChanged += (_, _) =>
-        {
-            if (picker.SelectedItem is SourceAlbumTag)
-                input.Text = "";
-            UpdateButton();
-        };
-        dialog.PrimaryButtonClick += (_, args) =>
-        {
-            args.Cancel = true;
-            AddTag();
-        };
+        suggestions.ItemClick += (_, args) => AddTag((SourceAlbumTag)args.ClickedItem);
+        add.Click += (_, _) => AddTag(suggestions.SelectedItem as SourceAlbumTag);
+        done.Click += (_, _) => dialog.Hide();
         await dialog.ShowAsync();
 
-        void AddTag()
+        void AddTag(SourceAlbumTag? tag)
         {
+            if (composing)
+                return;
             try
             {
-                if (picker.SelectedItem is SourceAlbumTag tag)
+                if (tag is not null)
                     Database.AddAlbumTag(tag.Id, key);
                 else
                     Database.AddAlbumTag(input.Text, key);
@@ -459,20 +479,26 @@ public sealed partial class MainWindow
             RefreshSourceAlbumMetadata();
             status.IsOpen = false;
             input.Text = "";
-            picker.ItemsSource = AvailableTags();
-            picker.Visibility = picker.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-            UpdateButton();
             input.Focus(FocusState.Programmatic);
         }
 
-        List<SourceAlbumTag> AvailableTags()
+        void UpdateSuggestions()
         {
-            var attached = sourceAlbumIndex.TagsFor(key).Select(tag => tag.Id).ToHashSet();
-            return sourceAlbumIndex.Tags.Where(tag => !attached.Contains(tag.Id)).ToList();
-        }
+            var (_, prefix) = SourceAlbumTag.NamesFrom(input.Text);
+            add.IsEnabled = prefix.Length > 0;
+            if (!add.IsEnabled)
+            {
+                suggestions.ItemsSource = null;
+                suggestions.Visibility = Visibility.Collapsed;
+                return;
+            }
 
-        void UpdateButton() => dialog.IsPrimaryButtonEnabled =
-            picker.SelectedItem is SourceAlbumTag || !string.IsNullOrWhiteSpace(input.Text);
+            var matches = sourceAlbumIndex.Tags.Where(tag => tag.NormalizedName.StartsWith(prefix, StringComparison.Ordinal)
+                && (!sourceAlbumIndex.TaggedAlbums.TryGetValue(tag.Id, out var albums) || !albums.Contains(key))).ToArray();
+            suggestions.ItemsSource = matches;
+            suggestions.SelectedIndex = -1;
+            suggestions.Visibility = matches.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        }
     }
 
     private void ChooseAlbumCover(Panel target, List<Media> images, Action<long[]> save, Action cancel)
