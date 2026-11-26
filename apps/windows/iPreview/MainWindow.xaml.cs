@@ -751,6 +751,7 @@ public sealed partial class MainWindow : Window
         previewSort.Order = default;
         PreviewSortButton.IsEnabled = items.Count > 1;
         PreviewSortButton.Visibility = IndexLabel.Visibility = work ? Visibility.Collapsed : Visibility.Visible;
+        VideoLock.Visibility = work ? Visibility.Collapsed : Visibility.Visible;
         var closeName = work ? "返回作品总览" : "退出预览";
         AutomationProperties.SetName(PreviewCloseAction, closeName);
         ToolTipService.SetToolTip(PreviewCloseAction, closeName + "（Esc）");
@@ -1173,7 +1174,7 @@ public sealed partial class MainWindow : Window
         if (BrowsingVideoWork)
         {
             PreviewHint.Text = VideoControls.Visibility == Visibility.Visible
-                ? "Space 播放或暂停    Enter 锁定    Esc 返回"
+                ? "← / → 跳转 15 秒    Space 播放或暂停    Esc 返回"
                 : "";
             return;
         }

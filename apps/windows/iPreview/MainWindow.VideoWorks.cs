@@ -349,23 +349,16 @@ public sealed partial class MainWindow
 
         var onCanvas = ReferenceEquals(focus, PreviewCanvas);
         var onTimeline = ReferenceEquals(focus, Timeline);
-        if (!onCanvas && !onTimeline)
-            return;
         switch (args.Key)
         {
-            case VirtualKey.Space:
+            case VirtualKey.Space when onCanvas || onTimeline:
                 args.Handled = true;
                 if (!args.KeyStatus.WasKeyDown)
                     ToggleVideo();
                 break;
-            case VirtualKey.Enter when VideoControls.Visibility == Visibility.Visible:
+            case VirtualKey.Left or VirtualKey.Right when !onTimeline:
                 args.Handled = true;
-                if (!args.KeyStatus.WasKeyDown)
-                    SetPreviewVideoLock(!previewVideoLocked);
-                break;
-            case VirtualKey.Left or VirtualKey.Right when previewVideoLocked:
-                args.Handled = true;
-                if (!args.KeyStatus.WasKeyDown)
+                if (Timeline.IsEnabled && !args.KeyStatus.WasKeyDown)
                     SeekVideoBy(args.Key == VirtualKey.Left ? -VideoSeekInterval : VideoSeekInterval);
                 break;
             case VirtualKey.Down when onCanvas && Timeline.IsEnabled:
@@ -497,9 +490,8 @@ public sealed partial class MainWindow
         Grid.SetColumn(TimeLabel, compact ? 0 : 3);
         Grid.SetRow(Timeline, compact ? 1 : 0);
         Grid.SetColumn(Timeline, compact ? 1 : 4);
-        Grid.SetColumnSpan(Timeline, compact ? 5 : 1);
-        Grid.SetRow(DurationLabel, compact ? 1 : 0);
-        Grid.SetColumn(DurationLabel, compact ? 6 : 5);
+        Grid.SetColumnSpan(Timeline, compact ? 4 : 1);
+        Grid.SetRow(VideoEndControls, compact ? 1 : 0);
     }
 
     private bool RestoreVideoWorkAfterMediaPreview()

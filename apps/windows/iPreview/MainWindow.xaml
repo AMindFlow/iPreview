@@ -1261,7 +1261,6 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Button x:Name="VideoBack" Content="−15 秒" Click="SeekVideoBack" Style="{StaticResource PreviewFlatButton}"
                                             AutomationProperties.Name="后退 15 秒" />
@@ -1273,11 +1272,13 @@
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <Slider x:Name="Timeline" Grid.Column="4" Minimum="0" Maximum="1" StepFrequency=".25" SmallChange=".25"
                                             VerticalAlignment="Center" ValueChanged="Seek" AutomationProperties.Name="视频进度" />
-                                    <TextBlock x:Name="DurationLabel" Grid.Column="5" VerticalAlignment="Center"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <ToggleButton x:Name="VideoLock" Grid.Column="6" Click="ToggleVideoLock"
-                                                  Content="未锁定" AutomationProperties.Name="锁定视频预览"
-                                                  ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
+                                    <StackPanel x:Name="VideoEndControls" Grid.Column="5" Orientation="Horizontal" Spacing="7">
+                                        <TextBlock x:Name="DurationLabel" VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <ToggleButton x:Name="VideoLock" Click="ToggleVideoLock"
+                                                      Content="未锁定" AutomationProperties.Name="锁定视频预览"
+                                                      ToolTipService.ToolTip="锁定或解锁视频预览（Enter）" />
+                                    </StackPanel>
                                 </Grid>
                             </ContentControl>
                             <Grid>
