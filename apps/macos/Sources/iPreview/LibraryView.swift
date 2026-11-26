@@ -166,6 +166,7 @@ struct LibraryView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(\.libraryBrowseMode, canChangeBrowseMode ? $browseMode : nil)
+        .focusedSceneValue(\.libraryImmersiveAction, immersiveAction(in: scope))
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
@@ -551,7 +552,7 @@ struct LibraryView: View {
                             openVideoWork(work)
                         }
                         .buttonStyle(.borderless)
-                        .help("沉浸模式")
+                        .help("沉浸模式（⌘↩）")
                         .disabled(model.isWorking)
                         .focusable()
                         .onKeyPress(keys: [.return, .space]) { _ in
@@ -770,13 +771,14 @@ struct LibraryView: View {
                     if press.key == .space {
                         if press.phase == .down {
                             let destination = folders[index].page
-                            if let work = model.contentScope(for: destination).videoWork {
+                            if let work = destination.videoWork(in: model.snapshot.videoWorks) {
                                 openVideoWork(work)
                             } else {
                                 navigate(destination)
                             }
                         }
                     } else if press.key == .return {
+                        guard !press.modifiers.contains(.command) else { return .ignored }
                         if press.phase == .down { beginRename(SourceNameEdit(folder: folders[index])) }
                     } else if let destination = layout.neighbor(of: index, toward: press.key, count: folders.count) {
                         let folder = folders[destination].page
@@ -857,6 +859,7 @@ struct LibraryView: View {
                                 }
                             }
                         } else if press.key == .return {
+                            guard !press.modifiers.contains(.command) else { return .ignored }
                             if press.phase == .down, removalSelection == nil, selected == items[index].id {
                                 beginRename(SourceNameEdit(media: items[index]))
                             }
@@ -1197,6 +1200,13 @@ struct LibraryView: View {
         videoWorkPreview = VideoWorkPreviewSession(work: work)
     }
 
+    private func immersiveAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
+        guard canChooseFolder, titleEdit == nil, removalSelection == nil else { return nil }
+        let folder = scope.folders.first { $0.page == selectedFolder }
+        guard let work = scope.videoWork ?? folder?.page.videoWork(in: model.snapshot.videoWorks) else { return nil }
+        return { openVideoWork(work) }
+    }
+
     private func focusBrowser() {
         Task { @MainActor in
             await Task.yield()
@@ -1233,6 +1243,17 @@ enum LibraryPage: Hashable, Sendable {
         case .creator(let id, let name): item.source.id == id && item.creator == name
         case .folder(let id, let key): item.source.id == id && item.relativePath.hasPrefix(key + "/")
         case .virtual: virtualMembers.contains(item.id)
+        }
+    }
+
+    func videoWork(in works: [IndexedVideoWork]) -> IndexedVideoWork? {
+        switch self {
+        case .source(let id):
+            works.first { $0.video.source.id == id && $0.relativePath.isEmpty }
+        case .folder(let id, let path):
+            works.first { $0.video.source.id == id && $0.relativePath == path }
+        default:
+            nil
         }
     }
 
@@ -1296,14 +1317,7 @@ struct ContentScope {
         let active = snapshot.media.filter(\.existsInSource)
         let source = page.sourceID.flatMap { id in snapshot.sources.first { $0.id == id } }
         self.source = source
-        let workPath: String? = switch page {
-        case .source: ""
-        case .folder(_, let path): path
-        default: nil
-        }
-        videoWork = workPath.flatMap { path in
-            snapshot.videoWorks.first { $0.video.source.id == source?.id && $0.relativePath == path }
-        }
+        videoWork = source == nil ? nil : page.videoWork(in: snapshot.videoWorks)
         switch page {
         case .library:
             title = "媒体库"

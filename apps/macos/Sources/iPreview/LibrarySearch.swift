@@ -486,6 +486,7 @@ struct LibrarySearchPanel: View {
                 if results.indices.contains(next) { selection = results[next] }
             }
         case .return:
+            guard !press.modifiers.contains(.command) else { return .ignored }
             if press.phase == .down { confirmResult() }
         case .space:
             if press.phase == .down, case .file(let item) = highlighted {

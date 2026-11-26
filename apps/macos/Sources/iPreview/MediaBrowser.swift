@@ -43,15 +43,25 @@ private struct LibraryBrowseModeKey: FocusedValueKey {
     typealias Value = Binding<MediaBrowseMode>
 }
 
+private struct LibraryImmersiveActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
 extension FocusedValues {
     var libraryBrowseMode: Binding<MediaBrowseMode>? {
         get { self[LibraryBrowseModeKey.self] }
         set { self[LibraryBrowseModeKey.self] = newValue }
     }
+
+    var libraryImmersiveAction: (@MainActor () -> Void)? {
+        get { self[LibraryImmersiveActionKey.self] }
+        set { self[LibraryImmersiveActionKey.self] = newValue }
+    }
 }
 
 struct LibraryBrowseCommands: Commands {
     @FocusedValue(\.libraryBrowseMode) private var mode
+    @FocusedValue(\.libraryImmersiveAction) private var openImmersive
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
@@ -60,6 +70,10 @@ struct LibraryBrowseCommands: Commands {
                     .keyboardShortcut(destination.shortcut, modifiers: .command)
                     .disabled(mode == nil)
             }
+            Divider()
+            Button("沉浸模式") { openImmersive?() }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(openImmersive == nil)
         }
     }
 }

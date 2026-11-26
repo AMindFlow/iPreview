@@ -210,6 +210,7 @@ struct MediaPreview: View {
         case .escape:
             if press.phase == .down { session.dismiss() }
         case .return, Self.keypadEnter:
+            guard !press.modifiers.contains(.command) else { return .ignored }
             if press.phase == .down, media.kind == .video, video.message == nil {
                 toggleVideoLock()
             }
