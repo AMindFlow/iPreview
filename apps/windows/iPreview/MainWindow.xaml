@@ -67,20 +67,11 @@
                     <Setter Property="BorderThickness" Value="0" />
                     <Setter Property="CornerRadius" Value="4" />
                 </Style>
-                <PathGeometry x:Key="AlbumBookmarkGeometry">
-                    <PathFigure StartPoint="1,1" IsClosed="True">
-                        <LineSegment Point="10,1" />
-                        <LineSegment Point="10,14" />
-                        <LineSegment Point="5.5,11" />
-                        <LineSegment Point="1,14" />
-                    </PathFigure>
-                </PathGeometry>
-                <Style x:Key="AlbumBookmarkPath" TargetType="Path">
-                    <Setter Property="Data" Value="{StaticResource AlbumBookmarkGeometry}" />
-                    <Setter Property="Stretch" Value="Uniform" />
-                    <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <Setter Property="StrokeThickness" Value="1.15" />
-                </Style>
+                <ControlTemplate x:Key="AlbumBookmarkIcon" TargetType="ContentControl">
+                    <Path Data="M1,1 L10,1 L10,14 L5.5,11 L1,14 Z" Stretch="Uniform"
+                          Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.15"
+                          Fill="{TemplateBinding Background}" />
+                </ControlTemplate>
                 <Style x:Key="SourceRowActionButton" TargetType="Button" BasedOn="{StaticResource LibraryIconButton}">
                     <Setter Property="Height" Value="28" />
                     <Setter Property="CornerRadius" Value="14" />
@@ -109,10 +100,10 @@
                                 Click="ToggleSidebarAlbumFavorite" AutomationProperties.Name="{Binding Favorite.ActionLabel}"
                                 ToolTipService.ToolTip="{Binding Favorite.ActionLabel}">
                             <Grid Width="12" Height="15" AutomationProperties.AccessibilityView="Raw">
-                                <Path Style="{StaticResource AlbumBookmarkPath}" />
-                                <Path Style="{StaticResource AlbumBookmarkPath}"
-                                      Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                                      Visibility="{Binding Favorite.BookmarkFill}" />
+                                <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False" />
+                                <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False"
+                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                Visibility="{Binding Favorite.BookmarkFill}" />
                             </Grid>
                         </Button>
                     </Grid>
@@ -309,9 +300,9 @@
                                               Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="0" CornerRadius="15"
                                               Click="ToggleSourceAlbumFavorite" AutomationProperties.Name="专辑收藏">
                                     <Grid Width="15" Height="18" AutomationProperties.AccessibilityView="Raw">
-                                        <Path Style="{StaticResource AlbumBookmarkPath}" />
-                                        <Path x:Name="SourceAlbumFavoriteFill" Style="{StaticResource AlbumBookmarkPath}"
-                                              Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" />
+                                        <ContentControl Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False" />
+                                        <ContentControl x:Name="SourceAlbumFavoriteFill" Template="{StaticResource AlbumBookmarkIcon}" IsTabStop="False"
+                                                        Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="Collapsed" />
                                     </Grid>
                                 </ToggleButton>
                             </Grid>
