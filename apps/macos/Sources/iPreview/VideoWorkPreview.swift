@@ -16,6 +16,7 @@ final class VideoWorkPreviewSession {
 
     let work: IndexedVideoWork
     let albums: [Album]
+    let coverCandidates: [Media]
     private(set) var selection = Collectible.tape
     private(set) var selectedAlbum = 0
     private var photoPositions: [Int]
@@ -25,8 +26,9 @@ final class VideoWorkPreviewSession {
     var photoPosition: Int { photoPositions[selectedAlbum] }
     var currentPhoto: Media { album.photos[photoPosition] }
 
-    init(work: IndexedVideoWork) {
+    init(work: IndexedVideoWork, coverCandidates: [Media]) {
         self.work = work
+        self.coverCandidates = coverCandidates
         var albums: [Album] = []
         if !work.samples.isEmpty {
             albums.append(Album(title: "官方样张", photos: work.samples))
@@ -61,6 +63,7 @@ struct VideoWorkPreview: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var video = VideoPlayback()
     @ViewState private var overviewVisible = true
+    @ViewState private var tapeCover: CGImage?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -89,7 +92,7 @@ struct VideoWorkPreview: View {
                         .transition(.opacity)
                 }
                 if overviewVisible {
-                    VideoWorkOverview(session: session, revision: revision, open: open)
+                    VideoWorkOverview(session: session, revision: revision, tapeCover: tapeCover, open: open)
                         .allowsHitTesting(!session.browsing)
                         .accessibilityHidden(session.browsing)
                 }
@@ -102,8 +105,27 @@ struct VideoWorkPreview: View {
             VideoWorkEvents(handleKey: handleOverlayKey)
                 .allowsHitTesting(false)
         }
+        .task(id: TapeCoverRequest(workID: session.work.id, revision: revision)) {
+            tapeCover = nil
+            let video = session.work.video
+            let candidates = session.coverCandidates
+            let load = Task.detached(priority: .userInitiated) {
+                await MediaImages.cassetteCover(for: video, candidates: candidates)
+            }
+            let image = await withTaskCancellationHandler {
+                await load.value
+            } onCancel: {
+                load.cancel()
+            }
+            if !Task.isCancelled { tapeCover = image }
+        }
         .onDisappear { video.stop() }
         .accessibilityIdentifier("video-work-preview")
+    }
+
+    private struct TapeCoverRequest: Equatable {
+        let workID: Int64
+        let revision: Int
     }
 
     private func open() {
@@ -167,6 +189,7 @@ struct VideoWorkColumns<Left: View, Right: View>: View {
 private struct VideoWorkOverview: View {
     let session: VideoWorkPreviewSession
     let revision: Int
+    let tapeCover: CGImage?
     let open: () -> Void
 
     @FocusState private var focused: VideoWorkPreviewSession.Collectible?
@@ -181,8 +204,7 @@ private struct VideoWorkOverview: View {
                         session.select(.tape)
                         open()
                     } label: {
-                        TapeCase(video: session.work.video, revision: revision, height: height,
-                                 opening: session.browsing)
+                        TapeCase(cover: tapeCover, height: height, opening: session.browsing)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

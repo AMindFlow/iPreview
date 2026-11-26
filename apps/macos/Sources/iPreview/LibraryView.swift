@@ -30,6 +30,7 @@ struct LibraryView: View {
     @ViewState private var preview: PreviewSession?
     @ViewState private var videoWorkPreview: VideoWorkPreviewSession?
     @FocusState private var focus: Focus?
+    @FocusState private var focusedSidebarFavorite: SourceAlbumKey?
 
     enum Focus: Hashable { case browser, searchQuery, searchResults, title }
 
@@ -288,6 +289,13 @@ struct LibraryView: View {
     private func sidebar(_ scope: ContentScope) -> some View {
         let currentAlbum = visibleAlbum(in: scope)
         let nestedAlbum = currentAlbum.flatMap { $0.relativePath.isEmpty ? nil : $0 }
+        let favorites = model.sourceAlbumIndex.favoriteAlbums.intersection(model.sourceAlbumKeys)
+        let rootFavorites = Set(favorites.filter { $0.relativePath.isEmpty }.map(\.sourceID))
+        let favoriteChildren = Dictionary(grouping: favorites.filter { !$0.relativePath.isEmpty }, by: \.sourceID)
+        let sources = model.snapshot.sources
+        let orderedSources = sources.filter { rootFavorites.contains($0.id) }
+            + sources.filter { !rootFavorites.contains($0.id) }
+        let workAlbums = Set(model.snapshot.videoWorks.map { SourceAlbumKey(media: $0.video) })
         return ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 3) {
@@ -317,9 +325,13 @@ struct LibraryView: View {
                     .frame(height: 32)
                     .foregroundStyle(.secondary)
 
-                    ForEach(model.snapshot.sources) { source in
+                    ForEach(orderedSources) { source in
                         let root = SourceAlbumKey(sourceID: source.id, relativePath: "")
                         let child = nestedAlbum.flatMap { $0.sourceID == source.id ? $0 : nil }
+                        let pinned = favoriteChildren[source.id, default: []].sorted {
+                            compareNaturally($0.relativePath, $1.relativePath) == .orderedAscending
+                        }
+                        let rows = pinned + (child.map { favorites.contains($0) ? [] : [$0] } ?? [])
                         SourceSwipeRow(isRevealed: revealedSource == source.id, enabled: canChooseFolder,
                                        setRevealed: { open in
                                            if open { revealedSource = source.id }
@@ -330,17 +342,24 @@ struct LibraryView: View {
                                        active: page.sourceID == source.id && child == nil,
                                        status: source.isAvailable ? source.layout.title : "\(source.layout.title)，离线",
                                        offline: !source.isAvailable,
-                                       album: model.rootAlbumSourceIDs.contains(source.id) ? root : nil) {
+                                       album: model.sourceAlbumKeys.contains(root) ? root : nil) {
                                 revealedSource = nil
                                 navigate(.source(source.id))
                             }
                             .help(source.path)
                         }
-                        if let child {
-                            sidebarRow(scope.title, icon: scope.videoWork == nil ? "photo.on.rectangle" : "film",
-                                       active: true, album: child)
-                                .padding(.leading, 16)
-                                .accessibilityIdentifier("current-source-album")
+                        ForEach(rows, id: \.self) { album in
+                            let active = album == child
+                            let title = String(album.relativePath.split(separator: "/").last!)
+                            sidebarRow(title, icon: workAlbums.contains(album) ? "film" : "photo.on.rectangle",
+                                       active: active, album: album) {
+                                if !active {
+                                    revealedSource = nil
+                                    navigate(.folder(source.id, album.relativePath))
+                                }
+                            }
+                            .padding(.leading, 16)
+                            .accessibilityIdentifier(active ? "current-source-album" : "source-album-\(album.sourceID)-\(album.relativePath)")
                         }
                     }
                 }
@@ -424,7 +443,8 @@ struct LibraryView: View {
                 label.accessibilityAddTraits(.isSelected)
             }
             if let album {
-                albumFavorite(album, size: 12)
+                albumFavorite(album, size: 12, sidebar: true)
+                    .focused($focusedSidebarFavorite, equals: album)
                     .accessibilityIdentifier("sidebar-album-favorite-\(album.sourceID)-\(album.relativePath)")
                     .padding(.trailing, 4)
             } else {
@@ -443,19 +463,32 @@ struct LibraryView: View {
         return album
     }
 
-    private func albumFavorite(_ album: SourceAlbumKey, size: CGFloat = 18) -> some View {
+    private func albumFavorite(_ album: SourceAlbumKey, size: CGFloat = 18, sidebar: Bool = false) -> some View {
         let favorite = model.sourceAlbumIndex.favoriteAlbums.contains(album)
         return AlbumFavoriteButton(favorite: favorite, size: size) {
-            updateAlbum { try await $0.setFavorite(!favorite, for: album) }
+            let restoreFocus = sidebar && focusedSidebarFavorite == album
+            updateAlbum(onSuccess: {
+                guard restoreFocus else { return }
+                let isCurrent = page == .folder(album.sourceID, album.relativePath)
+                if favorite && !album.relativePath.isEmpty && !isCurrent {
+                    focusBrowser()
+                } else {
+                    Task { @MainActor in
+                        await Task.yield()
+                        focusedSidebarFavorite = album
+                    }
+                }
+            }) { try await $0.setFavorite(!favorite, for: album) }
         }
         .disabled(model.isWorking || titleEdit != nil)
     }
 
-    private func updateAlbum(_ action: @escaping (Catalog) async throws -> Void) {
+    private func updateAlbum(onSuccess: @escaping () -> Void = {}, _ action: @escaping (Catalog) async throws -> Void) {
         Task {
             guard !model.isWorking else { return }
             do {
                 try await model.organize(action)
+                onSuccess()
             } catch {
                 model.error = error.localizedDescription
             }
@@ -1196,8 +1229,14 @@ struct LibraryView: View {
 
     private func openVideoWork(_ work: IndexedVideoWork) {
         guard !model.isWorking else { return }
+        let video = work.video
+        let parent = (video.relativePath as NSString).deletingLastPathComponent
+        let candidates = model.snapshot.media.filter { image in
+            image.kind == .image && image.isAvailable && image.source.id == video.source.id
+                && (image.relativePath as NSString).deletingLastPathComponent.utf8.elementsEqual(parent.utf8)
+        }
         focus = nil
-        videoWorkPreview = VideoWorkPreviewSession(work: work)
+        videoWorkPreview = VideoWorkPreviewSession(work: work, coverCandidates: candidates)
     }
 
     private func immersiveAction(in scope: ContentScope) -> (@MainActor () -> Void)? {

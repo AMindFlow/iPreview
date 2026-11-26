@@ -30,6 +30,7 @@ struct SourceAlbumOrganizationSheet: View {
     @ViewState private var working = false
     @ViewState private var error: String?
     @ViewState private var tagDraft = ""
+    @ViewState private var selectedTagSuggestion: Int64?
     @ViewState private var renamingTag: SourceAlbumTag?
     @ViewState private var deletingTag: SourceAlbumTag?
     @ViewState private var coverDraft: [Int64]?
@@ -57,11 +58,14 @@ struct SourceAlbumOrganizationSheet: View {
                 Text(error).foregroundStyle(.red)
                     .accessibilityAddTraits(.updatesFrequently)
             }
-            HStack {
-                Spacer()
-                Button("完成") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(working)
+            switch target {
+            case .addTag:
+                EmptyView()
+            default:
+                HStack {
+                    Spacer()
+                    doneButton
+                }
             }
         }
         .padding(20)
@@ -85,22 +89,71 @@ struct SourceAlbumOrganizationSheet: View {
         }
     }
 
+    private var doneButton: some View {
+        Button("完成") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .disabled(working)
+    }
+
+    private var isComposingTag: Bool {
+        tagInputFocused && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
+    }
+
     private func addTagControls(_ key: SourceAlbumKey) -> some View {
+        let query = SourceAlbumTag.names(from: tagDraft).normalized
         let attached = Set(model.sourceAlbumIndex.tags(for: key).map(\.id))
-        let available = model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) }
-        return HStack {
-            TextField("标签名称", text: $tagDraft)
-                .focused($tagInputFocused)
-                .onSubmit { addTag(key) }
-            Button("添加") { addTag(key) }
-                .disabled(working || tagDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Menu("已有标签") {
-                ForEach(available) { tag in
-                    Button(tag.name) { apply { try await $0.addTag(tag.id, to: key) } }
-                }
+        let suggestions = query.isEmpty ? [] : SourceAlbumTag.suggestions(matching: query, from:
+            model.sourceAlbumIndex.tags.filter { !attached.contains($0.id) && $0.normalizedName.hasPrefix(query) })
+        let choice = suggestions.first { $0.id == selectedTagSuggestion }
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                TextField("标签名称", text: $tagDraft)
+                    .focused($tagInputFocused)
+                    .onSubmit { addTag(key, suggestion: choice) }
+                    .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                        guard !isComposingTag, !suggestions.isEmpty else { return .ignored }
+                        let forward = press.key == .downArrow
+                        let current = suggestions.firstIndex { $0.id == selectedTagSuggestion }
+                        let next = current.map { min(max(0, $0 + (forward ? 1 : -1)), suggestions.count - 1) }
+                            ?? (forward ? 0 : suggestions.count - 1)
+                        selectedTagSuggestion = suggestions[next].id
+                        return .handled
+                    }
+                Button("添加") { addTag(key, suggestion: choice) }
+                    .disabled(working || query.isEmpty)
+                doneButton
             }
-            .disabled(working || available.isEmpty)
+            if !suggestions.isEmpty {
+                ScrollViewReader { reader in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(suggestions) { tag in
+                                Button {
+                                    addTag(key, suggestion: tag)
+                                } label: {
+                                    Text(tag.name)
+                                        .frame(maxWidth: .infinity, minHeight: 27, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .background(selectedTagSuggestion == tag.id ? Color.accentColor.opacity(0.16) : .clear,
+                                            in: .rect(cornerRadius: 4))
+                                .accessibilityAddTraits(selectedTagSuggestion == tag.id ? .isSelected : [])
+                                .id(tag.id)
+                            }
+                        }
+                    }
+                    .frame(height: CGFloat(min(5, suggestions.count)) * 27)
+                    .onChange(of: selectedTagSuggestion) { _, id in
+                        if let id { reader.scrollTo(id) }
+                    }
+                }
+                .disabled(working)
+                .accessibilityLabel("相关已有标签")
+            }
         }
+        .onChange(of: tagDraft) { _, _ in selectedTagSuggestion = nil }
         .task {
             await Task.yield()
             if !Task.isCancelled { tagInputFocused = true }
@@ -217,12 +270,16 @@ struct SourceAlbumOrganizationSheet: View {
         .disabled(position == nil && selection.count >= 4)
     }
 
-    private func addTag(_ key: SourceAlbumKey) {
+    private func addTag(_ key: SourceAlbumKey, suggestion: SourceAlbumTag?) {
         let name = tagDraft
-        let composing = tagInputFocused
-            && (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
-        guard !composing, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        apply({ _ = try await $0.addTag(named: name, to: key) }) {
+        guard !isComposingTag, !SourceAlbumTag.names(from: name).normalized.isEmpty else { return }
+        apply({ catalog in
+            if let suggestion {
+                try await catalog.addTag(suggestion.id, to: key)
+            } else {
+                _ = try await catalog.addTag(named: name, to: key)
+            }
+        }) {
             if tagDraft == name { tagDraft = "" }
             tagInputFocused = true
         }

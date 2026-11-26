@@ -107,7 +107,7 @@ public struct LibrarySnapshot: Sendable {
     public static let empty = Self(sources: [], media: [], albums: [], dataVersion: 0, videoWorks: [])
 }
 
-func compareNaturally(_ lhs: String, _ rhs: String) -> ComparisonResult {
+package func compareNaturally(_ lhs: String, _ rhs: String) -> ComparisonResult {
     let order = lhs.compare(rhs, options: [.caseInsensitive, .numeric], locale: Locale(identifier: "en_US_POSIX"))
     if order == .orderedSame {
         return lhs.compare(rhs, options: .literal)

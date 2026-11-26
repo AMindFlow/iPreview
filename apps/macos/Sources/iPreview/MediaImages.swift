@@ -17,6 +17,29 @@ enum MediaImages {
         ] as CFDictionary)
     }
 
+    static func cassetteCover(for video: Media, candidates: [Media]) async -> CGImage? {
+        let ranked = candidates.compactMap { media -> (url: URL, distance: Double, area: Double, name: String)? in
+            guard !Task.isCancelled, let url = try? media.readableURL(),
+                  let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = metadata[kCGImagePropertyPixelWidth] as? Double, width > 0,
+                  let height = metadata[kCGImagePropertyPixelHeight] as? Double, height > 0 else { return nil }
+            let orientation = metadata[kCGImagePropertyOrientation] as? Int ?? 1
+            let aspect = (5...8).contains(orientation) ? height / width : width / height
+            return (url, abs(log(aspect / (9.0 / 16))), width * height, media.name)
+        }.sorted {
+            if $0.distance != $1.distance { return $0.distance < $1.distance }
+            if $0.area != $1.area { return $0.area > $1.area }
+            return compareNaturally($0.name, $1.name) == .orderedAscending
+        }
+        for candidate in ranked {
+            guard !Task.isCancelled else { return nil }
+            if let image = image(at: candidate.url, limit: 1200) { return image }
+        }
+        guard !Task.isCancelled else { return nil }
+        return await thumbnail(for: video, limit: 1200)
+    }
+
     static func thumbnail(for media: Media, limit: Int = 420) async -> CGImage? {
         guard let url = try? media.readableURL() else { return nil }
         if media.kind == .image {
