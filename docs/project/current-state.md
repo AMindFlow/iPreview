@@ -8,6 +8,10 @@ iPreview 在 macOS 15+ Apple Silicon 与 Windows 11 x64 提供原生本地图片
 
 0.3.0 包含来源操作、文件排序、专辑组织、分组与标签搜索、两种本地作品索引及分层预览，以及带 LibVLC 本地回退的格式扩展。合集删除与主题选择延续 0.2.0 行为。工作包合入状态、候选证据和双端正式发布验收见 [0.3.0 发布与验收登记](releases/0.3.0.md)。
 
+## 0.3.1 交付
+
+0.3.1 已发布视频作品目录识别与双区沉浸预览、收藏标签和搜索交互、来源侧滑及 LibVLC 单声道转双声道修复。双端正式包的安装、启动与升级记录见 [0.3.1 交付记录](https://github.com/AMindFlow/iPreview/releases/download/v0.3.1/delivery.md)。
+
 ## 安装与交付
 
 - macOS 使用 DMG 或应用 ZIP。macOS 26+ 采用原生液态玻璃，15 使用系统材质。
@@ -16,4 +20,4 @@ iPreview 在 macOS 15+ Apple Silicon 与 Windows 11 x64 提供原生本地图片
 
 ## 后续工作
 
-外部样张提供方与获取方式待确认。PRE-008 的长按切换矩阵和 PLAT-004 的干净 Windows 11 x64 离线验收继续独立跟踪。详见[未完成清单](backlog.md)、[路线图](roadmap.md)与[完整需求](requirements.md)。
+外部样张提供方与获取方式待确认。Windows 包体瘦身在 [#26](https://github.com/AMindFlow/iPreview/issues/26) 独立跟踪。后续需求和已发布版本的验证记录集中在[总体需求 #3](https://github.com/AMindFlow/iPreview/issues/3)。

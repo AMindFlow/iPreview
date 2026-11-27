@@ -6,7 +6,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 - [一期验收登记册](releases/0.1.0.md)登记已交付功能、后续细化及 PR，实际行为由 `official/` 规格定义。
 - [未完成需求](backlog.md)单独登记部分完成、待实施、待决策和待验收项，使用原规格编号追踪。
 - [路线图](roadmap.md)记录先后依赖。[一期分工](phase-1-collaboration.md)和[二期分工](phase-2-collaboration.md)保留实际工作包及 DAG。[总体 Issue #3](https://github.com/AMindFlow/iPreview/issues/3)追踪整个产品。
-- [0.2.0 发布与验收](releases/0.2.0.md)记录交付范围和剩余工作。[预览体验 #57](https://github.com/AMindFlow/iPreview/issues/57)见 [PRE-007、010](../specs/official/preview.md#pre-007-space-打开和关闭预览)和[待验证的 PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。
+- [0.2.0 发布与验收](releases/0.2.0.md)记录交付范围和剩余工作。预览体验 [#57](https://github.com/AMindFlow/iPreview/issues/57) 已随 0.2.0 交付，包括退出选择、复制反馈和 PRE-008 连续切图保留画面。
 
 ## 原始需求逐项对应
 
@@ -23,7 +23,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-07 | 视频完整作品结构：主视频、官方样张、多个带封面写真集 | 双端按层级识别本地完整作品，样张和专用封面可省略。外部样张来源待确认，见 [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)。 |
 | ORIG-08 | 视频简化作品结构：根目录视频及样张、写真集图片平铺 | [LIB-006](../specs/official/library.md#lib-006-两种视频作品结构)双端识别根目录一个视频及任意命名的直属图片目录，样张可省略。 |
 | ORIG-09 | 音频管理体系由代理设计，用户审阅后做 | 已登记，后置且保留审阅条件：[LIB-007](../specs/spike/library.md#lib-007-音频组织)、[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
-| ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择并改善列表滚动，完整长按验收见 [PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。 |
+| ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择、改善列表滚动，并在连续切图时保留画面。见 [PR #67](https://github.com/AMindFlow/iPreview/pull/67)。 |
 | ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |
 | ORIG-12 | 精确／模糊及文件／目录搜索模式 | 0.1.0 交付精确、模糊与文件、目录筛选。0.2.0 增加创作者、专辑类别标记。0.3.0 增加结果分组、标签过滤与 `#` 联想，保留原有作用域与定位。[分类与标签搜索 PR #78](https://github.com/AMindFlow/iPreview/pull/78) |
 | ORIG-13 | 从媒体提取清晰度、作者等元信息 | 待实施：[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)。一期列表中的大小、修改时间及种类不代表此项完成。 |
