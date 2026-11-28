@@ -11,8 +11,9 @@ final class PreviewSession {
     let layout: BrowseLayout
     var index: Int
     private(set) var closingSelection: Int64?
+    private var audioSelection: Media?
 
-    var media: Media { items[index] }
+    var media: Media { audioSelection ?? items[index] }
 
     init(items: [Media], selection: Int64, layout: BrowseLayout) {
         originalItems = items
@@ -23,13 +24,22 @@ final class PreviewSession {
     }
 
     func applyOrder(_ ordered: [Media]) {
-        let currentID = media.id
+        let currentID = items[index].id
         items = ordered
         index = ordered.firstIndex { $0.id == currentID }!
     }
 
+    func selectAudioTrack(_ track: Media) {
+        audioSelection = track
+    }
+
     func dismiss() {
-        if closingSelection == nil { closingSelection = media.id }
+        guard closingSelection == nil else { return }
+        if let audioSelection, items.contains(where: { $0.id == audioSelection.id }) {
+            closingSelection = audioSelection.id
+        } else {
+            closingSelection = items[index].id
+        }
     }
 }
 
@@ -95,8 +105,16 @@ struct MediaPreview: View {
     @ViewState private var closingThumbnail: PreviewThumbnail?
     @ViewState private var video = VideoPlayback()
     @ViewState private var videoLocked = false
-    @ViewState private var scrubPosition: Double?
-    @ViewState private var scrubbing = false
+    @ViewState private var timelineKeyboardFocus = false
+    @ViewState private var comic = false
+    @ViewState private var coverSingle = true
+    @ViewState private var comicForward = true
+    @ViewState private var comicTurnTarget: Int64?
+    @ViewState private var slideState = ImageSlideState.stopped
+    @ViewState private var slideInterval = 2.0
+    @ViewState private var resolvedImage: Int64?
+    @ViewState private var resolvedLeftPage: Int64?
+    @ViewState private var resolvedRightPage: Int64?
     @FocusState private var focus: Focus?
 
     private enum Focus: Hashable { case canvas, timeline }
@@ -107,12 +125,50 @@ struct MediaPreview: View {
 
     private var media: Media { session.media }
 
+    private var comicSpread: PhotoSpread? {
+        guard comic, media.kind == .image else { return nil }
+        return PhotoSpread(index: session.index, count: session.items.count, coverSingle: coverSingle) {
+            session.items[$0].kind == .image
+        }
+    }
+
+    private struct SlideStep: Equatable {
+        let current: Int64
+        let next: Int64?
+        let seconds: Double
+        let comic: Bool
+        let coverSingle: Bool
+    }
+
+    private var slideStep: SlideStep? {
+        guard slideState == .playing, media.kind == .image, session.closingSelection == nil else { return nil }
+        if let spread = comicSpread {
+            guard comicPagesAreReady(spread) else { return nil }
+        } else {
+            guard resolvedImage == media.id else { return nil }
+        }
+        return SlideStep(current: media.id, next: nextSlide.map { session.items[$0].id },
+                         seconds: slideInterval, comic: comic, coverSingle: coverSingle)
+    }
+
+    private func comicPagesAreReady(_ spread: PhotoSpread) -> Bool {
+        resolvedLeftPage == session.items[spread.first].id &&
+            (spread.second.map { resolvedRightPage == session.items[$0].id } ?? true)
+    }
+
+    private var nextSlide: Int? {
+        let next = comicSpread.map { $0.next ?? session.items.count } ?? session.index + 1
+        guard next < session.items.count, session.items[next].kind == .image else { return nil }
+        return next
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             let sideInset: CGFloat = 30
             let topInset: CGFloat = 30
-            let bottomInset: CGFloat = media.kind == .video ? 86 : 30
+            let bottomInset: CGFloat = 86
+            let spread = session.closingSelection == nil ? comicSpread : nil
             let destination = CGRect(x: sideInset, y: topInset, width: max(0, size.width - 2 * sideInset),
                                      height: max(0, size.height - topInset - bottomInset))
             let origin = session.closingSelection == nil ? thumbnail(session.selection) : closingThumbnail
@@ -128,11 +184,24 @@ struct MediaPreview: View {
                     .ignoresSafeArea(.container, edges: .top)
                     .opacity(expanded ? 1 : 0)
                     .allowsHitTesting(false)
-                neighbors(in: size)
-                    .opacity(expanded ? 1 : 0)
+                if spread == nil {
+                    neighbors(in: size)
+                        .opacity(expanded ? 1 : 0)
+                }
                 PreviewStage(progress: expanded || reduceMotion ? 1 : 0, source: source, destination: destination,
-                             aspectRatio: displayedThumbnail?.aspectRatio) {
-                    stage(poster: displayedThumbnail?.image)
+                             aspectRatio: spread == nil ? displayedThumbnail?.aspectRatio : nil) {
+                    if let spread {
+                        ComicPhotoSpread(first: session.items[spread.first],
+                                         second: spread.second.map { session.items[$0] },
+                                         forward: comicForward,
+                                         turn: comicTurnTarget == media.id && comicPagesAreReady(spread) && !reduceMotion
+                                             ? comicTurnTarget : nil,
+                                         poster: { thumbnail($0)?.image },
+                                         firstResolved: { resolvedLeftPage = $0 },
+                                         secondResolved: { resolvedRightPage = $0 })
+                    } else {
+                        stage(poster: displayedThumbnail?.image)
+                    }
                 }
                 .opacity(expanded || source != nil ? 1 : 0)
                 .accessibilityLabel(media.name)
@@ -155,10 +224,33 @@ struct MediaPreview: View {
                         .padding(.bottom, 16)
                         .opacity(expanded ? 1 : 0)
                         .disabled(session.closingSelection != nil)
+                } else if media.kind == .image {
+                    ImagePreviewControls(comic: $comic, coverSingle: $coverSingle, slideState: $slideState,
+                                         interval: $slideInterval, focusCanvas: { focus = .canvas })
+                        .padding(.bottom, 16)
+                        .opacity(expanded ? 1 : 0)
+                        .disabled(session.closingSelection != nil)
                 }
             }
         }
         .foregroundStyle(.primary)
+        .task(id: slideStep) {
+            guard let step = slideStep else { return }
+            do {
+                try await Task.sleep(for: .seconds(step.seconds))
+                try Task.checkCancellation()
+            } catch is CancellationError {
+                return
+            } catch {
+                preconditionFailure("Unexpected slideshow timer failure: \(error)")
+            }
+            guard step == slideStep else { return }
+            if let next = nextSlide {
+                move(to: next)
+            } else {
+                slideState = .stopped
+            }
+        }
         .task {
             await Task.yield()
             guard session.closingSelection == nil else { return }
@@ -168,14 +260,17 @@ struct MediaPreview: View {
         .task(id: media.id) {
             guard session.closingSelection == nil else { return }
             videoLocked = false
-            scrubPosition = nil
-            scrubbing = false
+            timelineKeyboardFocus = false
             if media.kind == .video {
+                slideState = .stopped
+                comic = false
                 video.start(media)
             } else {
                 video.stop()
             }
         }
+        .onChange(of: comic) { _, _ in comicTurnTarget = nil }
+        .onChange(of: coverSingle) { _, _ in comicTurnTarget = nil }
         .onChange(of: video.message) { _, message in
             if message != nil {
                 videoLocked = false
@@ -186,6 +281,7 @@ struct MediaPreview: View {
             if let selection { dismiss(returningTo: selection) }
         }
         .onDisappear { video.stop() }
+        .focusedSceneValue(\.previewPlayAction, session.closingSelection == nil && video.message == nil ? startPlayback : nil)
         .accessibilityIdentifier("media-preview")
     }
 
@@ -222,17 +318,22 @@ struct MediaPreview: View {
                 if press.phase == .down { session.dismiss() }
             }
         case .tab:
-            guard media.kind == .video, video.message == nil, video.duration > 0 else { return .handled }
-            if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
+            if media.kind == .image { return .ignored }
+            guard video.message == nil, video.duration > 0 else { return .handled }
+            if press.phase == .down {
+                focus = focus == .timeline ? .canvas : .timeline
+                timelineKeyboardFocus = focus == .timeline
+            }
         default:
             if videoLocked {
                 if press.key == .leftArrow { video.seek(video.elapsed - 15) }
                 if press.key == .rightArrow { video.seek(video.elapsed + 15) }
             } else if focus == .timeline {
+                timelineKeyboardFocus = true
                 let backward = press.key == .leftArrow || press.key == .downArrow
                 video.seek(video.elapsed + (backward ? -0.25 : 0.25))
             } else if let destination = neighbor(toward: press.key) {
-                session.index = destination
+                move(to: destination)
             }
         }
         return .handled
@@ -241,6 +342,14 @@ struct MediaPreview: View {
     private func toggleVideoLock() {
         videoLocked.toggle()
         focus = .canvas
+    }
+
+    private func startPlayback() {
+        if media.kind == .image {
+            slideState = .playing
+        } else if !video.isPlaying {
+            video.toggle()
+        }
     }
 
     @ViewBuilder
@@ -258,8 +367,8 @@ struct MediaPreview: View {
                         }
                     }
             }
-        } else {
-            PhotoCanvas(media: media, poster: poster)
+        } else if media.kind == .image {
+            PhotoCanvas(media: media, poster: poster, onResolved: { resolvedImage = $0 })
         }
     }
 
@@ -277,7 +386,7 @@ struct MediaPreview: View {
                 navigationButton(toward: .downArrow, icon: "chevron.down", label: "下方媒体")
             }
             .padding(.top, 3)
-            .padding(.bottom, media.kind == .video ? 57 : 3)
+            .padding(.bottom, 57)
         }
     }
 
@@ -285,7 +394,7 @@ struct MediaPreview: View {
     private func navigationButton(toward key: KeyEquivalent, icon: String, label: String) -> some View {
         if let destination = neighbor(toward: key) {
             Button {
-                session.index = destination
+                move(to: destination)
                 focus = .canvas
             } label: {
                 Image(systemName: icon)
@@ -300,7 +409,21 @@ struct MediaPreview: View {
     }
 
     private func neighbor(toward key: KeyEquivalent) -> Int? {
-        session.layout.neighbor(of: session.index, toward: key, count: session.items.count)
+        if let spread = comicSpread {
+            switch key {
+            case .leftArrow: return spread.previous
+            case .rightArrow: return spread.next
+            default: return nil
+            }
+        }
+        return session.layout.neighbor(of: session.index, toward: key, count: session.items.count)
+    }
+
+    private func move(to index: Int) {
+        let turningPage = comicSpread != nil && session.items[index].kind == .image
+        comicForward = index > session.index
+        comicTurnTarget = turningPage ? session.items[index].id : nil
+        session.index = index
     }
 
     @ViewBuilder
@@ -349,40 +472,10 @@ struct MediaPreview: View {
 
             skipButton(seconds: 15, icon: "goforward.15", label: "前进 15 秒")
 
-            Text(videoTimeLabel(scrubPosition ?? video.elapsed))
-                .monospacedDigit()
-                .accessibilityLabel("播放位置 \(videoTimeLabel(scrubPosition ?? video.elapsed))")
-
-            Slider(value: Binding(
-                get: { min(scrubPosition ?? video.elapsed, max(video.duration, 1)) },
-                set: { position in
-                    if scrubbing {
-                        scrubPosition = position
-                    } else {
-                        video.seek(position)
-                    }
-                }
-            ), in: 0...max(video.duration, 1), onEditingChanged: { editing in
-                scrubbing = editing
-                if !editing {
-                    focus = .timeline
-                    if let scrubPosition {
-                        video.seek(scrubPosition)
-                        self.scrubPosition = nil
-                    }
-                }
-            })
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("视频进度")
-            .disabled(video.duration <= 0)
-            .focusable(video.duration > 0, interactions: .edit)
-            .focused($focus, equals: .timeline)
-            .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
-
-            Text(videoTimeLabel(video.duration))
-                .monospacedDigit()
-                .accessibilityLabel("总时长 \(videoTimeLabel(video.duration))")
+            VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 12,
+                          showsKeyboardFocus: $timelineKeyboardFocus,
+                          keys: Self.previewKeys, handleKey: handleKey)
+                .id(media.id)
 
             Button(action: toggleVideoLock) {
                 Label(videoLocked ? "已锁定" : "锁定", systemImage: videoLocked ? "lock.fill" : "lock.open")
@@ -475,11 +568,14 @@ private struct PreviewTitleBar: View {
                 .padding(.leading, 12)
             }
             .overlay(alignment: .trailing) {
-                MediaSortMenu(sort: $session.sort)
-                    .disabled(session.items.count < 2 || session.closingSelection != nil)
-                    .padding(.trailing, 12)
+                if session.media.kind != .audio {
+                    MediaSortMenu(sort: $session.sort)
+                        .disabled(session.items.count < 2 || session.closingSelection != nil)
+                        .padding(.trailing, 12)
+                }
             }
             .task(id: session.sort) {
+                guard session.media.kind != .audio else { return }
                 let request = MediaSortRequest(items: session.originalItems, sort: session.sort)
                 let ordered = await request.ordered()
                 if !Task.isCancelled, session.closingSelection == nil { session.applyOrder(ordered) }

@@ -9,7 +9,18 @@ enum MediaImages {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
             return nil
         }
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+        return image(from: source, limit: limit)
+    }
+
+    static func image(data: Data, limit: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return nil
+        }
+        return image(from: source, limit: limit)
+    }
+
+    private static func image(from source: CGImageSource, limit: Int) -> CGImage? {
+        CGImageSourceCreateThumbnailAtIndex(source, 0, [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: limit,
@@ -17,8 +28,8 @@ enum MediaImages {
         ] as CFDictionary)
     }
 
-    static func cassetteCover(for video: Media, candidates: [Media]) async -> CGImage? {
-        let ranked = candidates.compactMap { media -> (url: URL, distance: Double, area: Double, name: String)? in
+    static func cassetteCover(for work: IndexedVideoWork) async -> CGImage? {
+        let ranked = work.samples.compactMap { media -> (url: URL, distance: Double, area: Double, name: String)? in
             guard !Task.isCancelled, let url = try? media.readableURL(),
                   let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -37,10 +48,11 @@ enum MediaImages {
             if let image = image(at: candidate.url, limit: 1200) { return image }
         }
         guard !Task.isCancelled else { return nil }
-        return await thumbnail(for: video, limit: 1200)
+        return await thumbnail(for: work.video, limit: 1200)
     }
 
     static func thumbnail(for media: Media, limit: Int = 420) async -> CGImage? {
+        if media.kind == .audio { return await AudioArtwork.embedded(in: media, limit: limit) }
         guard let url = try? media.readableURL() else { return nil }
         if media.kind == .image {
             return image(at: url, limit: limit)
@@ -75,7 +87,7 @@ struct MediaThumbnail: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                 } else {
-                    Image(systemName: media.isAvailable ? (media.kind == .video ? "film" : "photo") : "externaldrive.badge.xmark")
+                    Image(systemName: media.isAvailable ? media.kind.icon : "externaldrive.badge.xmark")
                         .font(.title2)
                         .foregroundStyle(.tertiary)
                 }
@@ -101,6 +113,8 @@ struct MediaThumbnail: View {
 struct PhotoCanvas: View {
     let media: Media
     var poster: CGImage?
+    var alignment: Alignment = .center
+    var onResolved: ((Int64) -> Void)?
     @ViewState private var loadedID: Int64?
     @ViewState private var photo: CGImage?
     @ViewState private var animation: NSImage?
@@ -114,7 +128,7 @@ struct PhotoCanvas: View {
                 } else if loadedID != media.id, let poster {
                     stillImage(poster)
                 } else if let animation {
-                    AnimatedPhoto(image: animation)
+                    AnimatedPhoto(image: animation, alignment: imageAlignment)
                 } else if let still = photo ?? poster {
                     stillImage(still)
                 } else {
@@ -123,7 +137,7 @@ struct PhotoCanvas: View {
                         .accessibilityLabel("正在读取图片")
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: alignment)
         }
         .task(id: media.id) {
             let media = media
@@ -157,13 +171,19 @@ struct PhotoCanvas: View {
                     animation = image
                 }
                 error = nil
-                loadedID = media.id
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
-                loadedID = media.id
             }
+            loadedID = media.id
+            onResolved?(media.id)
         }
+    }
+
+    private var imageAlignment: NSImageAlignment {
+        if alignment.horizontal == .leading { return .alignLeft }
+        if alignment.horizontal == .trailing { return .alignRight }
+        return .alignCenter
     }
 
     private func stillImage(_ image: CGImage) -> some View {
@@ -204,6 +224,7 @@ struct PreviewError: View {
 
 private struct AnimatedPhoto: NSViewRepresentable {
     let image: NSImage
+    let alignment: NSImageAlignment
 
     func makeNSView(context: Context) -> NSImageView {
         let view = NSImageView()
@@ -218,5 +239,6 @@ private struct AnimatedPhoto: NSViewRepresentable {
 
     func updateNSView(_ view: NSImageView, context: Context) {
         if view.image !== image { view.image = image }
+        view.imageAlignment = alignment
     }
 }

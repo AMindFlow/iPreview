@@ -62,9 +62,15 @@ public sealed partial class MainWindow
         var selected = previewTiles[previewIndex];
         previewTiles = ordered;
         previewIndex = ordered.IndexOf(selected);
-        IndexLabel.Text = $"{previewIndex + 1} / {ordered.Count}";
-        UpdatePreviewNavigation();
-        RefreshPreviewNeighbors();
+        if (ComicReadingActive)
+            ShowPreview(previewIndex, poster: null);
+        else
+        {
+            UpdateImagePreviewIndex(spread: null);
+            UpdatePreviewNavigation();
+            RefreshPreviewNeighbors();
+            RestartImageSlideClock();
+        }
         if (!previewVideoLocked)
             PreviewCanvas.Focus(FocusState.Programmatic);
     }
@@ -72,6 +78,11 @@ public sealed partial class MainWindow
     private void RefreshPreviewNeighbors()
     {
         var generation = ++previewNeighborGeneration;
+        if (ComicReadingActive || musicPreview is not null)
+        {
+            NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
+            return;
+        }
         LoadNeighbor(NeighborLeft, BrowseDirection.Left, generation);
         LoadNeighbor(NeighborRight, BrowseDirection.Right, generation);
         LoadNeighbor(NeighborTop, BrowseDirection.Up, generation);

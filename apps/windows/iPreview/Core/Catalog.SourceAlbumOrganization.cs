@@ -71,7 +71,7 @@ internal sealed record SourceAlbumIndex(List<SourceAlbumTag> Tags,
 
     public IReadOnlyList<Media> Covers(SourceAlbumKey album, IEnumerable<Media> members)
     {
-        var available = members.Where(item => item.Available && !item.IsVideo).ToDictionary(item => item.Id);
+        var available = members.Where(item => item.Available && item.IsImage).ToDictionary(item => item.Id);
         var ids = CoverIds(ConfiguredCovers.GetValueOrDefault(album) ?? [],
             available.Values.Select(item => (item.Id, item.RelativePath)));
         return ids.Select(id => available[id]).ToArray();

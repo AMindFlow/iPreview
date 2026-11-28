@@ -2,6 +2,8 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using IPreview;
 
+await Mp3ArtworkChecks.Run();
+
 var list = new BrowseLayout(BrowseMode.List, 1);
 Check(list.NeighborOf(1, 3, BrowseDirection.Up) == 0 &&
       list.NeighborOf(1, 3, BrowseDirection.Down) == 2 &&
@@ -22,11 +24,39 @@ Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
       grid.NeighborOf(7, 8, BrowseDirection.Up) == 4 &&
       grid.NeighborOf(5, 8, BrowseDirection.Down) is null, "preview stays in a grid column");
 
+(int Count, bool CoverSingle, int[][] Pages)[] comics =
+[
+    (6, true, [[0], [1, 2], [3, 4], [5]]),
+    (6, false, [[0, 1], [2, 3], [4, 5]]),
+    (7, true, [[0], [1, 2], [3, 4], [5, 6]]),
+    (7, false, [[0, 1], [2, 3], [4, 5], [6]]),
+];
+foreach (var (count, coverSingle, pages) in comics)
+{
+    for (var offset = 0; offset < pages.Length; offset++)
+    {
+        var expected = pages[offset];
+        foreach (var page in expected)
+        {
+            var spread = PhotoSpread.Around(page, count, coverSingle, _ => true);
+            Check(spread.First == expected[0] && spread.Second == (expected.Length == 2 ? expected[1] : (int?)null) &&
+                  spread.Previous == (offset > 0 ? pages[offset - 1][0] : (int?)null) &&
+                  spread.Next == (offset + 1 < pages.Length ? pages[offset + 1][0] : (int?)null),
+                  $"comic page {page + 1} of {count} with single cover {coverSingle}");
+        }
+    }
+}
+var beforeVideo = PhotoSpread.Around(2, 7, false, index => index != 3);
+Check(beforeVideo is { First: 2, Second: null, Next: 3 }, "comic spread does not pair across video");
+var afterVideo = PhotoSpread.Around(4, 7, true, index => index != 3);
+Check(afterVideo is { First: 4, Second: null, Previous: 3, Next: 5 }, "comic cover starts fresh after video");
+
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {
     CheckMediaSort(work);
     CheckNativeVideoFormats(work);
+    CheckAudioCatalogUpgrade(work);
     var creator = Path.Combine(work, "北京");
     var mixed = Path.Combine(work, "catalog");
     var flat = Path.Combine(work, "flat");
@@ -107,7 +137,7 @@ try
             "global exact file respects an explicit suffix");
         Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
             "global exact directory requires its complete name");
-        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", IsVideo = false };
+        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", Kind = MediaKind.Image };
         Check(MediaSearch.Find(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
                 .Single().Name == "Frame.v2.jpg", "the file stem can contain dots");
         Check(MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
@@ -340,6 +370,74 @@ static void CheckAlbumDeletion(Catalog catalog, string data, long retained, long
     Check(sourcePaths.All(path => File.ReadAllText(path) == "fixture") &&
           sourcePaths.Select(File.GetLastWriteTimeUtc).SequenceEqual(originalTimes),
         "deletion preserves source media contents and modification times");
+}
+
+static void CheckAudioCatalogUpgrade(string work)
+{
+    var sourcePath = Path.Combine(work, "audio-upgrade-source");
+    string[] tracks = ["Music/1.MP3", "Music/2.m4a", "Music/3.FLAC", "Music/10.wav"];
+    foreach (var path in tracks.Concat(["Music/2.jpg", "Work/video.mp4", "Work/官方样张.jpg",
+                                       "Work/pictures/1.png", "Work/sidecar.wav", "Work/pictures/cue.mp3"]))
+        AddFile(sourcePath, path);
+    var data = Directory.CreateDirectory(Path.Combine(work, "audio-upgrade-db")).FullName;
+    var databasePath = Path.Combine(data, "library.sqlite3");
+    using (var versionFive = new Sqlite(databasePath))
+    {
+        foreach (var migration in new[] { "001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql",
+                                          "004-video-works.sql", "005-source-media-identities.sql" })
+        {
+            using var stream = typeof(Catalog).Assembly.GetManifestResourceStream("iPreview.Migrations." + migration)!;
+            using var script = new StreamReader(stream);
+            versionFive.ExecuteScript(script.ReadToEnd());
+        }
+        versionFive.Execute("INSERT INTO sources (id, path, layout) VALUES (4, ?, 'creator');", sourcePath);
+        versionFive.ExecuteScript("""
+            INSERT INTO media VALUES (8, 4, 'Work/video.mp4', 'video', 1),
+                (9, 4, 'Work/官方样张.jpg', 'image', 1), (10, 4, 'Work/pictures/1.png', 'image', 1),
+                (11, 4, 'Work/Offline.png', 'image', 0);
+            UPDATE catalog_identity_sequence SET last_id = 50 WHERE entity = 'media';
+            INSERT INTO albums (id, name) VALUES (20, '旧合集');
+            INSERT INTO album_media VALUES (20, 8, 1), (20, 10, 0);
+            INSERT INTO source_album_organization VALUES (30, 4, 'Work', 1, 7);
+            INSERT INTO tags (id, name, normalized_name) VALUES (31, '旧标签', '旧标签');
+            INSERT INTO source_album_tags VALUES (30, 31);
+            INSERT INTO source_album_cover_media VALUES (30, 9, 0), (30, 10, 1);
+            INSERT INTO video_works VALUES (8, 'compact');
+            INSERT INTO video_work_images VALUES (8, 9, 'sample', 0, 0), (8, 10, 'photo', 0, 0);
+            """);
+        Check(versionFive.Query("PRAGMA user_version;", row => row.Number(0)).Single() == 5, "populated version five fixture");
+    }
+
+    using var catalog = new Catalog(data);
+    var migrated = catalog.Read();
+    var source = migrated.Sources[4];
+    var videoWork = migrated.VideoWorks.Single();
+    var album = catalog.ReadSourceAlbumOrganization(new SourceAlbumKey(source.Id, "Work"));
+    Check(migrated.Media.Select(item => item.Id).Order().SequenceEqual([8L, 9L, 10L, 11L]) &&
+          !migrated.Media.Single(item => item.Id == 11).Available, "music migration preserves old IDs and availability");
+    Check(migrated.AlbumMembers[20].Select(item => item.Id).SequenceEqual([10L, 8L]), "music migration preserves collection order");
+    Check(album.Favorite && album.RatingHalf == 7 && album.Tags.Single().Id == 31 &&
+          album.ConfiguredCoverIds.SequenceEqual([9L, 10L]) && album.EffectiveCoverIds.SequenceEqual([9L, 10L]),
+          "music migration preserves album organization and cover references");
+    Check(videoWork.Video.Id == 8 && videoWork.Samples.Single().Id == 9 && videoWork.PhotoSets.Single().Photos.Single().Id == 10,
+          "music migration preserves old work membership");
+
+    catalog.Rescan(source.Id, MediaFiles.Scan(source.Path, source.Layout));
+    var rescanned = catalog.Read();
+    var updatedWork = rescanned.VideoWorks.Single();
+    var indexedTracks = rescanned.Media.Where(item => item.IsAudio && item.ParentRelativePath == "Music").ToArray();
+    Check(indexedTracks.Select(item => item.RelativePath).ToHashSet().SetEquals(tracks) &&
+          indexedTracks.All(item => item.Available && !item.IsImage && !item.IsVideo && item.Id > 50),
+          "rescan indexes the four audio formats in the directory without reusing historical IDs");
+    Check(updatedWork.Video.Id == 8 && updatedWork.Samples.Single().Id == 9 &&
+          updatedWork.PhotoSets.Single().Photos.Single().Id == 10 &&
+          rescanned.Media.Single(item => item.RelativePath == "Work/sidecar.wav").IsAudio, "audio remains distinct from video work artwork");
+    var flat = MediaFiles.Probe(Path.Combine(source.Path, "Music")).Options[Layout.Flat];
+    Check(flat.Count(item => item.Kind == MediaKind.Audio) == 4, "flat audio album import");
+
+    using var database = new Sqlite(databasePath);
+    Check(database.Query("PRAGMA user_version;", row => row.Number(0)).Single() == 6 &&
+          database.Query("PRAGMA foreign_key_check;", _ => true).Count == 0, "music migration leaves valid foreign keys");
 }
 
 static void CheckSourceAlbumOrganization(string work)
@@ -1025,7 +1123,7 @@ static void CheckMediaSort(string work)
         var path = Path.Combine(root, fixture.Name);
         File.WriteAllBytes(path, new byte[fixture.Size]);
         File.SetLastWriteTimeUtc(path, fixture.Modified);
-        return new Media(index + 1, source, fixture.Name, IsVideo: false, Present: true);
+        return new Media(index + 1, source, fixture.Name, MediaKind.Image, Present: true);
     }).Reverse().ToArray();
     File.Move(Path.Combine(root, "20.png"), Path.Combine(work, "unavailable.png"));
 

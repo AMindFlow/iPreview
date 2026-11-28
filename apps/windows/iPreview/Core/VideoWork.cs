@@ -22,9 +22,9 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
     public List<ScannedMedia> IndexEntries(string prefix)
     {
         var videoPath = prefix + Video.RelativePath;
-        var entries = new List<ScannedMedia> { new(videoPath, true, new VideoWorkMembership.Video(Structure)) };
+        var entries = new List<ScannedMedia> { new(videoPath, MediaKind.Video, new VideoWorkMembership.Video(Structure)) };
         ScannedMedia Image(ScannedMedia file, VideoWorkImageRole role, int set, int position) =>
-            new(prefix + file.RelativePath, false, new VideoWorkMembership.Image(videoPath, role, set, position));
+            new(prefix + file.RelativePath, MediaKind.Image, new VideoWorkMembership.Image(videoPath, role, set, position));
         entries.AddRange(Samples.Select((file, index) => Image(file, VideoWorkImageRole.Sample, 0, index)));
         for (var set = 0; set < PhotoSets.Count; set++)
         {
@@ -38,10 +38,11 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
 
     public static VideoWorkRecognition Recognize(string root, IEnumerable<ScannedMedia> entries)
     {
-        var byParent = entries.ToLookup(entry => SourceRename.SplitPath(entry.RelativePath).Parent, StringComparer.Ordinal);
+        var byParent = entries.Where(entry => entry.IsImage || entry.IsVideo)
+            .ToLookup(entry => SourceRename.SplitPath(entry.RelativePath).Parent, StringComparer.Ordinal);
         var directFolders = byParent.Where(group => group.Key.Length != 0 && !group.Key.Contains('/')).ToArray();
         var nestedFolders = byParent.Where(group => group.Key.Contains('/')).ToArray();
-        var photoFolders = directFolders.Where(group => group.All(media => !media.IsVideo)).ToArray();
+        var photoFolders = directFolders.Where(group => group.All(media => media.IsImage)).ToArray();
         var rootVideos = byParent[""].Where(media => media.IsVideo).ToArray();
 
         if (rootVideos.Length != 0)
@@ -52,7 +53,7 @@ internal sealed record VideoWork(string Root, VideoWorkStructure Structure, Scan
                 nestedFolders.Any(group => group.Any(media => media.IsVideo)))
                 return new VideoWorkRecognition.Ambiguous();
 
-            var rootImages = byParent[""].Where(media => !media.IsVideo).ToArray();
+            var rootImages = byParent[""].Where(media => media.IsImage).ToArray();
             var markedSamples = rootImages.Where(media => Stem(media) == SamplesName).ToArray();
             if (markedSamples.Length > 1)
                 return new VideoWorkRecognition.Ambiguous();

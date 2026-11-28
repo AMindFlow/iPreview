@@ -47,7 +47,9 @@ public struct VideoWork: Sendable {
     }
 
     static func recognize(root: URL, entries: [ScanEntry]) -> VideoWorkRecognition {
-        let byParent = Dictionary(grouping: entries) { ($0.relativePath as NSString).deletingLastPathComponent }
+        let byParent = Dictionary(grouping: entries.filter { $0.kind != .audio }) {
+            ($0.relativePath as NSString).deletingLastPathComponent
+        }
         let atRoot = byParent["", default: []]
         let rootVideos = atRoot.filter { $0.kind == .video }
         let firstLevel = byParent.filter { !$0.key.isEmpty && !$0.key.contains("/") }

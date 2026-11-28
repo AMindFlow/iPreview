@@ -552,7 +552,7 @@ private extension GlobalSearchResult {
 
     var symbol: String {
         switch (self, category) {
-        case (.file(let item), _): item.kind == .video ? "film" : "photo"
+        case (.file(let item), _): item.kind.icon
         case (_, .creator): "person.crop.square"
         case (_, .album): "photo.on.rectangle"
         case (.directory, _): "folder"

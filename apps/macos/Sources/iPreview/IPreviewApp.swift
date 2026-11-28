@@ -19,6 +19,7 @@ struct IPreviewApp: App {
             LibraryBrowseCommands()
             LibraryImportCommands()
             LibrarySearchCommands()
+            MediaPreviewCommands()
         }
     }
 }
@@ -27,10 +28,44 @@ private struct LibraryImportActionKey: FocusedValueKey {
     typealias Value = @MainActor () -> Void
 }
 
+private struct LibraryMetadataActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
+private struct PreviewPlayActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
 extension FocusedValues {
     var libraryImportAction: (@MainActor () -> Void)? {
         get { self[LibraryImportActionKey.self] }
         set { self[LibraryImportActionKey.self] = newValue }
+    }
+
+    var libraryMetadataAction: (@MainActor () -> Void)? {
+        get { self[LibraryMetadataActionKey.self] }
+        set { self[LibraryMetadataActionKey.self] = newValue }
+    }
+
+    var previewPlayAction: (@MainActor () -> Void)? {
+        get { self[PreviewPlayActionKey.self] }
+        set { self[PreviewPlayActionKey.self] = newValue }
+    }
+}
+
+private struct MediaPreviewCommands: Commands {
+    @FocusedValue(\.libraryMetadataAction) private var showMetadata
+    @FocusedValue(\.previewPlayAction) private var startPlayback
+
+    var body: some Commands {
+        CommandGroup(replacing: .printItem) {
+            Button("媒体元信息") { showMetadata?() }
+                .keyboardShortcut("i", modifiers: .command)
+                .disabled(showMetadata == nil)
+            Button("开始播放") { startPlayback?() }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(startPlayback == nil)
+        }
     }
 }
 

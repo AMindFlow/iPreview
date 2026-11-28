@@ -17,7 +17,7 @@ internal sealed partial class Catalog : IDisposable
     private static readonly string[] Migrations =
     [
         "001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql",
-        "004-video-works.sql", "005-source-media-identities.sql"
+        "004-video-works.sql", "005-source-media-identities.sql", "006-audio-media.sql"
     ];
     private readonly Sqlite database;
     private readonly string dataDirectory;
@@ -29,6 +29,8 @@ internal sealed partial class Catalog : IDisposable
         database = new Sqlite(Path.Combine(this.dataDirectory, "library.sqlite3"));
         try
         {
+            // Rebuilding media must preserve existing dependent rows, including cascaded work roles.
+            database.ExecuteScript("PRAGMA foreign_keys = OFF;");
             database.InTransaction(() =>
             {
                 var version = database.Query("PRAGMA user_version;", row => row.Number(0)).Single();
@@ -43,7 +45,11 @@ internal sealed partial class Catalog : IDisposable
                     using var reader = new StreamReader(resource);
                     database.ExecuteScript(reader.ReadToEnd());
                 }
+
+                if (version < Migrations.Length && database.Query("PRAGMA foreign_key_check;", _ => true).Count != 0)
+                    throw new InvalidDataException("媒体库升级发现无效引用。");
             });
+            database.ExecuteScript("PRAGMA foreign_keys = ON;");
             RecoverSourceRename();
         }
         catch
@@ -80,7 +86,7 @@ internal sealed partial class Catalog : IDisposable
                     row.Number(3) != 0 && MediaFiles.IsLocalRootAvailable(path));
             }).ToDictionary(source => source.Id);
             var media = database.Query("SELECT id, source_id, relative_path, kind, available FROM media;", row =>
-                new Media(row.Number(0), sources[row.Number(1)], row.Text(2), row.Text(3) == "video", row.Number(4) != 0));
+                new Media(row.Number(0), sources[row.Number(1)], row.Text(2), MediaFiles.DecodeKind(row.Text(3)), row.Number(4) != 0));
             var albums = database.Query("SELECT id, name FROM albums ORDER BY name COLLATE NOCASE, id;",
                 row => new Album(row.Number(0), row.Text(1)));
             var videoWorks = ReadVideoWorks(media);
@@ -152,12 +158,11 @@ internal sealed partial class Catalog : IDisposable
         database.Execute("UPDATE media SET available = 0 WHERE source_id = ?;", source);
         foreach (var file in files)
         {
-            var kind = file.IsVideo ? "video" : "image";
             database.Execute("""
                 INSERT INTO media (id, source_id, relative_path, kind)
                 SELECT last_id + 1, ?, ?, ? FROM catalog_identity_sequence WHERE entity = 'media'
                 ON CONFLICT (source_id, relative_path) DO UPDATE SET kind = excluded.kind, available = 1;
-                """, source, file.RelativePath, kind);
+                """, source, file.RelativePath, MediaFiles.StoreKind(file.Kind));
         }
         ReplaceVideoWorks(source, files);
     }

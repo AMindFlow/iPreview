@@ -26,11 +26,11 @@ public sealed partial class MainWindow
         public Media Media { get; } = media;
         public string FileName => Media.FileName;
         public string DisplayPath => Media.DisplayPath;
-        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : "";
+        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : Media.IsAudio ? "♪ 音频" : "";
         public Visibility BadgeVisibility => Label.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         public Brush RowBackground => alternateRow ? AlternateBackground : TransparentBackground;
         private string Extension => Path.GetExtension(Media.RelativePath).TrimStart('.').ToUpperInvariant();
-        public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : "图像")}";
+        public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : Media.IsAudio ? "音频" : "图像")}";
         public TileDetails Details { get; private set; } = TileDetails.Unavailable;
         public Task<TileDetails>? DetailsRequest { get; set; }
         private bool albumRemovalSelection;
@@ -136,6 +136,8 @@ public sealed partial class MainWindow
             FilmstripPane.Visibility = browser == Filmstrip ? mediaVisibility : Visibility.Collapsed;
             Gallery.ItemsSource = Gallery.Visibility == Visibility.Visible ? tiles : null;
             DetailsList.ItemsSource = DetailsPane.Visibility == Visibility.Visible ? tiles : null;
+            if (!ReferenceEquals(Filmstrip.ItemsSource, tiles))
+                FilmstripImage.Source = null;
             Filmstrip.ItemsSource = FilmstripPane.Visibility == Visibility.Visible ? tiles : null;
             browser.SelectionMode = SelectingAlbumMembers ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
             if (SelectingAlbumMembers)
@@ -216,11 +218,20 @@ public sealed partial class MainWindow
     private async void UpdateFilmstripPreview(Tile? focused = null)
     {
         var generation = ++filmstripGeneration;
-        FilmstripImage.Source = null;
         FilmstripMessage.Visibility = Visibility.Collapsed;
         var tile = focused ?? Selection;
         if (FilmstripPane.Visibility == Visibility.Collapsed || tile is null)
+        {
+            FilmstripImage.Source = null;
             return;
+        }
+        FilmstripImage.Visibility = Visibility.Visible;
+
+        if (tile.Media.IsAudio)
+        {
+            ShowFilmstripMessage(tile.Media.Available ? tile.FileName : "媒体源不可用");
+            return;
+        }
 
         try
         {
@@ -228,10 +239,8 @@ public sealed partial class MainWindow
                 ? await DecodeVideoThumbnail(tile.Media, 1280)
                 : await DecodeImage(tile.Media, 1600, false, (_, _) =>
                 {
-                    if (generation != filmstripGeneration)
-                        return;
-                    FilmstripImage.Source = null;
-                    ShowFilmstripMessage("无法显示此媒体");
+                    if (generation == filmstripGeneration)
+                        ShowFilmstripMessage("无法显示此媒体");
                 });
             if (generation != filmstripGeneration || FilmstripMessage.Visibility == Visibility.Visible)
                 return;
@@ -249,6 +258,7 @@ public sealed partial class MainWindow
 
     private void ShowFilmstripMessage(string message)
     {
+        FilmstripImage.Visibility = Visibility.Collapsed;
         FilmstripMessage.Text = message;
         FilmstripMessage.Visibility = Visibility.Visible;
     }

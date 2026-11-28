@@ -1,32 +1,36 @@
 namespace IPreview;
 
 internal enum Layout { Flat, Creator, MultiCreator }
+internal enum MediaKind { Image, Video, Audio }
 
 internal sealed record Source(long Id, string Path, Layout Layout, bool Available)
 {
     public string Name => MediaFiles.FolderName(Path);
 }
 
-internal sealed record Media(long Id, Source Source, string RelativePath, bool IsVideo, bool Present,
+internal sealed record Media(long Id, Source Source, string RelativePath, MediaKind Kind, bool Present,
     string? WorkAlbumPath = null)
 {
+    public bool IsImage => Kind == MediaKind.Image;
+    public bool IsVideo => Kind == MediaKind.Video;
+    public bool IsAudio => Kind == MediaKind.Audio;
     public string FileName => RelativePath.Split('/')[^1];
+    public string ParentRelativePath => SourceRename.SplitPath(RelativePath).Parent;
     public string DisplayPath => Source.Name + "/" + RelativePath;
     public bool Available => Present && Source.Available;
 }
 
 internal sealed record Album(long Id, string Name);
-internal sealed record ScannedMedia(string RelativePath, bool IsVideo, VideoWorkMembership? VideoWork = null);
+internal sealed record ScannedMedia(string RelativePath, MediaKind Kind, VideoWorkMembership? VideoWork = null)
+{
+    public bool IsImage => Kind == MediaKind.Image;
+    public bool IsVideo => Kind == MediaKind.Video;
+}
 internal sealed record ImportSummary(string Path, IReadOnlyDictionary<Layout, List<ScannedMedia>> Options);
 
 internal static class MediaFiles
 {
     private const FileAttributes Skipped = FileAttributes.Hidden | FileAttributes.ReparsePoint;
-    private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"
-    };
-
     public static string FolderName(string path)
     {
         var trimmed = Path.TrimEndingDirectorySeparator(path);
@@ -178,17 +182,40 @@ internal static class MediaFiles
         .Where(item => !IsSkipped(item.Name, item.Attributes)).ToArray();
 
     private static ScannedMedia[] ReadFiles(string root, FileSystemInfo[] items) => items.OfType<FileInfo>()
-        .Where(item => IsSupportedExtension(item.Extension))
-        .Select(item => new ScannedMedia(RelativePath(root, item.FullName), IsVideoExtension(item.Extension)))
+        .Select(item => KindForExtension(item.Extension) is { } kind
+            ? new ScannedMedia(RelativePath(root, item.FullName), kind)
+            : null)
+        .OfType<ScannedMedia>()
         .ToArray();
 
     private static string RelativePath(string root, string path) =>
         Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
 
-    internal static bool IsSupportedExtension(string extension) => IsVideoExtension(extension) || Images.Contains(extension);
+    internal static bool IsSupportedExtension(string extension) => KindForExtension(extension) is not null;
 
-    private static bool IsVideoExtension(string extension) =>
-        extension.ToLowerInvariant() is ".mp4" or ".mov" or ".ts" or ".mkv" or ".webm" or ".avi";
+    private static MediaKind? KindForExtension(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".heic" => MediaKind.Image,
+        ".mp4" or ".mov" or ".ts" or ".mkv" or ".webm" or ".avi" => MediaKind.Video,
+        ".mp3" or ".m4a" or ".flac" or ".wav" => MediaKind.Audio,
+        _ => null
+    };
+
+    internal static string StoreKind(MediaKind kind) => kind switch
+    {
+        MediaKind.Image => "image",
+        MediaKind.Video => "video",
+        MediaKind.Audio => "audio",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    internal static MediaKind DecodeKind(string kind) => kind switch
+    {
+        "image" => MediaKind.Image,
+        "video" => MediaKind.Video,
+        "audio" => MediaKind.Audio,
+        _ => throw new InvalidDataException("媒体类型无效。")
+    };
 
     private static void EnsureReadableLocalRoot(string path)
     {

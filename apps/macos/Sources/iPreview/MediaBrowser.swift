@@ -160,7 +160,7 @@ struct MediaListRow: View {
     private var kind: String {
         let suffix = URL(fileURLWithPath: media.name).pathExtension.uppercased()
         let format = suffix == "JPG" ? "JPEG" : suffix
-        return "\(format) \(media.kind == .video ? "视频" : "图像")"
+        return "\(format) \(media.kind.title)"
     }
 }
 
@@ -176,23 +176,32 @@ struct MediaSelectionMark: View {
 }
 
 struct InlineGalleryImage: View {
+    private struct Load: Equatable {
+        let media: Media
+        let revision: Int
+    }
+
     let media: Media
     let revision: Int
+    var audioAlbum: AudioAlbum?
     @ViewState private var image: CGImage?
-    @ViewState private var loaded = false
+    @ViewState private var failure: Load?
 
     var body: some View {
+        let request = Load(media: media, revision: revision)
         GeometryReader { geometry in
             Group {
-                if let image {
+                if failure == request, audioAlbum != nil, media.isAvailable {
+                    AudioAlbumArtwork(image: nil)
+                } else if failure == request {
+                    Label(media.isAvailable ? "无法显示媒体" : "媒体不可用",
+                          systemImage: media.kind.icon)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else if let image {
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .scaledToFit()
-                } else if loaded {
-                    Label(media.isAvailable ? "无法显示媒体" : "媒体不可用",
-                          systemImage: media.kind == .video ? "film" : "photo")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
                 } else {
                     ProgressView().controlSize(.small)
                 }
@@ -201,15 +210,24 @@ struct InlineGalleryImage: View {
         }
         .background(Color.libraryInk.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityLabel(media.name)
-        .task(id: revision) {
-            image = nil
-            loaded = false
-            let decoded = await Task.detached(priority: .utility) {
-                await MediaImages.thumbnail(for: media, limit: 1600)
-            }.value
+        .task(id: request) {
+            let load = Task.detached(priority: .utility) { () -> CGImage? in
+                guard !Task.isCancelled else { return nil }
+                if let audioAlbum { return await audioAlbum.cover(limit: 1600) }
+                return await MediaImages.thumbnail(for: media, limit: 1600)
+            }
+            let decoded = await withTaskCancellationHandler {
+                await load.value
+            } onCancel: {
+                load.cancel()
+            }
             guard !Task.isCancelled else { return }
-            image = decoded
-            loaded = true
+            if let decoded {
+                image = decoded
+                failure = nil
+            } else {
+                failure = request
+            }
         }
     }
 }

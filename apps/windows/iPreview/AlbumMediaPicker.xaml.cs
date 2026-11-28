@@ -12,7 +12,7 @@ public sealed partial class AlbumMediaPicker : UserControl
     private sealed class Candidate(Media media)
     {
         public Media Media { get; } = media;
-        public string PlaceholderGlyph => Media.IsVideo ? "\uE714" : "\uE91B";
+        public string PlaceholderGlyph => Media.IsVideo ? "\uE714" : Media.IsAudio ? "\uE8D6" : "\uE91B";
         public Visibility VideoBadge => Media.IsVideo ? Visibility.Visible : Visibility.Collapsed;
         public string RemoveLabel => $"移除 {Media.FileName}";
     }

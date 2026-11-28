@@ -108,7 +108,7 @@ public sealed partial class MainWindow
         {
             var file = await OpenMediaFile(media);
             if (CanUpdatePreview(generation))
-                StartVideo(file, media, generation);
+                StartMedia(file, media, generation);
         }
         catch (Exception error) when (MediaFailure(error))
         {

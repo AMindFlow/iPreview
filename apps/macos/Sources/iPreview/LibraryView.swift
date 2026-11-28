@@ -25,6 +25,7 @@ struct LibraryView: View {
     @ViewState private var titleDraft = ""
     @ViewState private var titleSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
+    @ViewState private var videoMetadata: Media?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
@@ -49,7 +50,7 @@ struct LibraryView: View {
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
             && !creatingAlbum && albumDeletion == nil && sourceDeletion == nil && editSourceName == nil && addAlbumMedia == nil
-            && organizationTarget == nil
+            && organizationTarget == nil && videoMetadata == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -59,7 +60,8 @@ struct LibraryView: View {
     private var searchActions: LibrarySearchActions {
         guard preview == nil, videoWorkPreview == nil, titleEdit == nil, editSourceName == nil,
               !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
-              addAlbumMedia == nil, organizationTarget == nil, model.inspection == nil, model.error == nil else {
+              addAlbumMedia == nil, organizationTarget == nil, videoMetadata == nil,
+              model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
         return LibrarySearchActions(show: showSearch)
@@ -98,6 +100,11 @@ struct LibraryView: View {
         }
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
+        }
+        .sheet(item: $videoMetadata, onDismiss: {
+            if preview == nil, videoWorkPreview == nil { focusBrowser() }
+        }) { media in
+            VideoMetadataSheet(media: media)
         }
         .alert("删除合集", isPresented: Binding(
             get: { albumDeletion != nil },
@@ -170,6 +177,7 @@ struct LibraryView: View {
         .focusedSceneValue(\.libraryImmersiveAction, immersiveAction(in: scope))
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
+        .focusedSceneValue(\.libraryMetadataAction, metadataAction(in: scope))
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
         .background {
             LibraryTitleBarControls(sidebarWidth: sidebarVisibility == .detailOnly ? nil : sidebarWidth,
@@ -216,21 +224,35 @@ struct LibraryView: View {
         }
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
-                GeometryReader { geometry in
-                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil else { return nil }
-                        return origins.thumbnail(for: id, in: geometry)
-                    }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
+                if preview.media.kind == .audio {
+                    let openingTrack = preview.items[preview.index]
+                    let album = AudioAlbum(track: openingTrack, ordered: preview.items, indexed: model.snapshot.media)
+                    AudioAlbumPreview(session: preview, album: album) { selection in
                         if searchDomain == nil {
                             selected = selection
-                            if !hasThumbnail { mediaToReveal = selection }
+                            mediaToReveal = selection
                         }
-                    } close: {
                         self.preview = nil
                         focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
+                } else {
+                    GeometryReader { geometry in
+                        let thumbnail: (Int64) -> PreviewThumbnail? = { id in
+                            guard searchDomain == nil else { return nil }
+                            return origins.thumbnail(for: id, in: geometry)
+                        }
+                        MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
+                            if searchDomain == nil {
+                                selected = selection
+                                if !hasThumbnail { mediaToReveal = selection }
+                            }
+                        } close: {
+                            self.preview = nil
+                            focus = searchDomain == nil ? .browser : .searchResults
+                        }
+                        .id(preview.selection)
+                    }
                 }
             }
         }
@@ -770,7 +792,7 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label("媒体库为空", systemImage: "photo.on.rectangle")
             } description: {
-                Text("导入包含图片或视频的文件夹。")
+                Text("导入包含图片、视频或音频的文件夹。")
             } actions: {
                 Button("导入文件夹", action: chooseFolder)
                     .buttonStyle(.borderedProminent)
@@ -835,9 +857,7 @@ struct LibraryView: View {
         let isSelected = selectedFolder == folder.page
         return Button { navigate(folder.page) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
-                    model.sourceAlbumIndex.covers(for: $0, members: folder.members)
-                } ?? [folder.cover], revision: model.revision)
+                folderArtwork(folder)
                     .aspectRatio(1.47, contentMode: .fit)
                     .clipShape(.rect(cornerRadius: 12))
                     .overlay {
@@ -858,6 +878,24 @@ struct LibraryView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .id(folder.page)
+    }
+
+    @ViewBuilder
+    private func folderArtwork(_ folder: LibraryFolder) -> some View {
+        let key = folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath)
+        let index = model.sourceAlbumIndex
+        let covers = key.map { index.covers(for: $0, members: folder.members) } ?? [folder.cover]
+        let configured = key.flatMap { index.configuredCovers[$0] } ?? []
+        let usesConfiguredCover = !configured.isEmpty && covers.map(\.id) == configured
+
+        if !usesConfiguredCover, case .folder(_, let path) = folder.page,
+           let track = folder.members.first(where: { $0.kind == .audio && $0.parentRelativePath == path }),
+           folder.members.allSatisfy({ $0.kind != .video }) {
+            AudioAlbumCardArtwork(album: AudioAlbum(track: track, ordered: [], indexed: folder.members),
+                                  revision: model.revision)
+        } else {
+            AlbumCoverArtwork(media: covers, revision: model.revision)
+        }
     }
 
     private func mediaGallery(_ items: [Media], in album: VirtualAlbum?, sourceLayout: iPreviewCore.Layout?) -> some View {
@@ -984,8 +1022,10 @@ struct LibraryView: View {
         case .gallery:
             VStack(spacing: 10) {
                 if let item = items.first(where: { $0.id == selected }) ?? items.first {
-                    InlineGalleryImage(media: item, revision: model.revision)
-                        .id(item.id)
+                    InlineGalleryImage(media: item, revision: model.revision,
+                                       audioAlbum: item.kind == .audio
+                                           ? AudioAlbum(track: item, ordered: [], indexed: model.snapshot.media) : nil)
+                        .id(page)
                 }
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 9) {
@@ -1032,6 +1072,9 @@ struct LibraryView: View {
                 }
             }
             .contextMenu {
+                if item.kind == .video, !adjusting {
+                    Button("媒体元信息") { videoMetadata = item }
+                }
                 if let album, removalSelection == nil {
                     Button("从合集移除", role: .destructive) {
                         Task { await model.remove(mediaID: item.id, from: album.id) }
@@ -1229,14 +1272,8 @@ struct LibraryView: View {
 
     private func openVideoWork(_ work: IndexedVideoWork) {
         guard !model.isWorking else { return }
-        let video = work.video
-        let parent = (video.relativePath as NSString).deletingLastPathComponent
-        let candidates = model.snapshot.media.filter { image in
-            image.kind == .image && image.isAvailable && image.source.id == video.source.id
-                && (image.relativePath as NSString).deletingLastPathComponent.utf8.elementsEqual(parent.utf8)
-        }
         focus = nil
-        videoWorkPreview = VideoWorkPreviewSession(work: work, coverCandidates: candidates)
+        videoWorkPreview = VideoWorkPreviewSession(work: work)
     }
 
     private func immersiveAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
@@ -1251,6 +1288,21 @@ struct LibraryView: View {
             await Task.yield()
             focus = .browser
         }
+    }
+
+    private func metadataAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
+        guard videoMetadata == nil else { return nil }
+        let item: Media?
+        if let preview {
+            item = preview.closingSelection == nil ? preview.media : nil
+        } else if let videoWorkPreview {
+            item = videoWorkPreview.browsing ? videoWorkPreview.work.video : nil
+        } else {
+            guard canChooseFolder, titleEdit == nil, removalSelection == nil else { return nil }
+            item = scope.items.first { $0.id == selected }
+        }
+        guard let item, item.kind == .video else { return nil }
+        return { videoMetadata = item }
     }
 }
 

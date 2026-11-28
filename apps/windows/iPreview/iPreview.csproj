@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>0.3.1</Version>
+    <Version>0.4.0</Version>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -30,6 +30,8 @@
                       LogicalName="iPreview.Migrations.004-video-works.sql" />
     <EmbeddedResource Include="..\..\..\shared\migrations\005-source-media-identities.sql"
                       LogicalName="iPreview.Migrations.005-source-media-identities.sql" />
+    <EmbeddedResource Include="..\..\..\shared\migrations\006-audio-media.sql"
+                      LogicalName="iPreview.Migrations.006-audio-media.sql" />
   </ItemGroup>
   <!-- Windows App SDK omits app XAML resources from unpackaged publish (#6720). -->
   <Target Name="IncludeWinUIResourcesInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">
@@ -41,6 +43,8 @@
       <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf"
                              CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)AlbumMediaPicker.xbf" RelativePath="AlbumMediaPicker.xbf"
+                             CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)AudioRecordDeck.xbf" RelativePath="AudioRecordDeck.xbf"
                              CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
