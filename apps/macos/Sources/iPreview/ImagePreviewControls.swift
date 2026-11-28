@@ -124,16 +124,17 @@ struct ComicPhotoSpread: View {
     var body: some View {
         if let second {
             HStack(spacing: 0) {
-                page(first, spine: .trailing, onResolved: firstResolved)
-                page(second, spine: .leading, onResolved: secondResolved)
+                page(first, alignment: .trailing, spine: .trailing, onResolved: firstResolved)
+                page(second, alignment: .leading, spine: .leading, onResolved: secondResolved)
             }
         } else {
-            page(first, spine: .center, onResolved: firstResolved)
+            page(first, alignment: .center, spine: .center, onResolved: firstResolved)
         }
     }
 
-    private func page(_ media: Media, spine: UnitPoint, onResolved: @escaping (Int64) -> Void) -> some View {
-        PhotoCanvas(media: media, poster: poster(media.id), onResolved: onResolved)
+    private func page(_ media: Media, alignment: Alignment, spine: UnitPoint,
+                      onResolved: @escaping (Int64) -> Void) -> some View {
+        PhotoCanvas(media: media, poster: poster(media.id), alignment: alignment, onResolved: onResolved)
             .accessibilityLabel(media.name)
             .id(media.id)
             .transition(.asymmetric(
