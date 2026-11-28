@@ -225,7 +225,8 @@ struct LibraryView: View {
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
                 if preview.media.kind == .audio {
-                    let album = AudioAlbum(track: preview.media, ordered: preview.items, indexed: model.snapshot.media)
+                    let openingTrack = preview.items[preview.index]
+                    let album = AudioAlbum(track: openingTrack, ordered: preview.items, indexed: model.snapshot.media)
                     AudioAlbumPreview(session: preview, album: album) { selection in
                         if searchDomain == nil {
                             selected = selection
@@ -881,15 +882,19 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func folderArtwork(_ folder: LibraryFolder) -> some View {
-        if case .folder(_, let path) = folder.page,
+        let key = folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath)
+        let index = model.sourceAlbumIndex
+        let covers = key.map { index.covers(for: $0, members: folder.members) } ?? [folder.cover]
+        let configured = key.flatMap { index.configuredCovers[$0] } ?? []
+        let usesConfiguredCover = !configured.isEmpty && covers.map(\.id) == configured
+
+        if !usesConfiguredCover, case .folder(_, let path) = folder.page,
            let track = folder.members.first(where: { $0.kind == .audio && $0.parentRelativePath == path }),
            folder.members.allSatisfy({ $0.kind != .video }) {
             AudioAlbumCardArtwork(album: AudioAlbum(track: track, ordered: [], indexed: folder.members),
                                   revision: model.revision)
         } else {
-            AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
-                model.sourceAlbumIndex.covers(for: $0, members: folder.members)
-            } ?? [folder.cover], revision: model.revision)
+            AlbumCoverArtwork(media: covers, revision: model.revision)
         }
     }
 
