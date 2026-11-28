@@ -2,6 +2,8 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using IPreview;
 
+await Mp3ArtworkChecks.Run();
+
 var list = new BrowseLayout(BrowseMode.List, 1);
 Check(list.NeighborOf(1, 3, BrowseDirection.Up) == 0 &&
       list.NeighborOf(1, 3, BrowseDirection.Down) == 2 &&

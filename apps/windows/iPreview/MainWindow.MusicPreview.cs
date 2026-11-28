@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Media;
 using Windows.Media.Playback;
+using Windows.Storage;
+using Windows.Storage.Streams;
 
 namespace IPreview;
 
@@ -192,21 +194,63 @@ public sealed partial class MainWindow
                 try
                 {
                     var file = await OpenMediaFile(track, cancellationToken);
-                    updater.ClearAll();
-                    if (!await updater.CopyFromFileAsync(MediaPlaybackType.Music, file).AsTask(cancellationToken) ||
-                        updater.Thumbnail is not { } art)
-                        continue;
-                    using var stream = await art.OpenReadAsync().AsTask(cancellationToken);
-                    var bitmap = new BitmapImage { DecodePixelWidth = width };
-                    await bitmap.SetSourceAsync(stream).AsTask(cancellationToken);
-                    if (bitmap.PixelWidth > 0)
-                        return bitmap;
+                    var native = await ReadNativeMusicCover(updater, file, width, cancellationToken);
+                    if (native is not null)
+                        return native;
+                    if (file.FileType.Equals(".mp3", StringComparison.OrdinalIgnoreCase) &&
+                        await ReadMp3Cover(file, width, cancellationToken) is { } mp3)
+                        return mp3;
                 }
                 catch (Exception error) when (MediaFailure(error)) { }
             }
         }
         catch (Exception error) when (MediaFailure(error)) { }
         return null;
+    }
+
+    private static async Task<BitmapImage?> ReadNativeMusicCover(SystemMediaTransportControlsDisplayUpdater updater,
+        StorageFile file, int width, CancellationToken cancellationToken)
+    {
+        try
+        {
+            updater.ClearAll();
+            if (!await updater.CopyFromFileAsync(MediaPlaybackType.Music, file).AsTask(cancellationToken) ||
+                updater.Thumbnail is not { } art)
+                return null;
+            using var stream = await art.OpenReadAsync().AsTask(cancellationToken);
+            return await DecodeCoverStream(stream, width, cancellationToken);
+        }
+        catch (Exception error) when (MediaFailure(error))
+        {
+            return null;
+        }
+    }
+
+    private static async Task<BitmapImage?> ReadMp3Cover(StorageFile file, int width, CancellationToken cancellationToken)
+    {
+        using var stream = await file.OpenReadAsync().AsTask(cancellationToken);
+        using var input = stream.AsStreamForRead();
+        foreach (var picture in await Mp3Artwork.ReadAsync(input, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                using var contents = new MemoryStream(picture.Array!, picture.Offset, picture.Count, writable: false);
+                using var source = contents.AsRandomAccessStream();
+                if (await DecodeCoverStream(source, width, cancellationToken) is { } bitmap)
+                    return bitmap;
+            }
+            catch (Exception error) when (MediaFailure(error)) { }
+        }
+        return null;
+    }
+
+    private static async Task<BitmapImage?> DecodeCoverStream(IRandomAccessStream source, int width,
+        CancellationToken cancellationToken)
+    {
+        var bitmap = new BitmapImage { DecodePixelWidth = width };
+        await bitmap.SetSourceAsync(source).AsTask(cancellationToken);
+        return bitmap.PixelWidth > 0 ? bitmap : null;
     }
 
     private static async Task<BitmapImage?> ReadCoverImage(Media image, int width, CancellationToken cancellationToken = default)
