@@ -8,6 +8,8 @@ namespace IPreview;
 
 public sealed partial class MainWindow
 {
+    private bool CanShowVideoMetadata => !busy && !SelectingAlbumMembers;
+
     private void MediaMetadataContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         var container = args.ItemContainer;
@@ -20,13 +22,16 @@ public sealed partial class MainWindow
         var menu = new MenuFlyout();
         var action = new MenuFlyoutItem { Text = "媒体元信息" };
         menu.Items.Add(action);
-        menu.Opening += (_, _) => action.IsEnabled = !SelectingAlbumMembers;
+        menu.Opening += (_, _) => action.IsEnabled = CanShowVideoMetadata;
         action.Click += async (_, _) => await ShowVideoMetadataAsync(tile.Media);
         container.ContextFlyout = menu;
     }
 
     private async Task ShowVideoMetadataAsync(Media item)
     {
+        if (!CanShowVideoMetadata)
+            return;
+
         var values = new TextBlock { Text = "正在读取…", TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         AutomationProperties.SetLiveSetting(values, AutomationLiveSetting.Polite);
         var panel = new StackPanel { Spacing = 12 };
@@ -35,6 +40,7 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot,
+            RequestedTheme = Root.RequestedTheme,
             Title = "媒体元信息",
             Content = panel,
             CloseButtonText = "关闭",
