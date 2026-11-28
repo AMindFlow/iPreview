@@ -785,7 +785,7 @@
                         </Button>
                         <TextBlock Text="合集为空" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
                     </StackPanel>
-                    <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，图片和视频会显示在这里。"
+                    <TextBlock x:Name="EmptyLabel" Text="导入文件夹后，媒体会显示在这里。"
                                Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     <Canvas x:Name="AlbumDragLayer" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">

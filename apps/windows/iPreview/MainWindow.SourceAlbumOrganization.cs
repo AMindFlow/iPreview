@@ -121,7 +121,13 @@ public sealed partial class MainWindow
             return;
         }
 
-        SourceAlbumCover.Child = CoverArtwork(sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, members)));
+        var albumMembers = SourceAlbumMembers(key, members).ToArray();
+        var music = MusicAlbumFrom(current.Label, albumMembers, key.RelativePath);
+        var covers = LibraryCover(key, albumMembers, music);
+        if (music is null)
+            SourceAlbumCover.Child = CoverArtwork(covers);
+        else
+            LoadLibraryMusicCover(SourceAlbumCover, covers, music);
         var favorite = sourceAlbumIndex.FavoriteAlbums.Contains(key);
         SourceAlbumFavorite.IsChecked = favorite;
         SourceAlbumFavoriteFill.Visibility = favorite ? Visibility.Visible : Visibility.Collapsed;
@@ -296,18 +302,40 @@ public sealed partial class MainWindow
 
     private void UpdateFolderCover(Border surface)
     {
-        if (surface.DataContext is Navigation { Music: { } album } folder)
+        var folder = surface.DataContext as Navigation;
+        var covers = folder?.Cover ?? [];
+        if (folder?.Music is { } album)
         {
-            LoadMusicFolderCover(surface, folder, album);
+            LoadLibraryMusicCover(surface, covers, album);
             return;
         }
-        surface.Child = CoverArtwork((surface.DataContext as Navigation)?.Cover ?? []);
+        surface.Child = CoverArtwork(covers);
+    }
+
+    private IReadOnlyList<Media> LibraryCover(SourceAlbumKey key, IEnumerable<Media> members, MusicAlbum? music)
+    {
+        var covers = sourceAlbumIndex.Covers(key, members);
+        if (music is null)
+            return covers;
+        // The catalog falls back if any configured image is unavailable. Use the music fallback in that case.
+        return sourceAlbumIndex.ConfiguredCovers.TryGetValue(key, out var configured) &&
+            covers.Select(item => item.Id).SequenceEqual(configured) ? covers : [];
     }
 
     private UIElement CoverArtwork(IReadOnlyList<Media> images)
     {
         if (images.Count == 0)
             return new FontIcon { Glyph = "\uEB9F", FontSize = 22, Opacity = 0.65 };
+        return CoverGrid(images.Select(media =>
+        {
+            var image = new Image { Stretch = Stretch.UniformToFill, DataContext = new Tile(media, 0) };
+            image.Loaded += LoadThumbnail;
+            return image;
+        }).ToArray());
+    }
+
+    private static Grid CoverGrid(IReadOnlyList<Image> images)
+    {
         var collage = new Grid { RowSpacing = 2, ColumnSpacing = 2 };
         for (var row = 0; row < (images.Count > 2 ? 2 : 1); row++)
             collage.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
@@ -316,8 +344,7 @@ public sealed partial class MainWindow
 
         for (var index = 0; index < images.Count; index++)
         {
-            var image = new Image { Stretch = Stretch.UniformToFill, DataContext = new Tile(images[index], 0) };
-            image.Loaded += LoadThumbnail;
+            var image = images[index];
             Grid.SetRow(image, index / 2);
             Grid.SetColumn(image, index % 2);
             if (images.Count == 3 && index == 2)

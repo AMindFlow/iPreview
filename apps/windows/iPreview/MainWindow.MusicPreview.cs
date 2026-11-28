@@ -172,13 +172,8 @@ public sealed partial class MainWindow
         foreach (var image in album.Covers)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var bitmap = await DecodeImage(image, width, false, cancellationToken: cancellationToken);
-                if (bitmap.PixelWidth > 0)
-                    return bitmap;
-            }
-            catch (Exception error) when (MediaFailure(error)) { }
+            if (await ReadCoverImage(image, width, cancellationToken) is { } bitmap)
+                return bitmap;
         }
         cancellationToken.ThrowIfCancellationRequested();
         try
@@ -209,20 +204,48 @@ public sealed partial class MainWindow
         return null;
     }
 
-    private async void LoadMusicFolderCover(Border surface, Navigation folder, MusicAlbum album)
+    private static async Task<BitmapImage?> ReadCoverImage(Media image, int width, CancellationToken cancellationToken = default)
     {
+        try
+        {
+            var bitmap = await DecodeImage(image, width, false, cancellationToken: cancellationToken);
+            return bitmap.PixelWidth > 0 ? bitmap : null;
+        }
+        catch (Exception error) when (MediaFailure(error))
+        {
+            return null;
+        }
+    }
+
+    private async void LoadLibraryMusicCover(Border surface, IReadOnlyList<Media> configured, MusicAlbum album)
+    {
+        var context = surface.DataContext;
         var artwork = new Grid();
         var placeholder = new FontIcon { Glyph = "\uE8D6", FontSize = 22, Opacity = 0.65 };
         artwork.Children.Add(placeholder);
         var image = new Image { Stretch = Stretch.UniformToFill };
         artwork.Children.Add(image);
         surface.Child = artwork;
+
+        var manual = await Task.WhenAll(configured.Select(cover => ReadCoverImage(cover, 360)));
+        if (!CurrentArtwork())
+            return;
+        if (manual.Length != 0 && manual.All(bitmap => bitmap is not null))
+        {
+            surface.Child = CoverGrid(manual.Select(bitmap => new Image
+            {
+                Source = bitmap!, Stretch = Stretch.UniformToFill
+            }).ToArray());
+            return;
+        }
+
         var cover = await ReadMusicCover(album, 360);
-        if (cover is not null && surface.IsLoaded && ReferenceEquals(folder, surface.DataContext) &&
-            ReferenceEquals(surface.Child, artwork))
+        if (cover is not null && CurrentArtwork())
         {
             image.Source = cover;
             placeholder.Visibility = Visibility.Collapsed;
         }
+
+        bool CurrentArtwork() => ReferenceEquals(context, surface.DataContext) && ReferenceEquals(surface.Child, artwork);
     }
 }

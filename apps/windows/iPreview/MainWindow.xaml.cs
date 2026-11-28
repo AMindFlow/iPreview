@@ -341,7 +341,7 @@ public sealed partial class MainWindow : Window
                 var key = new SourceAlbumKey(source!.Id, albumPath);
                 var music = isCreator ? null : MusicAlbumFrom(group.Key, group, albumPath);
                 IReadOnlyList<Media> cover = isCreator ? [group.First()]
-                    : sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, group));
+                    : LibraryCover(key, SourceAlbumMembers(key, group), music);
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
                     Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}", Music: music);
             }).ToList();
@@ -399,7 +399,7 @@ public sealed partial class MainWindow : Window
         SelectAlbumMembersButton.Visibility = AlbumPickerButton.Visibility;
         EmptyAlbumPicker.Visibility = isEmptyAlbum ? Visibility.Visible : Visibility.Collapsed;
         EmptyLabel.Text = sources.Count == 0
-                ? "导入文件夹后，图片和视频会显示在这里。" : "此处没有媒体项目。";
+                ? "导入文件夹后，媒体会显示在这里。" : "此处没有媒体项目。";
         if (browsingFolders)
             EmptyLabel.Text = choosingCreator ? "没有已索引的创作者。" : "没有已索引的专辑。";
         var visibleItemCount = browsingFolders ? SourceFolders.Items.Count : tiles.Count;
