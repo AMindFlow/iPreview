@@ -119,6 +119,7 @@ public sealed partial class MainWindow
             ComicRightError.Visibility = doublePage && images[1] is null ? Visibility.Visible : Visibility.Collapsed;
             ComicRightPage.Visibility = doublePage ? Visibility.Visible : Visibility.Collapsed;
             Grid.SetColumnSpan(ComicLeftPage, doublePage ? 1 : 2);
+            ComicLeftImage.HorizontalAlignment = doublePage ? HorizontalAlignment.Right : HorizontalAlignment.Center;
             AutomationProperties.SetName(ComicLeftPage, previewTiles[spread.First].FileName);
             AutomationProperties.SetName(ComicRightPage, spread.Second is int position ? previewTiles[position].FileName : "");
             ComicPages.Visibility = Visibility.Visible;

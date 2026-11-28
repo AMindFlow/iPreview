@@ -1430,13 +1430,14 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <Grid x:Name="ComicLeftPage">
-                                                <Image x:Name="ComicLeftImage" Stretch="Uniform" />
+                                                <Image x:Name="ComicLeftImage" Stretch="Uniform" VerticalAlignment="Center" />
                                                 <TextBlock x:Name="ComicLeftError" Visibility="Collapsed" Text="无法显示此图片"
                                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Grid>
                                             <Grid x:Name="ComicRightPage" Grid.Column="1">
-                                                <Image x:Name="ComicRightImage" Stretch="Uniform" />
+                                                <Image x:Name="ComicRightImage" Stretch="Uniform"
+                                                       HorizontalAlignment="Left" VerticalAlignment="Center" />
                                                 <TextBlock x:Name="ComicRightError" Visibility="Collapsed" Text="无法显示此图片"
                                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
