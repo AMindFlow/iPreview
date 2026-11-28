@@ -25,6 +25,7 @@ struct LibraryView: View {
     @ViewState private var titleDraft = ""
     @ViewState private var titleSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
+    @ViewState private var videoMetadata: Media?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
@@ -49,7 +50,7 @@ struct LibraryView: View {
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
             && !creatingAlbum && albumDeletion == nil && sourceDeletion == nil && editSourceName == nil && addAlbumMedia == nil
-            && organizationTarget == nil
+            && organizationTarget == nil && videoMetadata == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -59,7 +60,8 @@ struct LibraryView: View {
     private var searchActions: LibrarySearchActions {
         guard preview == nil, videoWorkPreview == nil, titleEdit == nil, editSourceName == nil,
               !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
-              addAlbumMedia == nil, organizationTarget == nil, model.inspection == nil, model.error == nil else {
+              addAlbumMedia == nil, organizationTarget == nil, videoMetadata == nil,
+              model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
         return LibrarySearchActions(show: showSearch)
@@ -98,6 +100,9 @@ struct LibraryView: View {
         }
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
+        }
+        .sheet(item: $videoMetadata, onDismiss: focusBrowser) { media in
+            VideoMetadataSheet(media: media)
         }
         .alert("删除合集", isPresented: Binding(
             get: { albumDeletion != nil },
@@ -1032,6 +1037,9 @@ struct LibraryView: View {
                 }
             }
             .contextMenu {
+                if item.kind == .video, !adjusting {
+                    Button("媒体元信息") { videoMetadata = item }
+                }
                 if let album, removalSelection == nil {
                     Button("从合集移除", role: .destructive) {
                         Task { await model.remove(mediaID: item.id, from: album.id) }

@@ -55,6 +55,9 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetBrowseMode(browseMode);
         InitializeMediaSort();
+        DetailsList.ContainerContentChanging += MediaMetadataContainerChanging;
+        Filmstrip.ContainerContentChanging += MediaMetadataContainerChanging;
+        Gallery.ContainerContentChanging += MediaMetadataContainerChanging;
         PreviewWorkspace.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(WorkPanePointerPressed), true);
         workMotionSettings.AnimationsEnabledChanged += WorkAnimationsChanged;
         InitializeSourceAlbumStars();
