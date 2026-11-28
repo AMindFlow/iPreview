@@ -29,7 +29,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-13 | 从媒体提取清晰度、作者等元信息 | 待实施：[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)。一期列表中的大小、修改时间及种类不代表此项完成。 |
 | ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
 | ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
-| ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
+| ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | [PRE-003](../specs/official/preview.md#pre-003-漫画双页翻页)规定独立图片预览的双页翻书、首页配对与退出选中。 |
 | ORIG-17 | 视频作品以影碟和图册展示、选择进入、Esc 逐层退出 | 双端用玻璃录像带与层叠图册展示专辑，按 Space 进入双区，Tab 在播放和翻图间切换。详见 [PRE-004](../specs/official/preview.md#pre-004-视频作品的沉浸模式)。原文 Enter 进入已被后续 Space 进入口径替代，Enter 用于真实重命名或视频预览锁定。 |
 | ORIG-18 | 音频封面与 CD 机模拟，其他由代理设计 | 待审阅与实施：[PRE-005](../specs/spike/preview.md#pre-005-音频专辑封面与-cd-机)。 |
 | ORIG-19 | 多工作区，分别保存文件夹与专辑管理数据 | 待实施：[LIB-004](../specs/spike/library.md#lib-004-多工作区)。一期只有默认本地库，测试用数据目录不算工作区产品功能。 |
@@ -40,6 +40,8 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-24 | 先 roadmap、分期 specs，仅重大取舍请求决定 | [路线图](roadmap.md)、分维度 `official/spike` 与 [SDD 流程](../workflow/sdd.md)持续执行。 |
 | ORIG-25 | 多 Agent 并行、交付任务 DAG | 按独立 worktree 与可单独验收的 PR 拆分，见[一期分工](phase-1-collaboration.md)、[二期分工](phase-2-collaboration.md)与[0.3.0 分工及依赖](releases/0.3.0.md#分工与依赖)。 |
 | ORIG-26 | GitHub Flow、禁止直推 main、关注 Codex Review | 已采用 PR、独立审阅与 Merge Queue；见[工作流](../workflow/git.md)及一期 PR 台账。 |
+
+[图片自动播放 #85](https://github.com/AMindFlow/iPreview/issues/85)见 [PRE-012](../specs/official/preview.md#pre-012-图片自动播放)。
 
 ## 设计与交付约束
 

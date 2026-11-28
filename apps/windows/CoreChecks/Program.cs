@@ -22,6 +22,33 @@ Check(grid.NeighborOf(1, 8, BrowseDirection.Down) == 4 &&
       grid.NeighborOf(7, 8, BrowseDirection.Up) == 4 &&
       grid.NeighborOf(5, 8, BrowseDirection.Down) is null, "preview stays in a grid column");
 
+(int Count, bool CoverSingle, int[][] Pages)[] comics =
+[
+    (6, true, [[0], [1, 2], [3, 4], [5]]),
+    (6, false, [[0, 1], [2, 3], [4, 5]]),
+    (7, true, [[0], [1, 2], [3, 4], [5, 6]]),
+    (7, false, [[0, 1], [2, 3], [4, 5], [6]]),
+];
+foreach (var (count, coverSingle, pages) in comics)
+{
+    for (var offset = 0; offset < pages.Length; offset++)
+    {
+        var expected = pages[offset];
+        foreach (var page in expected)
+        {
+            var spread = PhotoSpread.Around(page, count, coverSingle, _ => true);
+            Check(spread.First == expected[0] && spread.Second == (expected.Length == 2 ? expected[1] : (int?)null) &&
+                  spread.Previous == (offset > 0 ? pages[offset - 1][0] : (int?)null) &&
+                  spread.Next == (offset + 1 < pages.Length ? pages[offset + 1][0] : (int?)null),
+                  $"comic page {page + 1} of {count} with single cover {coverSingle}");
+        }
+    }
+}
+var beforeVideo = PhotoSpread.Around(2, 7, false, index => index != 3);
+Check(beforeVideo is { First: 2, Second: null, Next: 3 }, "comic spread does not pair across video");
+var afterVideo = PhotoSpread.Around(4, 7, true, index => index != 3);
+Check(afterVideo is { First: 4, Second: null, Previous: 3, Next: 5 }, "comic cover starts fresh after video");
+
 var work = Directory.CreateTempSubdirectory("ipreview-check-").FullName;
 try
 {

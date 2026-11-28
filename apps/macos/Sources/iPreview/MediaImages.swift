@@ -101,6 +101,8 @@ struct MediaThumbnail: View {
 struct PhotoCanvas: View {
     let media: Media
     var poster: CGImage?
+    var alignment: Alignment = .center
+    var onResolved: ((Int64) -> Void)?
     @ViewState private var loadedID: Int64?
     @ViewState private var photo: CGImage?
     @ViewState private var animation: NSImage?
@@ -114,7 +116,7 @@ struct PhotoCanvas: View {
                 } else if loadedID != media.id, let poster {
                     stillImage(poster)
                 } else if let animation {
-                    AnimatedPhoto(image: animation)
+                    AnimatedPhoto(image: animation, alignment: imageAlignment)
                 } else if let still = photo ?? poster {
                     stillImage(still)
                 } else {
@@ -123,7 +125,7 @@ struct PhotoCanvas: View {
                         .accessibilityLabel("正在读取图片")
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: alignment)
         }
         .task(id: media.id) {
             let media = media
@@ -157,13 +159,19 @@ struct PhotoCanvas: View {
                     animation = image
                 }
                 error = nil
-                loadedID = media.id
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
-                loadedID = media.id
             }
+            loadedID = media.id
+            onResolved?(media.id)
         }
+    }
+
+    private var imageAlignment: NSImageAlignment {
+        if alignment.horizontal == .leading { return .alignLeft }
+        if alignment.horizontal == .trailing { return .alignRight }
+        return .alignCenter
     }
 
     private func stillImage(_ image: CGImage) -> some View {
@@ -204,6 +212,7 @@ struct PreviewError: View {
 
 private struct AnimatedPhoto: NSViewRepresentable {
     let image: NSImage
+    let alignment: NSImageAlignment
 
     func makeNSView(context: Context) -> NSImageView {
         let view = NSImageView()
@@ -218,5 +227,6 @@ private struct AnimatedPhoto: NSViewRepresentable {
 
     func updateNSView(_ view: NSImageView, context: Context) {
         if view.image !== image { view.image = image }
+        view.imageAlignment = alignment
     }
 }

@@ -1424,6 +1424,25 @@
                                         Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8">
                                     <Grid>
                                         <Image x:Name="MainImage" Stretch="Uniform" />
+                                        <Grid x:Name="ComicPages" Visibility="Collapsed">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid x:Name="ComicLeftPage">
+                                                <Image x:Name="ComicLeftImage" Stretch="Uniform" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="ComicLeftError" Visibility="Collapsed" Text="无法显示此图片"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <Grid x:Name="ComicRightPage" Grid.Column="1">
+                                                <Image x:Name="ComicRightImage" Stretch="Uniform"
+                                                       HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="ComicRightError" Visibility="Collapsed" Text="无法显示此图片"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Grid>
                                         <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
                                                             IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
                                         <TextBlock x:Name="PreviewError" Visibility="Collapsed"
@@ -1452,6 +1471,33 @@
                         </ContentControl>
 
                         <StackPanel Grid.Row="1" Spacing="3">
+                            <StackPanel x:Name="ImagePreviewBar" Visibility="Collapsed" Orientation="Horizontal"
+                                        HorizontalAlignment="Center" Spacing="7">
+                                <ToggleButton x:Name="ComicReadingToggle" Content="漫画双页" Click="ToggleComicReading" />
+                                <ToggleButton x:Name="ComicCoverToggle" Content="首页单页" IsChecked="True" Visibility="Collapsed"
+                                              Click="ToggleComicCover" ToolTipService.ToolTip="切换首页的单双页配对" />
+                                <Button x:Name="ImageSlideToggle" Content="开始自动播放" Click="ToggleImageSlideshow" />
+                                <Button x:Name="ImageSlideStop" Content="停止" Visibility="Collapsed" Click="StopImageSlideshow"
+                                        AutomationProperties.Name="停止自动播放" />
+                                <Button x:Name="ImageSlideInterval" Content="2 秒" AutomationProperties.Name="播放间隔">
+                                    <Button.Flyout>
+                                        <Flyout x:Name="ImageSlideIntervalFlyout">
+                                            <StackPanel Spacing="8">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Button Content="1 秒" Tag="1" Click="SetImageSlidePreset" />
+                                                    <Button Content="2 秒" Tag="2" Click="SetImageSlidePreset" />
+                                                    <Button Content="3 秒" Tag="3" Click="SetImageSlidePreset" />
+                                                    <Button Content="5 秒" Tag="5" Click="SetImageSlidePreset" />
+                                                    <Button Content="10 秒" Tag="10" Click="SetImageSlidePreset" />
+                                                </StackPanel>
+                                                <NumberBox x:Name="ImageSlideSeconds" Header="自定义间隔（秒）"
+                                                           Value="2" Minimum=".5" Maximum="300" SmallChange=".5"
+                                                           SpinButtonPlacementMode="Inline" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </StackPanel>
                             <ContentControl x:Name="VideoControls" Visibility="Collapsed" IsTabStop="False"
                                             HorizontalContentAlignment="Stretch" MaxWidth="680">
                                 <Grid x:Name="VideoControlBar" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
