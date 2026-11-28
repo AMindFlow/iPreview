@@ -25,6 +25,7 @@ struct LibraryView: View {
     @ViewState private var titleDraft = ""
     @ViewState private var titleSelection: TextSelection?
     @ViewState private var addAlbumMedia: VirtualAlbum?
+    @ViewState private var videoMetadata: Media?
     @ViewState private var removalSelection: Set<Int64>?
     @ViewState private var albumOrder = AlbumOrderDrag()
     @ViewState private var preview: PreviewSession?
@@ -98,6 +99,9 @@ struct LibraryView: View {
         }
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
+        }
+        .sheet(item: $videoMetadata, onDismiss: focusBrowser) { media in
+            VideoMetadataSheet(media: media)
         }
         .alert("删除合集", isPresented: Binding(
             get: { albumDeletion != nil },
@@ -1032,6 +1036,9 @@ struct LibraryView: View {
                 }
             }
             .contextMenu {
+                if item.kind == .video, !adjusting {
+                    Button("媒体元信息") { videoMetadata = item }
+                }
                 if let album, removalSelection == nil {
                     Button("从合集移除", role: .destructive) {
                         Task { await model.remove(mediaID: item.id, from: album.id) }

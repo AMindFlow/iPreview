@@ -26,7 +26,7 @@ iPreview 重启并升级 picosmic。需求总范围包括旧版图库工作流�
 | ORIG-10 | Space、方向键快速浏览媒体，参考旧版行为 | 键盘预览见 [PRE-007、008](../specs/official/preview.md)及 [LIB-010](../specs/official/library.md#lib-010-创作者和专辑层级键盘浏览)。0.2.0 同步退出选择并改善列表滚动，完整长按验收见 [PRE-008 增量](../specs/spike/preview.md#pre-008-长按方向键连续切换)。 |
 | ORIG-11 | 各级目录名和文件名模糊搜索 | 已交付，含拼音、首字母和拼写容错：[SRCH-001](../specs/official/search.md#srch-001-目录名与文件名)。 |
 | ORIG-12 | 精确／模糊及文件／目录搜索模式 | 0.1.0 交付精确、模糊与文件、目录筛选。0.2.0 增加创作者、专辑类别标记。0.3.0 增加结果分组、标签过滤与 `#` 联想，保留原有作用域与定位。[分类与标签搜索 PR #78](https://github.com/AMindFlow/iPreview/pull/78) |
-| ORIG-13 | 从媒体提取清晰度、作者等元信息 | 待实施：[META-001](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)。一期列表中的大小、修改时间及种类不代表此项完成。 |
+| ORIG-13 | 从媒体提取清晰度、作者等元信息 | 0.4.0 纳入[视频元信息读取](../specs/official/metadata.md#meta-001-提取和展示视频文件元信息)，[独立音频](../specs/spike/metadata.md#meta-001-提取和展示专辑文件元信息)随音频组织推进。 |
 | ORIG-14 | 应用内修改元信息并反映到实际文件 | 待字段、格式和恢复方案确认：[META-002](../specs/spike/metadata.md#meta-002-修改并写回实际文件)。 |
 | ORIG-15 | 图片主显、自适应、四向相邻图层叠弱化，其余区域弱化 | 已交付当前图片预览；后续确认以毛玻璃遮挡下层、无黑色遮罩。[PRE-001、009、010](../specs/official/preview.md)。旧版原始尺寸、首尾跳转和滑动补齐见 [PRE-002](../specs/spike/preview.md#pre-002-常规图片预览与旧版兼容)。 |
 | ORIG-16 | 漫画左右双页、即时调整首页单双页、仿真翻页 | 待实施：[PRE-003](../specs/spike/preview.md#pre-003-漫画双页翻页)。 |
