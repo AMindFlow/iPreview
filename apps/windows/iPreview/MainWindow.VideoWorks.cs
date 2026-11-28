@@ -216,13 +216,6 @@ public sealed partial class MainWindow
         ShowWorkPhotoGroup(session, opening: true);
     }
 
-    private static IEnumerable<Media> WorkTapeCandidates(Media video, IEnumerable<Media> indexedMedia)
-    {
-        var parent = SourceRename.SplitPath(video.RelativePath).Parent;
-        return indexedMedia.Where(item => item.Source.Id == video.Source.Id && item.Available && !item.IsVideo &&
-            SourceRename.SplitPath(item.RelativePath).Parent == parent);
-    }
-
     private static IEnumerable<Media> RankWorkTapeCovers(IEnumerable<(Media Media, uint Width, uint Height)> images) =>
         images.Where(image => image.Width > 0 && image.Height > 0)
             .OrderBy(image => Math.Abs(Math.Log((16d * image.Width) / (9d * image.Height))))
@@ -240,14 +233,13 @@ public sealed partial class MainWindow
         using var request = new CancellationTokenSource();
         workTapeCoverRequest = request;
         var cancellation = request.Token;
-        var video = session.Work.Video;
-        session.VideoPoster = ThumbnailOf(video.Id)?.Image;
-        SetWorkTapeCover(session.VideoPoster);
+        session.VideoPoster = ThumbnailOf(session.Work.Video.Id)?.Image;
+        SetWorkTapeCover(null);
         var posterTask = LoadWorkTapePoster(session, cancellation);
         try
         {
             List<(Media Media, uint Width, uint Height)> dimensions = [];
-            foreach (var candidate in WorkTapeCandidates(video, media).ToArray())
+            foreach (var candidate in session.Work.Samples.Where(item => item.Available))
             {
                 try
                 {
@@ -275,7 +267,12 @@ public sealed partial class MainWindow
         {
             await posterTask;
             if (ReferenceEquals(workTapeCoverRequest, request))
+            {
                 workTapeCoverRequest = null;
+                if (ReferenceEquals(videoWorkSession, session) && !cancellation.IsCancellationRequested &&
+                    VideoWorkTapeCover.ImageSource is null)
+                    SetWorkTapeCover(session.VideoPoster);
+            }
         }
     }
 
@@ -289,8 +286,6 @@ public sealed partial class MainWindow
             if (!ReferenceEquals(videoWorkSession, session) || cancellation.IsCancellationRequested)
                 return;
             session.VideoPoster = poster;
-            if (VideoWorkTapeCover.ImageSource is null)
-                SetWorkTapeCover(poster);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (MediaFailure(error)) { }

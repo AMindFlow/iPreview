@@ -1229,14 +1229,8 @@ struct LibraryView: View {
 
     private func openVideoWork(_ work: IndexedVideoWork) {
         guard !model.isWorking else { return }
-        let video = work.video
-        let parent = (video.relativePath as NSString).deletingLastPathComponent
-        let candidates = model.snapshot.media.filter { image in
-            image.kind == .image && image.isAvailable && image.source.id == video.source.id
-                && (image.relativePath as NSString).deletingLastPathComponent.utf8.elementsEqual(parent.utf8)
-        }
         focus = nil
-        videoWorkPreview = VideoWorkPreviewSession(work: work, coverCandidates: candidates)
+        videoWorkPreview = VideoWorkPreviewSession(work: work)
     }
 
     private func immersiveAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
