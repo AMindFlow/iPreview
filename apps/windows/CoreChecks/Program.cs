@@ -134,7 +134,7 @@ try
             "global exact file respects an explicit suffix");
         Check(MediaSearch.Find(imported.Sources.Values, items, GlobalSearchTerm.Parse("@ Summer"), GlobalSearchScope.Directories).Count == 0,
             "global exact directory requires its complete name");
-        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", IsVideo = false };
+        var dottedStem = items[0] with { RelativePath = "Summer 2/Frame.v2.jpg", Kind = MediaKind.Image };
         Check(MediaSearch.Find(imported.Sources.Values, [dottedStem], GlobalSearchTerm.Parse("@ frame.v2"), GlobalSearchScope.Files)
                 .Single().Name == "Frame.v2.jpg", "the file stem can contain dots");
         Check(MediaSearch.Find(imported.Sources.Values, items, exactClip, GlobalSearchScope.Directories).Count == 0,
@@ -1052,7 +1052,7 @@ static void CheckMediaSort(string work)
         var path = Path.Combine(root, fixture.Name);
         File.WriteAllBytes(path, new byte[fixture.Size]);
         File.SetLastWriteTimeUtc(path, fixture.Modified);
-        return new Media(index + 1, source, fixture.Name, IsVideo: false, Present: true);
+        return new Media(index + 1, source, fixture.Name, MediaKind.Image, Present: true);
     }).Reverse().ToArray();
     File.Move(Path.Combine(root, "20.png"), Path.Combine(work, "unavailable.png"));
 

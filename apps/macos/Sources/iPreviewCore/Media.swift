@@ -24,12 +24,13 @@ public enum Layout: String, Sendable, CaseIterable, Identifiable {
 }
 
 public enum MediaKind: String, Sendable {
-    case image, video
+    case image, video, audio
 
     init?(extension pathExtension: String) {
         switch pathExtension.lowercased() {
         case "jpg", "jpeg", "png", "webp", "gif", "heic": self = .image
         case "mp4", "mov", "ts", "mkv", "webm", "avi": self = .video
+        case "mp3", "m4a", "flac", "wav": self = .audio
         default: return nil
         }
     }
@@ -56,6 +57,7 @@ public struct Media: Sendable, Identifiable, Hashable {
     public var isAvailable: Bool { source.isAvailable && existsInSource }
     public var components: [String] { relativePath.components(separatedBy: "/") }
     public var name: String { components.last! }
+    public var parentRelativePath: String { components.dropLast().joined(separator: "/") }
     public var directories: [String] { [source.name] + components.dropLast() }
 
     public var creator: String { source.layout == .multiCreator ? components[0] : source.name }

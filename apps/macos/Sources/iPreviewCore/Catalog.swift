@@ -16,10 +16,11 @@ public actor Catalog {
     public init(directory: URL, appBundle: Bundle = .main) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let database = try Database(url: directory.appendingPathComponent("catalog.sqlite3"))
-        try database.script("PRAGMA foreign_keys = ON")
+        // Rebuilding media must preserve existing dependent rows, including cascaded work roles.
+        try database.script("PRAGMA foreign_keys = OFF")
         try database.transaction {
             let version = try database.select("PRAGMA user_version") { sqlite3_column_int($0, 0) }.first!
-            guard (0...5).contains(version) else {
+            guard (0...6).contains(version) else {
                 throw SQLiteError(message: "数据库版本 \(version) 需要更新版本的 iPreview")
             }
             if version == 0 {
@@ -42,7 +43,15 @@ public actor Catalog {
                 let identities = try Self.migrationURL(named: "005-source-media-identities", in: appBundle)
                 try database.script(String(contentsOf: identities, encoding: .utf8))
             }
+            if version < 6 {
+                let audio = try Self.migrationURL(named: "006-audio-media", in: appBundle)
+                try database.script(String(contentsOf: audio, encoding: .utf8))
+                guard try database.select("PRAGMA foreign_key_check", row: { _ in true }).isEmpty else {
+                    throw SQLiteError(message: "媒体库升级发现无效引用")
+                }
+            }
         }
+        try database.script("PRAGMA foreign_keys = ON")
         self.database = database
         let rename = SourceRename(database: database)
         do {

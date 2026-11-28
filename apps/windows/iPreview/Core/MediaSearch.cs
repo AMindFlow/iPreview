@@ -53,7 +53,12 @@ internal sealed record GlobalSearchHit(Source Source, string? Folder, string Nam
         SearchResultCategory.Creator => "\uE77B",
         SearchResultCategory.Album => "\uE7B8",
         SearchResultCategory.Directory => "\uE8B7",
-        _ => Media is { IsVideo: true } ? "\uE714" : "\uEB9F"
+        _ => Media?.Kind switch
+        {
+            MediaKind.Video => "\uE714",
+            MediaKind.Audio => "\uEC4F",
+            _ => "\uEB9F"
+        }
     };
 }
 
