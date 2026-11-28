@@ -858,7 +858,7 @@ public sealed partial class MainWindow : Window
         ResetComicReading();
         comicCoverSingle = true;
         ComicCoverToggle.IsChecked = true;
-        ComicCoverToggle.Content = "首页单页";
+        ComicCoverLabel.Text = "首页单页";
         ImageSlideSeconds.Value = 2;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         previewClosing = false;

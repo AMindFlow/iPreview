@@ -72,7 +72,7 @@ public sealed partial class MainWindow
         if (previewClosing || !ComicReadingActive)
             return;
         comicCoverSingle = ComicCoverToggle.IsChecked == true;
-        ComicCoverToggle.Content = comicCoverSingle ? "首页单页" : "首页双页";
+        ComicCoverLabel.Text = comicCoverSingle ? "首页单页" : "首页双页";
         ShowPreview(previewIndex, poster: null);
         PreviewCanvas.Focus(FocusState.Programmatic);
     }

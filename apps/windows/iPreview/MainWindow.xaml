@@ -1474,8 +1474,14 @@
                             <StackPanel x:Name="ImagePreviewBar" Visibility="Collapsed" Orientation="Horizontal"
                                         HorizontalAlignment="Center" Spacing="7">
                                 <ToggleButton x:Name="ComicReadingToggle" Content="漫画双页" Click="ToggleComicReading" />
-                                <ToggleButton x:Name="ComicCoverToggle" Content="首页单页" IsChecked="True" Visibility="Collapsed"
-                                              Click="ToggleComicCover" ToolTipService.ToolTip="切换首页的单双页配对" />
+                                <ToggleButton x:Name="ComicCoverToggle" IsChecked="True" Visibility="Collapsed"
+                                              Click="ToggleComicCover" ToolTipService.ToolTip="切换首页的单双页配对"
+                                              AutomationProperties.Name="{Binding Text, ElementName=ComicCoverLabel}">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <SymbolIcon Symbol="Switch" />
+                                        <TextBlock x:Name="ComicCoverLabel" Text="首页单页" />
+                                    </StackPanel>
+                                </ToggleButton>
                                 <Button x:Name="ImageSlideToggle" Content="开始自动播放" Click="ToggleImageSlideshow" />
                                 <Button x:Name="ImageSlideStop" Content="停止" Visibility="Collapsed" Click="StopImageSlideshow"
                                         AutomationProperties.Name="停止自动播放" />

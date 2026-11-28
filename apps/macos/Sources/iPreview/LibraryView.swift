@@ -101,7 +101,9 @@ struct LibraryView: View {
         .sheet(item: $addAlbumMedia) { album in
             AlbumMediaPicker(album: album, model: model)
         }
-        .sheet(item: $videoMetadata, onDismiss: focusBrowser) { media in
+        .sheet(item: $videoMetadata, onDismiss: {
+            if preview == nil, videoWorkPreview == nil { focusBrowser() }
+        }) { media in
             VideoMetadataSheet(media: media)
         }
         .alert("删除合集", isPresented: Binding(
@@ -175,6 +177,7 @@ struct LibraryView: View {
         .focusedSceneValue(\.libraryImmersiveAction, immersiveAction(in: scope))
         .focusedSceneValue(\.librarySearchActions, searchActions)
         .focusedSceneValue(\.libraryImportAction, canChooseFolder ? chooseFolder : nil)
+        .focusedSceneValue(\.libraryMetadataAction, metadataAction(in: scope))
         .toolbarBackgroundVisibility(preview == nil ? .automatic : .hidden, for: .windowToolbar)
         .background {
             LibraryTitleBarControls(sidebarWidth: sidebarVisibility == .detailOnly ? nil : sidebarWidth,
@@ -1253,6 +1256,21 @@ struct LibraryView: View {
             await Task.yield()
             focus = .browser
         }
+    }
+
+    private func metadataAction(in scope: ContentScope) -> (@MainActor () -> Void)? {
+        guard videoMetadata == nil else { return nil }
+        let item: Media?
+        if let preview {
+            item = preview.closingSelection == nil ? preview.media : nil
+        } else if let videoWorkPreview {
+            item = videoWorkPreview.browsing ? videoWorkPreview.work.video : nil
+        } else {
+            guard canChooseFolder, titleEdit == nil, removalSelection == nil else { return nil }
+            item = scope.items.first { $0.id == selected }
+        }
+        guard let item, item.kind == .video else { return nil }
+        return { videoMetadata = item }
     }
 }
 

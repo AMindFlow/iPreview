@@ -14,6 +14,7 @@ struct VideoWorkWorkspace: View {
     @ViewState private var selectedAlbum: Int
     @ViewState private var selectedPhoto: Int64?
     @ViewState private var sort = MediaSort()
+    @ViewState private var timelineKeyboardFocus = false
     @FocusState private var focus: Control?
 
     private enum Pane { case video, photos }
@@ -48,6 +49,7 @@ struct VideoWorkWorkspace: View {
                     handle(event, photos: photos, position: position)
                 } onClick: { left in
                     pane = left ? .video : .photos
+                    timelineKeyboardFocus = false
                 }
                 .allowsHitTesting(false)
             }
@@ -57,6 +59,7 @@ struct VideoWorkWorkspace: View {
             if !Task.isCancelled { focus = .video }
         }
         .accessibilityIdentifier("video-work-workspace")
+        .focusedSceneValue(\.previewPlayAction, video.message == nil ? startPlayback : nil)
     }
 
     private var videoPane: some View {
@@ -82,7 +85,8 @@ struct VideoWorkWorkspace: View {
             .focused($focus, equals: .video)
             .onTapGesture { focus = .video }
 
-            VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 8)
+            VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 8,
+                          showsKeyboardFocus: $timelineKeyboardFocus)
             videoButtons
         }
         .accessibilityIdentifier("video-work-player")
@@ -179,6 +183,10 @@ struct VideoWorkWorkspace: View {
         selectedPhoto = photos[next].id
     }
 
+    private func startPlayback() {
+        if !video.isPlaying { video.toggle() }
+    }
+
     private func handle(_ event: NSEvent, photos: [Media], position: Int) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         let key = Int(event.keyCode)
@@ -203,11 +211,15 @@ struct VideoWorkWorkspace: View {
             case kVK_Space:
                 if !event.isARepeat { video.toggle() }
             case kVK_DownArrow:
-                if focus == .video && canSeek { focus = .timeline }
+                if focus == .video && canSeek {
+                    focus = .timeline
+                    timelineKeyboardFocus = true
+                }
             case kVK_UpArrow:
                 if focus == .timeline { focus = .video }
             case kVK_LeftArrow, kVK_RightArrow:
                 if canSeek {
+                    timelineKeyboardFocus = focus == .timeline
                     let step = focus == .timeline ? 0.25 : 15.0
                     video.seek(video.elapsed + (key == kVK_LeftArrow ? -step : step))
                 }

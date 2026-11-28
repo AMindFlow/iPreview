@@ -95,6 +95,7 @@ struct MediaPreview: View {
     @ViewState private var closingThumbnail: PreviewThumbnail?
     @ViewState private var video = VideoPlayback()
     @ViewState private var videoLocked = false
+    @ViewState private var timelineKeyboardFocus = false
     @ViewState private var comic = false
     @ViewState private var coverSingle = true
     @ViewState private var comicForward = true
@@ -249,6 +250,7 @@ struct MediaPreview: View {
         .task(id: media.id) {
             guard session.closingSelection == nil else { return }
             videoLocked = false
+            timelineKeyboardFocus = false
             if media.kind == .video {
                 slideState = .stopped
                 comic = false
@@ -269,6 +271,7 @@ struct MediaPreview: View {
             if let selection { dismiss(returningTo: selection) }
         }
         .onDisappear { video.stop() }
+        .focusedSceneValue(\.previewPlayAction, session.closingSelection == nil && video.message == nil ? startPlayback : nil)
         .accessibilityIdentifier("media-preview")
     }
 
@@ -307,12 +310,16 @@ struct MediaPreview: View {
         case .tab:
             if media.kind == .image { return .ignored }
             guard video.message == nil, video.duration > 0 else { return .handled }
-            if press.phase == .down { focus = focus == .timeline ? .canvas : .timeline }
+            if press.phase == .down {
+                focus = focus == .timeline ? .canvas : .timeline
+                timelineKeyboardFocus = focus == .timeline
+            }
         default:
             if videoLocked {
                 if press.key == .leftArrow { video.seek(video.elapsed - 15) }
                 if press.key == .rightArrow { video.seek(video.elapsed + 15) }
             } else if focus == .timeline {
+                timelineKeyboardFocus = true
                 let backward = press.key == .leftArrow || press.key == .downArrow
                 video.seek(video.elapsed + (backward ? -0.25 : 0.25))
             } else if let destination = neighbor(toward: press.key) {
@@ -325,6 +332,14 @@ struct MediaPreview: View {
     private func toggleVideoLock() {
         videoLocked.toggle()
         focus = .canvas
+    }
+
+    private func startPlayback() {
+        if media.kind == .image {
+            slideState = .playing
+        } else if !video.isPlaying {
+            video.toggle()
+        }
     }
 
     @ViewBuilder
@@ -448,6 +463,7 @@ struct MediaPreview: View {
             skipButton(seconds: 15, icon: "goforward.15", label: "前进 15 秒")
 
             VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 12,
+                          showsKeyboardFocus: $timelineKeyboardFocus,
                           keys: Self.previewKeys, handleKey: handleKey)
                 .id(media.id)
 

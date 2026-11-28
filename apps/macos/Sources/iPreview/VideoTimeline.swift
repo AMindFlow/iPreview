@@ -5,6 +5,7 @@ struct VideoTimeline<Control: Hashable>: View {
     let focus: FocusState<Control?>.Binding
     let control: Control
     let spacing: CGFloat
+    @Binding var showsKeyboardFocus: Bool
     var keys: Set<KeyEquivalent> = []
     var handleKey: (KeyPress) -> KeyPress.Result = { _ in .ignored }
 
@@ -33,6 +34,7 @@ struct VideoTimeline<Control: Hashable>: View {
                 }
             ), in: 0...max(video.duration, 1), onEditingChanged: { editing in
                 scrubbing = editing
+                showsKeyboardFocus = false
                 if !editing {
                     if let scrubPosition {
                         video.seek(scrubPosition)
@@ -50,7 +52,7 @@ struct VideoTimeline<Control: Hashable>: View {
             .focused(focus, equals: control)
             .onKeyPress(keys: keys, phases: [.down, .repeat], action: handleKey)
             .overlay {
-                if canSeek, focus.wrappedValue == control {
+                if canSeek, showsKeyboardFocus, focus.wrappedValue == control {
                     Capsule()
                         .strokeBorder(contrast == .increased ? Color.primary : Color.accentColor, lineWidth: 2)
                         .padding(-3)

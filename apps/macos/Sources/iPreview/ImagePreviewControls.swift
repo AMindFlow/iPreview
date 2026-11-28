@@ -46,7 +46,7 @@ struct ImagePreviewControls: View {
                     coverSingle.toggle()
                     focusCanvas()
                 } label: {
-                    Text(coverSingle ? "首页单页" : "首页双页")
+                    Label(coverSingle ? "首页单页" : "首页双页", systemImage: "arrow.left.arrow.right")
                 }
                 .help("切换首页的单双页配对")
             }
