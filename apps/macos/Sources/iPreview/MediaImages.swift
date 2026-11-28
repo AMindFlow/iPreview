@@ -17,8 +17,8 @@ enum MediaImages {
         ] as CFDictionary)
     }
 
-    static func cassetteCover(for video: Media, candidates: [Media]) async -> CGImage? {
-        let ranked = candidates.compactMap { media -> (url: URL, distance: Double, area: Double, name: String)? in
+    static func cassetteCover(for work: IndexedVideoWork) async -> CGImage? {
+        let ranked = work.samples.compactMap { media -> (url: URL, distance: Double, area: Double, name: String)? in
             guard !Task.isCancelled, let url = try? media.readableURL(),
                   let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -37,7 +37,7 @@ enum MediaImages {
             if let image = image(at: candidate.url, limit: 1200) { return image }
         }
         guard !Task.isCancelled else { return nil }
-        return await thumbnail(for: video, limit: 1200)
+        return await thumbnail(for: work.video, limit: 1200)
     }
 
     static func thumbnail(for media: Media, limit: Int = 420) async -> CGImage? {
