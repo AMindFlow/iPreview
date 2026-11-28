@@ -95,8 +95,6 @@ struct MediaPreview: View {
     @ViewState private var closingThumbnail: PreviewThumbnail?
     @ViewState private var video = VideoPlayback()
     @ViewState private var videoLocked = false
-    @ViewState private var scrubPosition: Double?
-    @ViewState private var scrubbing = false
     @FocusState private var focus: Focus?
 
     private enum Focus: Hashable { case canvas, timeline }
@@ -168,8 +166,6 @@ struct MediaPreview: View {
         .task(id: media.id) {
             guard session.closingSelection == nil else { return }
             videoLocked = false
-            scrubPosition = nil
-            scrubbing = false
             if media.kind == .video {
                 video.start(media)
             } else {
@@ -349,40 +345,9 @@ struct MediaPreview: View {
 
             skipButton(seconds: 15, icon: "goforward.15", label: "前进 15 秒")
 
-            Text(videoTimeLabel(scrubPosition ?? video.elapsed))
-                .monospacedDigit()
-                .accessibilityLabel("播放位置 \(videoTimeLabel(scrubPosition ?? video.elapsed))")
-
-            Slider(value: Binding(
-                get: { min(scrubPosition ?? video.elapsed, max(video.duration, 1)) },
-                set: { position in
-                    if scrubbing {
-                        scrubPosition = position
-                    } else {
-                        video.seek(position)
-                    }
-                }
-            ), in: 0...max(video.duration, 1), onEditingChanged: { editing in
-                scrubbing = editing
-                if !editing {
-                    focus = .timeline
-                    if let scrubPosition {
-                        video.seek(scrubPosition)
-                        self.scrubPosition = nil
-                    }
-                }
-            })
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("视频进度")
-            .disabled(video.duration <= 0)
-            .focusable(video.duration > 0, interactions: .edit)
-            .focused($focus, equals: .timeline)
-            .onKeyPress(keys: Self.previewKeys, phases: [.down, .repeat], action: handleKey)
-
-            Text(videoTimeLabel(video.duration))
-                .monospacedDigit()
-                .accessibilityLabel("总时长 \(videoTimeLabel(video.duration))")
+            VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 12,
+                          keys: Self.previewKeys, handleKey: handleKey)
+                .id(media.id)
 
             Button(action: toggleVideoLock) {
                 Label(videoLocked ? "已锁定" : "锁定", systemImage: videoLocked ? "lock.fill" : "lock.open")

@@ -176,23 +176,29 @@ struct MediaSelectionMark: View {
 }
 
 struct InlineGalleryImage: View {
+    private struct Load: Equatable {
+        let media: Media
+        let revision: Int
+    }
+
     let media: Media
     let revision: Int
     @ViewState private var image: CGImage?
-    @ViewState private var loaded = false
+    @ViewState private var failure: Load?
 
     var body: some View {
+        let request = Load(media: media, revision: revision)
         GeometryReader { geometry in
             Group {
-                if let image {
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                } else if loaded {
+                if failure == request {
                     Label(media.isAvailable ? "无法显示媒体" : "媒体不可用",
                           systemImage: media.kind == .video ? "film" : "photo")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                } else if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .scaledToFit()
                 } else {
                     ProgressView().controlSize(.small)
                 }
@@ -201,15 +207,23 @@ struct InlineGalleryImage: View {
         }
         .background(Color.libraryInk.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityLabel(media.name)
-        .task(id: revision) {
-            image = nil
-            loaded = false
-            let decoded = await Task.detached(priority: .utility) {
-                await MediaImages.thumbnail(for: media, limit: 1600)
-            }.value
+        .task(id: request) {
+            let load = Task.detached(priority: .utility) { () -> CGImage? in
+                guard !Task.isCancelled else { return nil }
+                return await MediaImages.thumbnail(for: media, limit: 1600)
+            }
+            let decoded = await withTaskCancellationHandler {
+                await load.value
+            } onCancel: {
+                load.cancel()
+            }
             guard !Task.isCancelled else { return }
-            image = decoded
-            loaded = true
+            if let decoded {
+                image = decoded
+                failure = nil
+            } else {
+                failure = request
+            }
         }
     }
 }
