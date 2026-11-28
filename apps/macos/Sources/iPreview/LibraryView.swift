@@ -50,7 +50,7 @@ struct LibraryView: View {
     private var canChooseFolder: Bool {
         !model.isWorking && !libraryOverlayShown && model.inspection == nil && model.error == nil
             && !creatingAlbum && albumDeletion == nil && sourceDeletion == nil && editSourceName == nil && addAlbumMedia == nil
-            && organizationTarget == nil
+            && organizationTarget == nil && videoMetadata == nil
     }
 
     private var canChangeBrowseMode: Bool {
@@ -60,7 +60,8 @@ struct LibraryView: View {
     private var searchActions: LibrarySearchActions {
         guard preview == nil, videoWorkPreview == nil, titleEdit == nil, editSourceName == nil,
               !creatingAlbum, albumDeletion == nil, sourceDeletion == nil,
-              addAlbumMedia == nil, organizationTarget == nil, model.inspection == nil, model.error == nil else {
+              addAlbumMedia == nil, organizationTarget == nil, videoMetadata == nil,
+              model.inspection == nil, model.error == nil else {
             return LibrarySearchActions(show: nil)
         }
         return LibrarySearchActions(show: showSearch)
