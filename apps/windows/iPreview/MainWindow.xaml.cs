@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window
         Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(DismissSourceActionsOnOutsideClick), true);
         Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CommitTitleOnOutsideClick), true);
         playbackClock.Tick += (_, _) => UpdateTime();
+        imageSlideClock.Tick += (_, _) => AdvanceImageSlideshow();
+        ImageSlideSeconds.ValueChanged += SetCustomImageSlideInterval;
         previewCopyTimer.Tick += (_, _) => ResetPreviewCopyFeedback();
         Closed += (_, _) =>
         {
@@ -85,6 +87,8 @@ public sealed partial class MainWindow : Window
             sidebarAnimation?.Stop();
             sidebarAnimation = null;
             previewCopyTimer.Stop();
+            imageSlideClock.Stop();
+            comicPageLoad?.Cancel();
             previewGeneration++;
             filmstripGeneration++;
             StopVideo();
@@ -801,12 +805,14 @@ public sealed partial class MainWindow : Window
     {
         if (previewClosing || PreviewOverlay.Visibility != Visibility.Visible)
             return;
+        SetImageSlideState(ImageSlideState.Stopped);
         if (previewMoving)
         {
             afterPreviewMotion = ClosePreview;
             return;
         }
         previewClosing = true;
+        comicPageLoad?.Cancel();
         StopNativeVideoVerification();
         previewSort.Cancel();
         ResetPreviewCopyFeedback();
@@ -849,6 +855,11 @@ public sealed partial class MainWindow : Window
             LibraryView.IsHitTestVisible = true;
         }
         MainImage.Source = null;
+        ResetComicReading();
+        comicCoverSingle = true;
+        ComicCoverToggle.IsChecked = true;
+        ComicCoverToggle.Content = "首页单页";
+        ImageSlideSeconds.Value = 2;
         NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
         previewClosing = false;
     }
@@ -959,20 +970,22 @@ public sealed partial class MainWindow : Window
         MovePreview(arrow);
     }
 
-    private async void ShowPreview(int index, BitmapImage? poster)
+    private async void ShowPreview(int index, BitmapImage? poster, bool? turningForward = null)
     {
         previewIndex = index;
         var generation = ++previewGeneration;
         StopVideo();
         var tile = previewTiles[index];
+        var imagePreview = !tile.Media.IsVideo && !BrowsingVideoWork;
+        var spread = PrepareImagePreview(imagePreview);
         ResetPreviewCopyFeedback();
         PreviewTitle.Text = tile.FileName;
-        IndexLabel.Text = $"{index + 1} / {previewTiles.Count}";
+        UpdateImagePreviewIndex(spread);
         PreviewError.Visibility = Visibility.Collapsed;
         // Hold the last usable frame while the current item is being decoded.
-        if (poster is not null)
+        if (poster is not null && spread is null)
             SetPreviewImage(poster, generation);
-        MainImage.Visibility = Visibility.Visible;
+        MainImage.Visibility = ComicPages.Visibility == Visibility.Collapsed ? Visibility.Visible : Visibility.Collapsed;
         VideoSurface.Visibility = Visibility.Collapsed;
         PlayPause.IsEnabled = false;
         SetPreviewSeekEnabled(false);
@@ -990,6 +1003,12 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
+            if (spread is { } spreadToShow)
+            {
+                await LoadComicSpread(spreadToShow, turningForward, generation);
+                return;
+            }
+
             var image = await DecodeImage(tile.Media, 0, true, (_, error) =>
             {
                 if (CanUpdatePreview(generation))
@@ -1002,6 +1021,14 @@ public sealed partial class MainWindow : Window
         {
             if (CanUpdatePreview(generation))
                 ShowPreviewError(tile.Media.IsVideo ? "无法打开此视频。" : "无法解码此图片。", error.Message);
+        }
+        finally
+        {
+            if (imagePreview && CanUpdatePreview(generation))
+            {
+                imageSlideReady = true;
+                RestartImageSlideClock();
+            }
         }
     }
 
@@ -1166,9 +1193,9 @@ public sealed partial class MainWindow : Window
     private void MovePreview(BrowseDirection direction)
     {
         if (previewIndex < 0 || previewVideoLocked || previewMoving || previewClosing ||
-            previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not int next)
+            PreviewDestination(direction) is not int next)
             return;
-        ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image);
+        ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image, next > previewIndex);
         PreviewCanvas.Focus(FocusState.Programmatic);
     }
 
@@ -1200,7 +1227,7 @@ public sealed partial class MainWindow : Window
                 : "";
             return;
         }
-        var navigation = previewLayout.Mode switch
+        var navigation = ComicReadingActive ? "← / → 翻页" : previewLayout.Mode switch
         {
             BrowseMode.List => "↑ / ↓ 切换媒体",
             BrowseMode.Gallery => "← / → 切换媒体",
@@ -1212,6 +1239,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePreviewNavigation()
     {
+        var spread = CurrentComicSpread;
         UpdateDirection(PreviewLeft, NeighborLeft, BrowseDirection.Left);
         UpdateDirection(PreviewRight, NeighborRight, BrowseDirection.Right);
         UpdateDirection(PreviewUp, NeighborTop, BrowseDirection.Up);
@@ -1219,9 +1247,9 @@ public sealed partial class MainWindow : Window
 
         void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
         {
-            var available = !previewVideoLocked &&
-                previewLayout.NeighborOf(previewIndex, previewTiles.Count, direction) is not null;
-            button.Visibility = neighbor.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+            var available = !previewVideoLocked && PreviewDestination(direction, spread) is not null;
+            button.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+            neighbor.Visibility = available && spread is null ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

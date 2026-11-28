@@ -101,6 +101,7 @@ struct MediaThumbnail: View {
 struct PhotoCanvas: View {
     let media: Media
     var poster: CGImage?
+    var onResolved: ((Int64) -> Void)?
     @ViewState private var loadedID: Int64?
     @ViewState private var photo: CGImage?
     @ViewState private var animation: NSImage?
@@ -157,12 +158,12 @@ struct PhotoCanvas: View {
                     animation = image
                 }
                 error = nil
-                loadedID = media.id
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
-                loadedID = media.id
             }
+            loadedID = media.id
+            onResolved?(media.id)
         }
     }
 
