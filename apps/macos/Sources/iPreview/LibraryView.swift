@@ -985,7 +985,7 @@ struct LibraryView: View {
             VStack(spacing: 10) {
                 if let item = items.first(where: { $0.id == selected }) ?? items.first {
                     InlineGalleryImage(media: item, revision: model.revision)
-                        .id(item.id)
+                        .id(page)
                 }
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 9) {

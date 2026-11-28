@@ -14,8 +14,6 @@ struct VideoWorkWorkspace: View {
     @ViewState private var selectedAlbum: Int
     @ViewState private var selectedPhoto: Int64?
     @ViewState private var sort = MediaSort()
-    @ViewState private var scrubPosition: Double?
-    @ViewState private var scrubbing = false
     @FocusState private var focus: Control?
 
     private enum Pane { case video, photos }
@@ -84,49 +82,10 @@ struct VideoWorkWorkspace: View {
             .focused($focus, equals: .video)
             .onTapGesture { focus = .video }
 
-            videoTimeline
+            VideoTimeline(video: video, focus: $focus, control: .timeline, spacing: 8)
             videoButtons
         }
         .accessibilityIdentifier("video-work-player")
-    }
-
-    private var videoTimeline: some View {
-        let elapsed = videoTimeLabel(scrubPosition ?? video.elapsed)
-        let duration = videoTimeLabel(video.duration)
-        return HStack(spacing: 8) {
-            Text(elapsed)
-                .monospacedDigit()
-                .accessibilityLabel("播放位置 \(elapsed)")
-            Slider(value: Binding(
-                get: { min(scrubPosition ?? video.elapsed, max(video.duration, 1)) },
-                set: { seconds in
-                    if scrubbing {
-                        scrubPosition = seconds
-                    } else {
-                        video.seek(seconds)
-                    }
-                }
-            ), in: 0...max(video.duration, 1), onEditingChanged: { editing in
-                scrubbing = editing
-                if !editing {
-                    focus = .timeline
-                    if let scrubPosition {
-                        video.seek(scrubPosition)
-                        self.scrubPosition = nil
-                    }
-                }
-            })
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("视频进度")
-            .disabled(!canSeek)
-            .focusable(canSeek, interactions: .edit)
-            .focused($focus, equals: .timeline)
-            Text(duration)
-                .monospacedDigit()
-                .accessibilityLabel("总时长 \(duration)")
-        }
-        .font(.caption)
     }
 
     private var videoButtons: some View {
