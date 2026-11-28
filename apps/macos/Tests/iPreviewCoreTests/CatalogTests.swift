@@ -42,6 +42,7 @@ struct CatalogChecks {
         try await checkLegacyWorkRolesWithExtraPictures()
         try await checkLegacyWorkAlbumOrganization()
         try await checkVideoFormats()
+        try await checkAudioCatalogUpgrade()
         try await checkPersistence()
         try await checkSourceAlbumOrganization()
         try await checkOrderingAndBatchReferenceRemoval()
@@ -349,6 +350,69 @@ struct CatalogChecks {
             let organization = try await reopened.sourceAlbumOrganization(for: key)
             try verify(organization.tags == [tag] && organization.effectiveCoverIDs.first == photo.id)
         }
+    }
+
+    static func checkAudioCatalogUpgrade() async throws {
+        let fixtures = try Fixtures()
+        let sourceURL = fixtures.directory("Source")
+        let tracks = ["Music/1.MP3", "Music/2.m4a", "Music/3.FLAC", "Music/10.wav"]
+        let workFiles = ["Work/video.mp4", "Work/官方样张.jpg", "Work/pictures/1.png", "Work/sidecar.wav"]
+        let paths = tracks + workFiles + ["Music/2.jpg", "Work/pictures/cue.mp3"]
+        for path in paths { try fixtures.file("Source/" + path) }
+
+        let root = sourceURL.path.replacingOccurrences(of: "'", with: "''")
+        let migrations = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../shared/migrations").standardizedFileURL
+        try FileManager.default.createDirectory(at: fixtures.databaseDirectory, withIntermediateDirectories: true)
+        try Data().write(to: fixtures.databaseDirectory.appendingPathComponent("catalog.sqlite3"))
+        for migration in ["001-initial.sql", "002-pending-rename.sql", "003-album-organization.sql",
+                          "004-video-works.sql", "005-source-media-identities.sql"] {
+            try fixtures.sql(String(contentsOf: migrations.appendingPathComponent(migration), encoding: .utf8))
+        }
+        try fixtures.sql("""
+            INSERT INTO sources (id, path, layout) VALUES (4, '\(root)', 'creator');
+            INSERT INTO media VALUES (8, 4, 'Work/video.mp4', 'video', 1),
+                (9, 4, 'Work/官方样张.jpg', 'image', 1), (10, 4, 'Work/pictures/1.png', 'image', 1),
+                (11, 4, 'Work/Offline.png', 'image', 0);
+            UPDATE catalog_identity_sequence SET last_id = 50 WHERE entity = 'media';
+            INSERT INTO albums (id, name) VALUES (20, '旧合集');
+            INSERT INTO album_media VALUES (20, 8, 1), (20, 10, 0);
+            INSERT INTO source_album_organization VALUES (30, 4, 'Work', 1, 7);
+            INSERT INTO tags (id, name, normalized_name) VALUES (31, '旧标签', '旧标签');
+            INSERT INTO source_album_tags VALUES (30, 31);
+            INSERT INTO source_album_cover_media VALUES (30, 9, 0), (30, 10, 1);
+            INSERT INTO video_works VALUES (8, 'compact');
+            INSERT INTO video_work_images VALUES (8, 9, 'sample', 0, 0), (8, 10, 'photo', 0, 0);
+            """)
+        let oldVersion = try fixtures.scalar("PRAGMA user_version")
+        try verify(oldVersion == 5)
+
+        let catalog = try Catalog(directory: fixtures.databaseDirectory)
+        let newVersion = try fixtures.scalar("PRAGMA user_version")
+        try verify(newVersion == 6)
+        let migrated = try await catalog.snapshot()
+        let source = try required(migrated.sources.first)
+        let work = try required(migrated.videoWorks.first)
+        let albumKey = SourceAlbumKey(sourceID: source.id, relativePath: "Work")
+        let album = try await catalog.sourceAlbumOrganization(for: albumKey)
+        try verify(source.id == 4 && source.layout == .creator)
+        try verify(migrated.media.map(\.id).sorted() == [8, 9, 10, 11])
+        try verify(migrated.media.first { $0.id == 11 }?.isAvailable == false)
+        try verify(migrated.albums.first?.mediaIDs == [10, 8])
+        try verify(album.favorite && album.ratingHalf == 7 && album.tags.map(\.id) == [31] &&
+                   album.configuredCoverIDs == [9, 10] && album.effectiveCoverIDs == [9, 10])
+        try verify(work.video.id == 8 && work.samples.map(\.id) == [9] && work.photoSets.first?.photos.map(\.id) == [10])
+
+        try await catalog.update(source: source, entries: SourceScanner.rescan(source))
+        let rescanned = try await catalog.snapshot()
+        let indexedTracks = rescanned.media.filter { $0.kind == .audio && $0.parentRelativePath == "Music" }
+        try verify(Set(indexedTracks.map(\.relativePath)) == Set(tracks))
+        try verify(indexedTracks.allSatisfy { $0.isAvailable && $0.id > 50 && $0.album == "Music" })
+        try verify(rescanned.videoWorks.first == work && rescanned.albums == migrated.albums)
+        try verify(rescanned.media.first { $0.relativePath == "Work/sidecar.wav" }?.kind == .audio)
+
+        let music = try SourceScanner.inspect(sourceURL.appendingPathComponent("Music"), dataDirectory: fixtures.databaseDirectory)
+        try verify(music.candidates.first?.layout == .flat && music.candidates.first?.entries.filter { $0.kind == .audio }.count == 4)
     }
 
     static func checkSourceAlbumOrganization() async throws {
