@@ -31,6 +31,7 @@ struct CatalogChecks {
             return
         }
 
+        try checkPhotoSpreads()
         try checkLayouts()
         try checkUnreadableWorkLookahead()
         try await checkMediaSort()
@@ -502,6 +503,31 @@ struct CatalogChecks {
         let inspection = try SourceScanner.inspect(fixtures.directory("Source"), dataDirectory: fixtures.databaseDirectory)
         try verify(inspection.candidates.map(\.layout) == [.multiCreator])
         try verify(inspection.candidates[0].entries.map(\.relativePath) == ["Maker/Album/keep.jpg"])
+    }
+
+    private static func checkPhotoSpreads() throws {
+        let cases: [(count: Int, coverSingle: Bool, pages: [[Int]])] = [
+            (6, true, [[0], [1, 2], [3, 4], [5]]),
+            (6, false, [[0, 1], [2, 3], [4, 5]]),
+            (7, true, [[0], [1, 2], [3, 4], [5, 6]]),
+            (7, false, [[0, 1], [2, 3], [4, 5], [6]]),
+        ]
+        for (count, coverSingle, pages) in cases {
+            for (offset, spread) in pages.enumerated() {
+                for page in spread {
+                    let actual = PhotoSpread(index: page, count: count, coverSingle: coverSingle) { _ in true }
+                    try verify(actual.first == spread[0])
+                    try verify(actual.second == (spread.count == 2 ? spread[1] : nil))
+                    try verify(actual.previous == (offset > 0 ? pages[offset - 1][0] : nil))
+                    try verify(actual.next == (offset + 1 < pages.count ? pages[offset + 1][0] : nil))
+                }
+            }
+        }
+
+        let beforeVideo = PhotoSpread(index: 2, count: 7, coverSingle: false) { $0 != 3 }
+        try verify(beforeVideo.first == 2 && beforeVideo.second == nil && beforeVideo.next == 3)
+        let afterVideo = PhotoSpread(index: 4, count: 7, coverSingle: true) { $0 != 3 }
+        try verify(afterVideo.first == 4 && afterVideo.second == nil && afterVideo.previous == 3 && afterVideo.next == 5)
     }
 
     static func checkLayouts() throws {
