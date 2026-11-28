@@ -1038,6 +1038,8 @@ public sealed partial class MainWindow : Window
     {
         MainImage.Source = image;
         previewImageGeneration = generation;
+        MainImage.Visibility = Visibility.Visible;
+        ClearComicImages();
     }
 
     private async void LoadNeighbor(Image image, BrowseDirection direction, int generation)
@@ -1137,6 +1139,7 @@ public sealed partial class MainWindow : Window
     private void ShowPreviewError(string title, string detail)
     {
         StopVideo();
+        ClearComicImages();
         MainImage.Visibility = Visibility.Collapsed;
         VideoSurface.Visibility = Visibility.Collapsed;
         PlayPause.IsEnabled = false;

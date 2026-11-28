@@ -117,42 +117,38 @@ struct ComicPhotoSpread: View {
     let first: Media
     let second: Media?
     let forward: Bool
+    let turn: Int64?
     let poster: (Int64) -> CGImage?
     let firstResolved: (Int64) -> Void
     let secondResolved: (Int64) -> Void
 
     var body: some View {
-        if let second {
-            HStack(spacing: 0) {
-                page(first, alignment: .trailing, spine: .trailing, onResolved: firstResolved)
-                page(second, alignment: .leading, spine: .leading, onResolved: secondResolved)
+        HStack(spacing: 0) {
+            page(first, alignment: second == nil ? .center : .trailing,
+                 spine: second == nil ? .center : .trailing,
+                 turn: forward || second == nil ? turn : nil, onResolved: firstResolved)
+            if let second {
+                page(second, alignment: .leading, spine: .leading, turn: forward ? nil : turn,
+                     onResolved: secondResolved)
             }
-        } else {
-            page(first, alignment: .center, spine: .center, onResolved: firstResolved)
         }
     }
 
-    private func page(_ media: Media, alignment: Alignment, spine: UnitPoint,
+    private func page(_ media: Media, alignment: Alignment, spine: UnitPoint, turn: Int64?,
                       onResolved: @escaping (Int64) -> Void) -> some View {
         PhotoCanvas(media: media, poster: poster(media.id), alignment: alignment, onResolved: onResolved)
             .accessibilityLabel(media.name)
-            .id(media.id)
-            .transition(.asymmetric(
-                insertion: .modifier(active: PageFold(angle: forward ? -75 : 75, spine: spine),
-                                     identity: PageFold(angle: 0, spine: spine)),
-                removal: .modifier(active: PageFold(angle: forward ? 75 : -75, spine: spine),
-                                   identity: PageFold(angle: 0, spine: spine))
-            ))
-    }
-}
-
-private struct PageFold: ViewModifier {
-    let angle: Double
-    let spine: UnitPoint
-
-    func body(content: Content) -> some View {
-        content
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), anchor: spine, perspective: 0.45)
-            .opacity(1 - abs(angle) / 90)
+            .keyframeAnimator(initialValue: 0.0, trigger: turn) { content, angle in
+                content
+                    .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), anchor: spine, perspective: 0.45)
+                    .opacity(1 - abs(angle) / 90)
+            } keyframes: { _ in
+                if turn != nil {
+                    MoveKeyframe(forward ? -75 : 75)
+                    CubicKeyframe(0, duration: 0.24)
+                } else {
+                    MoveKeyframe(0)
+                }
+            }
     }
 }

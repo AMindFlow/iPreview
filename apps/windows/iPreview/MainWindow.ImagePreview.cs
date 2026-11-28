@@ -38,8 +38,6 @@ public sealed partial class MainWindow
             ResetComicReading();
         }
         var spread = CurrentComicSpread;
-        if (spread is null)
-            ClearComicImages();
         PreviewLeftRail.Width = PreviewRightRail.Width = new GridLength(
             BrowsingVideoWork || (spread is null && previewLayout.Mode == BrowseMode.List) ? 0 : 44);
         return spread;
@@ -123,6 +121,7 @@ public sealed partial class MainWindow
             AutomationProperties.SetName(ComicLeftPage, previewTiles[spread.First].FileName);
             AutomationProperties.SetName(ComicRightPage, spread.Second is int position ? previewTiles[position].FileName : "");
             ComicPages.Visibility = Visibility.Visible;
+            MainImage.Source = null;
             MainImage.Visibility = Visibility.Collapsed;
             if (turningForward is bool forward)
                 AnimateComicTurn(forward, doublePage);
