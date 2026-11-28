@@ -93,6 +93,8 @@ public sealed partial class MainWindow
 
     private static async Task<BitmapImage?> ReadPickerThumbnail(Media item)
     {
+        if (item.IsAudio)
+            return null;
         try
         {
             return item.IsVideo ? await DecodeVideoThumbnail(item, 192) : await DecodeImage(item, 192, false);

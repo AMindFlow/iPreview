@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window
 {
     private sealed record Navigation(string Label, long? Source = null, string? Folder = null,
         long? Album = null, string Glyph = "\uE8B7", string Help = "", IReadOnlyList<Media>? Cover = null,
-        string Caption = "", SidebarAlbumFavorite? Favorite = null)
+        string Caption = "", SidebarAlbumFavorite? Favorite = null, MusicAlbum? Music = null)
     {
         public Thickness SidebarIndent => Folder is null ? new() : new(14, 0, 0, 0);
         public Visibility FavoriteVisibility => Favorite is null ? Visibility.Collapsed : Visibility.Visible;
@@ -91,6 +91,7 @@ public sealed partial class MainWindow : Window
             comicPageLoad?.Cancel();
             previewGeneration++;
             filmstripGeneration++;
+            ResetMusicPreview();
             StopVideo();
             catalog?.Dispose();
         };
@@ -338,10 +339,11 @@ public sealed partial class MainWindow : Window
                     ? group.Select(item => item.RelativePath[folder.Length..].Split('/')[0]).Distinct().Count()
                     : group.Count();
                 var key = new SourceAlbumKey(source!.Id, albumPath);
+                var music = isCreator ? null : MusicAlbumFrom(group.Key, group, albumPath);
                 IReadOnlyList<Media> cover = isCreator ? [group.First()]
                     : sourceAlbumIndex.Covers(key, SourceAlbumMembers(key, group));
                 return new Navigation(group.Key, Source: source!.Id, Folder: folder,
-                    Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}");
+                    Cover: cover, Caption: $"{count} {(isCreator ? "个专辑" : "项")}", Music: music);
             }).ToList();
         SourceFolders.ItemsSource = folders;
         if (SourceFolders.Items.Count > 0)
@@ -382,6 +384,10 @@ public sealed partial class MainWindow : Window
             : $"{tiles.Count} 项";
         var work = WorkAt(current);
         PreviewWorkButton.Visibility = work is null ? Visibility.Collapsed : Visibility.Visible;
+        currentAlbumTrack = browsingFolders || current.Source is null ? null :
+            displayed.Where(item => item.IsAudio && item.ParentRelativePath == (current.Folder ?? "").TrimEnd('/'))
+                .OrderBy(item => item.FileName, MediaSearch.NaturalName).FirstOrDefault();
+        PreviewMusicButton.Visibility = currentAlbumTrack is null ? Visibility.Collapsed : Visibility.Visible;
         if (VisibleSource is { } visibleSource)
             CountLabel.Text = (work is null ? MediaFiles.Display(visibleSource.Layout) : "视频作品") + " · " + CountLabel.Text;
         if (current.Source is long source && !sources[source].Available)
@@ -674,7 +680,7 @@ public sealed partial class MainWindow : Window
     private async void LoadThumbnail(Image image)
     {
         image.Source = null;
-        if (image.DataContext is not Tile { Media: { Available: true } } tile)
+        if (image.DataContext is not Tile { Media: { Available: true, IsAudio: false } } tile)
             return;
         try
         {
@@ -791,8 +797,13 @@ public sealed partial class MainWindow : Window
         LibraryView.IsHitTestVisible = false;
         LibraryHost.IsEnabled = false;
         ShowPreview(selectedIndex, poster ?? thumbnail?.Image);
-        if (!work)
+        if (!work && musicPreview is null)
             AnimatePreview(thumbnail, opening: true, complete: null);
+        if (musicPreview is not null)
+        {
+            MusicTracks.Focus(FocusState.Programmatic);
+            return;
+        }
         if (!PreviewCanvas.Focus(FocusState.Programmatic))
             DispatcherQueue.TryEnqueue(() => PreviewCanvas.Focus(FocusState.Programmatic));
     }
@@ -832,7 +843,7 @@ public sealed partial class MainWindow : Window
                 browser.UpdateLayout();
             }
         }
-        if (BrowsingVideoWork)
+        if (BrowsingVideoWork || musicPreview is not null)
             FinishClosePreview(selectedId);
         else
             AnimatePreview(ThumbnailOf(selectedId), opening: false, complete: () => FinishClosePreview(selectedId));
@@ -849,6 +860,7 @@ public sealed partial class MainWindow : Window
         if (videoWorkSession is null)
             LibraryHost.IsEnabled = true;
         StopVideo();
+        ResetMusicPreview();
         if (!RestoreVideoWorkAfterMediaPreview() && !RestoreSearchAfterPreview(selectedId))
         {
             FocusSelectedMedia();
@@ -891,8 +903,9 @@ public sealed partial class MainWindow : Window
             PreviewHint.Text = "剪贴板正忙，请双击文件名重试。";
             return;
         }
-        SetPreviewVideoLock(previewVideoLocked);
-        if (!tile.Media.IsVideo)
+        if (musicPreview is null)
+            SetPreviewVideoLock(previewVideoLocked);
+        if (tile.Media.IsImage)
         {
             PreviewTitle.Visibility = Visibility.Collapsed;
             PreviewCopyFeedback.Visibility = Visibility.Visible;
@@ -922,7 +935,7 @@ public sealed partial class MainWindow : Window
                 ClosePreview();
             return;
         }
-        if (previewIndex < 0 || previewClosing)
+        if (previewIndex < 0 || previewClosing || musicPreview is not null)
             return;
         var focus = FocusManager.GetFocusedElement(Root.XamlRoot);
         if (args.Key == VirtualKey.Enter && VideoControls.Visibility == Visibility.Visible)
@@ -976,7 +989,13 @@ public sealed partial class MainWindow : Window
         var generation = ++previewGeneration;
         StopVideo();
         var tile = previewTiles[index];
-        var imagePreview = !tile.Media.IsVideo && !BrowsingVideoWork;
+        if (tile.Media.IsAudio)
+        {
+            ResetPreviewCopyFeedback();
+            await ShowMusicTrack(tile.Media, generation);
+            return;
+        }
+        var imagePreview = tile.Media.IsImage && !BrowsingVideoWork;
         var spread = PrepareImagePreview(imagePreview);
         ResetPreviewCopyFeedback();
         PreviewTitle.Text = tile.FileName;
@@ -1050,6 +1069,8 @@ public sealed partial class MainWindow : Window
         try
         {
             var media = previewTiles[index].Media;
+            if (media.IsAudio)
+                return;
             var bitmap = media.IsVideo ? await DecodeVideoThumbnail(media) : await DecodeImage(media, 24, false);
             if (generation == previewNeighborGeneration && !previewClosing && previewIndex >= 0)
                 image.Source = bitmap;
@@ -1057,21 +1078,24 @@ public sealed partial class MainWindow : Window
         catch (Exception error) when (MediaFailure(error)) { }
     }
 
-    private void StartVideo(StorageFile file, Media media, int generation)
+    private void StartMedia(StorageFile file, Media media, int generation)
     {
         var mediaPlayer = new MediaPlayer();
         player = mediaPlayer;
-        var canFallback = LibVlcVideoPlayback.Supports(media.RelativePath);
+        var canFallback = media.IsVideo && LibVlcVideoPlayback.Supports(media.RelativePath);
         mediaPlayer.CommandManager.IsEnabled = false;
         mediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (!CanUpdatePreview(generation) || !ReferenceEquals(player, mediaPlayer))
                 return;
-            if (canFallback)
-                awaitingNativeVideo = (media, generation);
-            MainImage.Visibility = Visibility.Collapsed;
-            if (previewImageGeneration != generation)
-                VideoSurface.PosterSource = null;
+            if (media.IsVideo)
+            {
+                if (canFallback)
+                    awaitingNativeVideo = (media, generation);
+                MainImage.Visibility = Visibility.Collapsed;
+                if (previewImageGeneration != generation)
+                    VideoSurface.PosterSource = null;
+            }
             PlayPause.IsEnabled = true;
             UpdateTime();
         });
@@ -1080,7 +1104,11 @@ public sealed partial class MainWindow : Window
             var message = details.ErrorMessage;
             DispatcherQueue.TryEnqueue(async () =>
             {
-                if (CanUpdatePreview(generation) && ReferenceEquals(player, mediaPlayer))
+                if (!CanUpdatePreview(generation) || !ReferenceEquals(player, mediaPlayer))
+                    return;
+                if (media.IsAudio)
+                    ShowMusicTrackError(message);
+                else
                     await RecoverSystemVideo(media, generation, "系统无法播放此视频。", message);
             });
         };
@@ -1094,9 +1122,12 @@ public sealed partial class MainWindow : Window
             });
         }
 
-        VideoSurface.PosterSource = MainImage.Source;
-        VideoSurface.SetMediaPlayer(mediaPlayer);
-        VideoSurface.Visibility = Visibility.Visible;
+        if (media.IsVideo)
+        {
+            VideoSurface.PosterSource = MainImage.Source;
+            VideoSurface.SetMediaPlayer(mediaPlayer);
+            VideoSurface.Visibility = Visibility.Visible;
+        }
         videoSource = MediaSource.CreateFromStorageFile(file);
         mediaPlayer.Source = videoSource;
         mediaPlayer.Play();
@@ -1199,7 +1230,7 @@ public sealed partial class MainWindow : Window
             PreviewDestination(direction) is not int next)
             return;
         ShowPreview(next, ThumbnailOf(previewTiles[next].Media.Id)?.Image, next > previewIndex);
-        PreviewCanvas.Focus(FocusState.Programmatic);
+        (musicPreview is null ? (Control)PreviewCanvas : MusicTracks).Focus(FocusState.Programmatic);
     }
 
     private void ToggleVideoLock(object sender, RoutedEventArgs args) => ChangePreviewVideoLock(VideoLock.IsChecked == true);
@@ -1250,7 +1281,7 @@ public sealed partial class MainWindow : Window
 
         void UpdateDirection(Button button, Image neighbor, BrowseDirection direction)
         {
-            var available = !previewVideoLocked && PreviewDestination(direction, spread) is not null;
+            var available = musicPreview is null && !previewVideoLocked && PreviewDestination(direction, spread) is not null;
             button.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
             neighbor.Visibility = available && spread is null ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -1287,10 +1318,28 @@ public sealed partial class MainWindow : Window
         UpdateTime();
     }
 
-    private void SetPreviewSeekEnabled(bool enabled) => VideoBack.IsEnabled = VideoForward.IsEnabled = Timeline.IsEnabled = enabled;
+    private void SetPreviewSeekEnabled(bool enabled)
+    {
+        Timeline.IsEnabled = enabled;
+        VideoBack.IsEnabled = musicPreview is null ? enabled : previewIndex > 0;
+        VideoForward.IsEnabled = musicPreview is null ? enabled : previewIndex + 1 < previewTiles.Count;
+    }
 
-    private void SeekVideoBack(object sender, RoutedEventArgs args) => SeekVideoBy(-VideoSeekInterval);
-    private void SeekVideoForward(object sender, RoutedEventArgs args) => SeekVideoBy(VideoSeekInterval);
+    private void SeekVideoBack(object sender, RoutedEventArgs args)
+    {
+        if (musicPreview is not null)
+            MoveMusicTrack(-1);
+        else
+            SeekVideoBy(-VideoSeekInterval);
+    }
+
+    private void SeekVideoForward(object sender, RoutedEventArgs args)
+    {
+        if (musicPreview is not null)
+            MoveMusicTrack(1);
+        else
+            SeekVideoBy(VideoSeekInterval);
+    }
 
     private void SeekVideoBy(int seconds)
     {

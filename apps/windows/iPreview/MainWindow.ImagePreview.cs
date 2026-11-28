@@ -19,12 +19,12 @@ public sealed partial class MainWindow
     private bool comicCoverSingle = true;
     private CancellationTokenSource? comicPageLoad;
 
-    private bool ComicReadingActive => comicReading && previewIndex >= 0 && !previewTiles[previewIndex].Media.IsVideo;
+    private bool ComicReadingActive => comicReading && previewIndex >= 0 && previewTiles[previewIndex].Media.IsImage;
     private PhotoSpread? CurrentComicSpread => ComicReadingActive
         ? PhotoSpread.Around(previewIndex, previewTiles.Count, comicCoverSingle, IsPreviewImage)
         : null;
 
-    private bool IsPreviewImage(int index) => !previewTiles[index].Media.IsVideo;
+    private bool IsPreviewImage(int index) => previewTiles[index].Media.IsImage;
 
     private PhotoSpread? PrepareImagePreview(bool image)
     {

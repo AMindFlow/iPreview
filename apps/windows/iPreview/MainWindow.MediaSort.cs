@@ -78,7 +78,7 @@ public sealed partial class MainWindow
     private void RefreshPreviewNeighbors()
     {
         var generation = ++previewNeighborGeneration;
-        if (ComicReadingActive)
+        if (ComicReadingActive || musicPreview is not null)
         {
             NeighborLeft.Source = NeighborRight.Source = NeighborTop.Source = NeighborBottom.Source = null;
             return;

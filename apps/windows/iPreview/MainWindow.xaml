@@ -407,6 +407,9 @@
                             <Button x:Name="PreviewWorkButton" Click="PreviewCurrentWork" Visibility="Collapsed"
                                     Style="{StaticResource LibrarySubtleButton}" Content="沉浸模式"
                                     AutomationProperties.Name="沉浸模式" ToolTipService.ToolTip="沉浸模式" MinHeight="26" FontSize="12" Padding="7,0" />
+                            <Button x:Name="PreviewMusicButton" Click="PreviewCurrentMusic" Visibility="Collapsed"
+                                    Style="{StaticResource LibrarySubtleButton}" Content="播放专辑"
+                                    MinHeight="26" FontSize="12" Padding="7,0" />
                             <StackPanel x:Name="AlbumTools" Orientation="Horizontal" Spacing="6" Visibility="Collapsed">
                                 <Button x:Name="DeleteAlbumButton" Click="DeleteAlbum" Style="{StaticResource LibraryIconButton}"
                                         AutomationProperties.Name="删除合集" ToolTipService.ToolTip="删除合集">
@@ -1445,6 +1448,42 @@
                                         </Grid>
                                         <MediaPlayerElement x:Name="VideoSurface" Visibility="Collapsed" AreTransportControlsEnabled="False"
                                                             IsTabStop="False" IsHitTestVisible="False" Stretch="Uniform" />
+                                        <Grid x:Name="MusicStage" Visibility="Collapsed" Padding="20" ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="3*" />
+                                                <ColumnDefinition Width="4*" />
+                                                <ColumnDefinition Width="4*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="10" VerticalAlignment="Center">
+                                                <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
+                                                    <Border Width="220" Height="220" CornerRadius="10"
+                                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                                        <Grid>
+                                                            <FontIcon x:Name="MusicCoverPlaceholder" Glyph="&#xE8D6;"
+                                                                      FontSize="46" Opacity=".65" />
+                                                            <Image x:Name="MusicCoverImage" Stretch="Uniform"
+                                                                   AutomationProperties.Name="专辑封面" />
+                                                        </Grid>
+                                                    </Border>
+                                                </Viewbox>
+                                                <TextBlock x:Name="MusicAlbumTitle" FontSize="16" FontWeight="SemiBold"
+                                                           TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <ContentControl x:Name="MusicDeck" Grid.Column="1" IsTabStop="False"
+                                                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                                            <Grid Grid.Column="2" Margin="0,2,0,2" RowSpacing="8">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <ListView x:Name="MusicTracks" SelectionMode="Single" DisplayMemberPath="FileName"
+                                                          AutomationProperties.Name="曲目列表" SelectionChanged="ChangeMusicTrack" />
+                                                <TextBlock x:Name="MusicTrackError" Grid.Row="1" Visibility="Collapsed"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                           AutomationProperties.LiveSetting="Polite" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </Grid>
                                         <TextBlock x:Name="PreviewError" Visibility="Collapsed"
                                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                    TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"

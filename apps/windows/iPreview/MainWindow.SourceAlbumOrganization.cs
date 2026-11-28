@@ -296,6 +296,11 @@ public sealed partial class MainWindow
 
     private void UpdateFolderCover(Border surface)
     {
+        if (surface.DataContext is Navigation { Music: { } album } folder)
+        {
+            LoadMusicFolderCover(surface, folder, album);
+            return;
+        }
         surface.Child = CoverArtwork((surface.DataContext as Navigation)?.Cover ?? []);
     }
 
@@ -333,7 +338,7 @@ public sealed partial class MainWindow
         panel.Children.Add(form);
         panel.Children.Add(status);
         var images = MediaSearch.ByPath(SourceAlbumMembers(key, ScopeMedia())
-            .Where(item => item.Available && !item.IsVideo)).ToList();
+            .Where(item => item.Available && item.IsImage)).ToList();
         var imagesById = images.ToDictionary(item => item.Id);
         var changed = false;
         try

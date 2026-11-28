@@ -26,11 +26,11 @@ public sealed partial class MainWindow
         public Media Media { get; } = media;
         public string FileName => Media.FileName;
         public string DisplayPath => Media.DisplayPath;
-        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : "";
+        public string Label => !Media.Available ? "离线" : Media.IsVideo ? "▶ 视频" : Media.IsAudio ? "♪ 音频" : "";
         public Visibility BadgeVisibility => Label.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         public Brush RowBackground => alternateRow ? AlternateBackground : TransparentBackground;
         private string Extension => Path.GetExtension(Media.RelativePath).TrimStart('.').ToUpperInvariant();
-        public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : "图像")}";
+        public string Kind => $"{Extension} {(Media.IsVideo ? "视频" : Media.IsAudio ? "音频" : "图像")}";
         public TileDetails Details { get; private set; } = TileDetails.Unavailable;
         public Task<TileDetails>? DetailsRequest { get; set; }
         private bool albumRemovalSelection;
@@ -226,6 +226,12 @@ public sealed partial class MainWindow
             return;
         }
         FilmstripImage.Visibility = Visibility.Visible;
+
+        if (tile.Media.IsAudio)
+        {
+            ShowFilmstripMessage(tile.Media.Available ? tile.FileName : "媒体源不可用");
+            return;
+        }
 
         try
         {
