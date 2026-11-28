@@ -16,7 +16,6 @@ final class VideoWorkPreviewSession {
 
     let work: IndexedVideoWork
     let albums: [Album]
-    let coverCandidates: [Media]
     private(set) var selection = Collectible.tape
     private(set) var selectedAlbum = 0
     private var photoPositions: [Int]
@@ -26,9 +25,8 @@ final class VideoWorkPreviewSession {
     var photoPosition: Int { photoPositions[selectedAlbum] }
     var currentPhoto: Media { album.photos[photoPosition] }
 
-    init(work: IndexedVideoWork, coverCandidates: [Media]) {
+    init(work: IndexedVideoWork) {
         self.work = work
-        self.coverCandidates = coverCandidates
         var albums: [Album] = []
         if !work.samples.isEmpty {
             albums.append(Album(title: "官方样张", photos: work.samples))
@@ -107,10 +105,9 @@ struct VideoWorkPreview: View {
         }
         .task(id: TapeCoverRequest(workID: session.work.id, revision: revision)) {
             tapeCover = nil
-            let video = session.work.video
-            let candidates = session.coverCandidates
+            let work = session.work
             let load = Task.detached(priority: .userInitiated) {
-                await MediaImages.cassetteCover(for: video, candidates: candidates)
+                await MediaImages.cassetteCover(for: work)
             }
             let image = await withTaskCancellationHandler {
                 await load.value
