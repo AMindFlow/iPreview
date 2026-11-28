@@ -1212,6 +1212,8 @@ public sealed partial class MainWindow : Window
         TimeLabel.Text = FormatTime(position);
         DurationLabel.Text = FormatTime(duration);
         PlayPause.Content = isPlaying ? "暂停" : "播放";
+        if (musicPreview is not null)
+            MusicDeck.IsPlaying = isPlaying;
     }
 
     private static string FormatTime(TimeSpan time) =>

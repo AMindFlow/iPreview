@@ -65,6 +65,7 @@ public sealed partial class MainWindow
         }
 
         MusicStage.Visibility = Visibility.Visible;
+        MusicDeck.IsPlaying = false;
         PrepareImagePreview(image: false);
         PreviewTopRail.Height = PreviewBottomRail.Height = new(0);
         PreviewLeftRail.Width = PreviewRightRail.Width = new(0);
@@ -116,6 +117,7 @@ public sealed partial class MainWindow
     private void ShowMusicTrackError(string detail)
     {
         StopVideo();
+        MusicDeck.IsPlaying = false;
         PlayPause.IsEnabled = false;
         PlayPause.Content = "播放";
         SetPreviewSeekEnabled(false);
@@ -142,6 +144,8 @@ public sealed partial class MainWindow
         MusicStage.Visibility = Visibility.Collapsed;
         MusicTracks.ItemsSource = null;
         MusicCoverImage.Source = null;
+        MusicDeck.Artwork = null;
+        MusicDeck.IsPlaying = false;
         MusicCoverPlaceholder.Visibility = Visibility.Visible;
         UpdateMusicButtonLabels(false);
     }
@@ -156,6 +160,7 @@ public sealed partial class MainWindow
             if (ReferenceEquals(album, musicPreview) && !request.IsCancellationRequested)
             {
                 MusicCoverImage.Source = cover;
+                MusicDeck.Artwork = cover;
                 MusicCoverPlaceholder.Visibility = cover is null ? Visibility.Visible : Visibility.Collapsed;
             }
         }

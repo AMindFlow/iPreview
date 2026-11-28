@@ -1,6 +1,7 @@
 <Window x:Class="IPreview.MainWindow" Title="iPreview"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:IPreview">
     <Grid x:Name="Root" PointerMoved="AlbumAdjustmentPointerMoved" PreviewKeyDown="VideoWorkRootKeyDown"
           PointerReleased="AlbumAdjustmentPointerReleased" PointerCaptureLost="AlbumAdjustmentPointerInterrupted"
           PointerCanceled="AlbumAdjustmentPointerInterrupted" PointerWheelChanged="AlbumAdjustmentPointerWheelChanged">
@@ -1470,8 +1471,7 @@
                                                 <TextBlock x:Name="MusicAlbumTitle" FontSize="16" FontWeight="SemiBold"
                                                            TextAlignment="Center" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <ContentControl x:Name="MusicDeck" Grid.Column="1" IsTabStop="False"
-                                                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                                            <local:AudioRecordDeck x:Name="MusicDeck" Grid.Column="1" IsTabStop="False" />
                                             <Grid Grid.Column="2" Margin="0,2,0,2" RowSpacing="8">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="*" />

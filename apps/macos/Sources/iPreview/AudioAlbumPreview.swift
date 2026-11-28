@@ -111,11 +111,8 @@ struct AudioAlbumPreview: View {
     }
 
     private func deck(size: CGFloat) -> some View {
-        Image(systemName: "opticaldisc")
-            .font(.system(size: max(0, size * 0.65), weight: .ultraLight))
-            .foregroundStyle(.secondary)
+        RecordDeck(artwork: artwork, isPlaying: playback.isPlaying)
             .frame(width: max(0, size), height: max(0, size))
-            .accessibilityHidden(true)
     }
 
     private var trackList: some View {

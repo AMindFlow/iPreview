@@ -44,6 +44,8 @@
                              CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)AlbumMediaPicker.xbf" RelativePath="AlbumMediaPicker.xbf"
                              CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)AudioRecordDeck.xbf" RelativePath="AudioRecordDeck.xbf"
+                             CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>

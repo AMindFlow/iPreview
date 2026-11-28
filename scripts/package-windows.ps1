@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $publish = (Resolve-Path -LiteralPath $PublishDirectory).Path
 $output = (New-Item -ItemType Directory -Force -Path $OutputDirectory).FullName
-foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf', 'AlbumMediaPicker.xbf', 'Assets\AppIcon.ico', 'coreclr.dll', 'Microsoft.UI.Xaml.dll') {
+foreach ($file in 'iPreview.exe', 'iPreview.pri', 'App.xbf', 'MainWindow.xbf', 'AlbumMediaPicker.xbf', 'AudioRecordDeck.xbf', 'Assets\AppIcon.ico', 'coreclr.dll', 'Microsoft.UI.Xaml.dll') {
     if (!(Test-Path -LiteralPath (Join-Path $publish $file) -PathType Leaf)) {
         throw "Self-contained Windows publish is missing $file"
     }
