@@ -34,7 +34,12 @@ final class PreviewSession {
     }
 
     func dismiss() {
-        if closingSelection == nil { closingSelection = media.id }
+        guard closingSelection == nil else { return }
+        if let audioSelection, items.contains(where: { $0.id == audioSelection.id }) {
+            closingSelection = audioSelection.id
+        } else {
+            closingSelection = items[index].id
+        }
     }
 }
 
