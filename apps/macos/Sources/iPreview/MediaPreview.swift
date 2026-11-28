@@ -100,6 +100,7 @@ struct MediaPreview: View {
     @ViewState private var comic = false
     @ViewState private var coverSingle = true
     @ViewState private var comicForward = true
+    @ViewState private var comicTurnTarget: Int64?
     @ViewState private var slideState = ImageSlideState.stopped
     @ViewState private var slideInterval = 2.0
     @ViewState private var resolvedImage: Int64?
@@ -133,13 +134,17 @@ struct MediaPreview: View {
     private var slideStep: SlideStep? {
         guard slideState == .playing, media.kind == .image, session.closingSelection == nil else { return nil }
         if let spread = comicSpread {
-            guard resolvedLeftPage == session.items[spread.first].id,
-                  spread.second.map({ resolvedRightPage == session.items[$0].id }) != false else { return nil }
+            guard comicPagesAreReady(spread) else { return nil }
         } else {
             guard resolvedImage == media.id else { return nil }
         }
         return SlideStep(current: media.id, next: nextSlide.map { session.items[$0].id },
                          seconds: slideInterval, comic: comic, coverSingle: coverSingle)
+    }
+
+    private func comicPagesAreReady(_ spread: PhotoSpread) -> Bool {
+        resolvedLeftPage == session.items[spread.first].id &&
+            (spread.second.map { resolvedRightPage == session.items[$0].id } ?? true)
     }
 
     private var nextSlide: Int? {
@@ -180,6 +185,8 @@ struct MediaPreview: View {
                         ComicPhotoSpread(first: session.items[spread.first],
                                          second: spread.second.map { session.items[$0] },
                                          forward: comicForward,
+                                         turn: comicTurnTarget == media.id && comicPagesAreReady(spread) && !reduceMotion
+                                             ? comicTurnTarget : nil,
                                          poster: { thumbnail($0)?.image },
                                          firstResolved: { resolvedLeftPage = $0 },
                                          secondResolved: { resolvedRightPage = $0 })
@@ -254,6 +261,8 @@ struct MediaPreview: View {
                 video.stop()
             }
         }
+        .onChange(of: comic) { _, _ in comicTurnTarget = nil }
+        .onChange(of: coverSingle) { _, _ in comicTurnTarget = nil }
         .onChange(of: video.message) { _, message in
             if message != nil {
                 videoLocked = false
@@ -392,9 +401,8 @@ struct MediaPreview: View {
     private func move(to index: Int) {
         let turningPage = comicSpread != nil && session.items[index].kind == .image
         comicForward = index > session.index
-        withAnimation(turningPage && !reduceMotion ? .easeInOut(duration: 0.24) : nil) {
-            session.index = index
-        }
+        comicTurnTarget = turningPage ? session.items[index].id : nil
+        session.index = index
     }
 
     @ViewBuilder
