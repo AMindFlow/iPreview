@@ -11,8 +11,9 @@ final class PreviewSession {
     let layout: BrowseLayout
     var index: Int
     private(set) var closingSelection: Int64?
+    private var audioSelection: Media?
 
-    var media: Media { items[index] }
+    var media: Media { audioSelection ?? items[index] }
 
     init(items: [Media], selection: Int64, layout: BrowseLayout) {
         originalItems = items
@@ -23,9 +24,13 @@ final class PreviewSession {
     }
 
     func applyOrder(_ ordered: [Media]) {
-        let currentID = media.id
+        let currentID = items[index].id
         items = ordered
         index = ordered.firstIndex { $0.id == currentID }!
+    }
+
+    func selectAudioTrack(_ track: Media) {
+        audioSelection = track
     }
 
     func dismiss() {
@@ -357,7 +362,7 @@ struct MediaPreview: View {
                         }
                     }
             }
-        } else {
+        } else if media.kind == .image {
             PhotoCanvas(media: media, poster: poster, onResolved: { resolvedImage = $0 })
         }
     }
@@ -558,11 +563,14 @@ private struct PreviewTitleBar: View {
                 .padding(.leading, 12)
             }
             .overlay(alignment: .trailing) {
-                MediaSortMenu(sort: $session.sort)
-                    .disabled(session.items.count < 2 || session.closingSelection != nil)
-                    .padding(.trailing, 12)
+                if session.media.kind != .audio {
+                    MediaSortMenu(sort: $session.sort)
+                        .disabled(session.items.count < 2 || session.closingSelection != nil)
+                        .padding(.trailing, 12)
+                }
             }
             .task(id: session.sort) {
+                guard session.media.kind != .audio else { return }
                 let request = MediaSortRequest(items: session.originalItems, sort: session.sort)
                 let ordered = await request.ordered()
                 if !Task.isCancelled, session.closingSelection == nil { session.applyOrder(ordered) }

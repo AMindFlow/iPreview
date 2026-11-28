@@ -224,21 +224,34 @@ struct LibraryView: View {
         }
         .overlayPreferenceValue(PreviewOriginKey.self) { origins in
             if let preview {
-                GeometryReader { geometry in
-                    let thumbnail: (Int64) -> PreviewThumbnail? = { id in
-                        guard searchDomain == nil else { return nil }
-                        return origins.thumbnail(for: id, in: geometry)
-                    }
-                    MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
+                if preview.media.kind == .audio {
+                    let album = AudioAlbum(track: preview.media, ordered: preview.items, indexed: model.snapshot.media)
+                    AudioAlbumPreview(session: preview, album: album) { selection in
                         if searchDomain == nil {
                             selected = selection
-                            if !hasThumbnail { mediaToReveal = selection }
+                            mediaToReveal = selection
                         }
-                    } close: {
                         self.preview = nil
                         focus = searchDomain == nil ? .browser : .searchResults
                     }
                     .id(preview.selection)
+                } else {
+                    GeometryReader { geometry in
+                        let thumbnail: (Int64) -> PreviewThumbnail? = { id in
+                            guard searchDomain == nil else { return nil }
+                            return origins.thumbnail(for: id, in: geometry)
+                        }
+                        MediaPreview(session: preview, thumbnail: thumbnail) { selection, hasThumbnail in
+                            if searchDomain == nil {
+                                selected = selection
+                                if !hasThumbnail { mediaToReveal = selection }
+                            }
+                        } close: {
+                            self.preview = nil
+                            focus = searchDomain == nil ? .browser : .searchResults
+                        }
+                        .id(preview.selection)
+                    }
                 }
             }
         }
@@ -778,7 +791,7 @@ struct LibraryView: View {
             ContentUnavailableView {
                 Label("媒体库为空", systemImage: "photo.on.rectangle")
             } description: {
-                Text("导入包含图片或视频的文件夹。")
+                Text("导入包含图片、视频或音频的文件夹。")
             } actions: {
                 Button("导入文件夹", action: chooseFolder)
                     .buttonStyle(.borderedProminent)
@@ -843,9 +856,7 @@ struct LibraryView: View {
         let isSelected = selectedFolder == folder.page
         return Button { navigate(folder.page) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
-                    model.sourceAlbumIndex.covers(for: $0, members: folder.members)
-                } ?? [folder.cover], revision: model.revision)
+                folderArtwork(folder)
                     .aspectRatio(1.47, contentMode: .fit)
                     .clipShape(.rect(cornerRadius: 12))
                     .overlay {
@@ -866,6 +877,20 @@ struct LibraryView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .id(folder.page)
+    }
+
+    @ViewBuilder
+    private func folderArtwork(_ folder: LibraryFolder) -> some View {
+        if case .folder(_, let path) = folder.page,
+           let track = folder.members.first(where: { $0.kind == .audio && $0.parentRelativePath == path }),
+           folder.members.allSatisfy({ $0.kind != .video }) {
+            AudioAlbumCardArtwork(album: AudioAlbum(track: track, ordered: [], indexed: folder.members),
+                                  revision: model.revision)
+        } else {
+            AlbumCoverArtwork(media: folder.page.sourceAlbum(in: folder.cover.source, workAlbumPath: folder.cover.workAlbumPath).map {
+                model.sourceAlbumIndex.covers(for: $0, members: folder.members)
+            } ?? [folder.cover], revision: model.revision)
+        }
     }
 
     private func mediaGallery(_ items: [Media], in album: VirtualAlbum?, sourceLayout: iPreviewCore.Layout?) -> some View {
@@ -992,7 +1017,9 @@ struct LibraryView: View {
         case .gallery:
             VStack(spacing: 10) {
                 if let item = items.first(where: { $0.id == selected }) ?? items.first {
-                    InlineGalleryImage(media: item, revision: model.revision)
+                    InlineGalleryImage(media: item, revision: model.revision,
+                                       audioAlbum: item.kind == .audio
+                                           ? AudioAlbum(track: item, ordered: [], indexed: model.snapshot.media) : nil)
                         .id(page)
                 }
                 ScrollView(.horizontal) {

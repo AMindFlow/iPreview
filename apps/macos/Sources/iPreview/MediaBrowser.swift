@@ -160,7 +160,7 @@ struct MediaListRow: View {
     private var kind: String {
         let suffix = URL(fileURLWithPath: media.name).pathExtension.uppercased()
         let format = suffix == "JPG" ? "JPEG" : suffix
-        return "\(format) \(media.kind == .video ? "视频" : "图像")"
+        return "\(format) \(media.kind.title)"
     }
 }
 
@@ -183,6 +183,7 @@ struct InlineGalleryImage: View {
 
     let media: Media
     let revision: Int
+    var audioAlbum: AudioAlbum?
     @ViewState private var image: CGImage?
     @ViewState private var failure: Load?
 
@@ -190,9 +191,11 @@ struct InlineGalleryImage: View {
         let request = Load(media: media, revision: revision)
         GeometryReader { geometry in
             Group {
-                if failure == request {
+                if failure == request, audioAlbum != nil, media.isAvailable {
+                    AudioAlbumArtwork(image: nil)
+                } else if failure == request {
                     Label(media.isAvailable ? "无法显示媒体" : "媒体不可用",
-                          systemImage: media.kind == .video ? "film" : "photo")
+                          systemImage: media.kind.icon)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else if let image {
@@ -210,6 +213,7 @@ struct InlineGalleryImage: View {
         .task(id: request) {
             let load = Task.detached(priority: .utility) { () -> CGImage? in
                 guard !Task.isCancelled else { return nil }
+                if let audioAlbum { return await audioAlbum.cover(limit: 1600) }
                 return await MediaImages.thumbnail(for: media, limit: 1600)
             }
             let decoded = await withTaskCancellationHandler {

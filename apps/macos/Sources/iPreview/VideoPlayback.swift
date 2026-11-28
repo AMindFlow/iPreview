@@ -24,13 +24,13 @@ final class VideoPlayback {
     func start(_ media: Media) {
         stop()
         do {
-            startNative(try media.readableURL())
+            startNative(try media.readableURL(), kind: media.kind)
         } catch {
-            showFailure(error.localizedDescription)
+            showFailure(error.localizedDescription, kind: media.kind)
         }
     }
 
-    private func startNative(_ url: URL) {
+    private func startNative(_ url: URL, kind: MediaKind) {
         let id = UUID()
         session = id
         let item = AVPlayerItem(url: url)
@@ -42,7 +42,7 @@ final class VideoPlayback {
             Task { @MainActor [weak self] in
                 guard let self, self.session == id else { return }
                 if status == .failed {
-                    self.startFallback(url, nativeError: error)
+                    self.nativeFailed(url, kind: kind, error: error)
                 } else if duration.isFinite && duration > 0 {
                     self.duration = duration
                 }
@@ -61,7 +61,7 @@ final class VideoPlayback {
             let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)?.localizedDescription
             Task { @MainActor [weak self] in
                 guard let self, self.session == id else { return }
-                self.startFallback(url, nativeError: error)
+                self.nativeFailed(url, kind: kind, error: error)
             }
         }
         timeObserver = player.addPeriodicTimeObserver(
@@ -76,6 +76,15 @@ final class VideoPlayback {
             }
         }
         player.play()
+    }
+
+    private func nativeFailed(_ url: URL, kind: MediaKind, error: String?) {
+        if kind == .audio {
+            stopNative()
+            showFailure(error, kind: kind)
+        } else {
+            startFallback(url, nativeError: error)
+        }
     }
 
     private func startFallback(_ url: URL, nativeError: String?) {
@@ -186,9 +195,10 @@ final class VideoPlayback {
         fallback = nil
     }
 
-    private func showFailure(_ detail: String?) {
+    private func showFailure(_ detail: String?, kind: MediaKind = .video) {
         isPlaying = false
-        message = detail.map { "无法播放此视频：\($0)" } ?? "当前播放器无法解码此视频。"
+        let type = kind == .audio ? "音频" : "视频"
+        message = detail.map { "无法播放此\(type)：\($0)" } ?? "当前播放器无法解码此\(type)。"
     }
 }
 

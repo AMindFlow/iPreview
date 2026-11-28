@@ -9,7 +9,18 @@ enum MediaImages {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
             return nil
         }
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+        return image(from: source, limit: limit)
+    }
+
+    static func image(data: Data, limit: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return nil
+        }
+        return image(from: source, limit: limit)
+    }
+
+    private static func image(from source: CGImageSource, limit: Int) -> CGImage? {
+        CGImageSourceCreateThumbnailAtIndex(source, 0, [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: limit,
@@ -41,6 +52,7 @@ enum MediaImages {
     }
 
     static func thumbnail(for media: Media, limit: Int = 420) async -> CGImage? {
+        if media.kind == .audio { return await AudioArtwork.embedded(in: media, limit: limit) }
         guard let url = try? media.readableURL() else { return nil }
         if media.kind == .image {
             return image(at: url, limit: limit)
@@ -75,7 +87,7 @@ struct MediaThumbnail: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                 } else {
-                    Image(systemName: media.isAvailable ? (media.kind == .video ? "film" : "photo") : "externaldrive.badge.xmark")
+                    Image(systemName: media.isAvailable ? media.kind.icon : "externaldrive.badge.xmark")
                         .font(.title2)
                         .foregroundStyle(.tertiary)
                 }

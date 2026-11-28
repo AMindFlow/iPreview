@@ -6,6 +6,7 @@ struct VideoTimeline<Control: Hashable>: View {
     let control: Control
     let spacing: CGFloat
     @Binding var showsKeyboardFocus: Bool
+    var seekLabel = "视频进度"
     var keys: Set<KeyEquivalent> = []
     var handleKey: (KeyPress) -> KeyPress.Result = { _ in .ignored }
 
@@ -45,7 +46,7 @@ struct VideoTimeline<Control: Hashable>: View {
             })
             .labelsHidden()
             .controlSize(.small)
-            .accessibilityLabel("视频进度")
+            .accessibilityLabel(seekLabel)
             .disabled(!canSeek)
             .focusable(canSeek, interactions: .edit)
             .focusEffectDisabled()

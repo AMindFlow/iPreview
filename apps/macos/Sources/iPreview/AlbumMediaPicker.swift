@@ -182,7 +182,7 @@ struct AlbumMediaPicker: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(item.name)
-                            .accessibilityValue(item.kind == .video ? "视频" : "图片")
+                            .accessibilityValue(item.kind.title)
                             .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }
